@@ -72,3 +72,25 @@ sécurité :**
 - Deux compteurs par jour (`stats.json`, 800 jours gardés). Le « premier passage du jour » est
   décidé par l'appareil : un visiteur qui vide son stockage compte deux fois ; c'est le prix de
   l'absence d'identifiant.
+
+## Notes et sauvegarde anonyme (17/11/2026)
+
+- [ ] **À essayer avec une vraie session** : messagerie plein écran côte à côte (lecture, ↑ ↓,
+      suppression, réponse), glisser-déposer de pièces jointes, destinataires récents (lus dans
+      « Envoyés »). Testés en local sans messagerie : mise en page, ouverture et fermeture.
+- [ ] **Sauvegarde anonyme sur deux appareils réels** (ordinateur + téléphone) : connexion par mot
+      de passe sur chacun, notes saisies d'un côté, retrouvées de l'autre au retour sur l'onglet.
+- [ ] **Durée du calcul PBKDF2** (600 000 tours) sur un vieux téléphone : fait en fond après la
+      connexion ; mesurer, et baisser à 310 000 (minimum OWASP pour SHA-256) si c'est trop lent.
+- Mot de passe changé : la sauvegarde de l'ancien secret est reprise puis effacée par le premier
+  appareil qui se reconnecte (il garde l'ancien secret). Un appareil neuf après un changement de
+  mot de passe repart d'une sauvegarde vide : à dire dans l'aide si des étudiants le signalent.
+- Les sessions ouvertes avant cette version n'ont pas de secret : la sauvegarde démarre à la
+  prochaine connexion par mot de passe (les données restent sur l'appareil en attendant).
+- Fusion par rubrique (notes, examens, mails) : la modification la plus récente gagne. Deux
+  appareils modifiant les notes hors ligne en même temps : la dernière écriture l'emporte.
+- [ ] Purge des sauvegardes abandonnées (champ `month`, mois de la dernière écriture) : ex. plus de
+      2 ans sans écriture. Rien n'est purgé pour l'instant.
+- Maquettes de notes : saisies dans l'administration (onglet Notes), copiables d'une classe à
+  l'autre (nouveaux identifiants, notes séparées). Ne pas recréer une évaluation pour la renommer :
+  modifier son intitulé garde les notes déjà saisies.

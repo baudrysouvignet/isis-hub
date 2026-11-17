@@ -83,6 +83,10 @@ const ICONS = {
   restore: [['path', 'M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4']],
   plus: [['path', 'M12 5v14M5 12h14']],
   send: [['path', 'M4 12l16-8-6 16-2.5-6.5z']],
+  spark: [['path', 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6']],
+  flag: [['path', 'M5 21V4M5 4h11l-2 4 2 4H5']],
+  chart: [['path', 'M4 20V10M10 20V4M16 20v-7M22 20H2']],
+  cloud: [['path', 'M7 18.5h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.6 9.1 4.7 4.7 0 0 0 7 18.5z']],
 };
 
 const NS = 'http://www.w3.org/2000/svg';

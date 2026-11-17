@@ -9,7 +9,7 @@ import { isEval, toggleEval } from '../core/evals.js';
 const TYPE_NAME = { CM: 'Cours magistral', TD: 'Travaux dirigés', TP: 'Travaux pratiques' };
 const AHEAD_WEEKS = 8;
 
-export function createCourseSheet({ schedule, matcher, isSignedIn, onWrite, promo, onEvalChange }) {
+export function createCourseSheet({ notes, schedule, matcher, isSignedIn, onWrite, promo, onEvalChange }) {
   const dialog = $('dialog[data-course]');
   const sheet = modal(dialog);
   const set = (k, v) => ($(`[data-cs-${k}]`, dialog).textContent = v);
@@ -34,6 +34,29 @@ export function createCourseSheet({ schedule, matcher, isSignedIn, onWrite, prom
       );
     }
     return found;
+  }
+
+  /** Mes notes (saisies dans ISIS Hub) pour la matière liée au code ADE de la séance. */
+  function myNotes(ev) {
+    const box = $('[data-cs-mine]', dialog);
+    const mine = notes?.course(ev.code);
+    const fmt = (v) => String(Math.round(v * 100) / 100).replace('.', ',');
+    const items = mine
+      ? mine.evals.length
+        ? mine.evals.map(({ e, v }) =>
+            h(
+              'li',
+              { class: v === null || v === undefined ? 'is-planned' : '' },
+              h('div', {}, h('b', { text: e.label }), h('span', { text: `coef ${fmt(e.coef)}${e.date ? ` · ${e.date.split('-').reverse().slice(0, 2).join('/')}` : ''}` })),
+              h('span.cs-grade', { text: v === null || v === undefined ? 'à venir' : fmt(v) }),
+            ),
+          )
+        : [h('li.cs-none', { text: 'Aucune évaluation pour l’instant.' })]
+      : [h('li.cs-none', { text: notes?.hasBook() ? 'Cette matière n’est pas dans ta maquette de notes.' : 'Pas encore de maquette de notes pour ta classe.' })];
+    box.replaceChildren(...items);
+    const add = $('[data-cs-addnote]', dialog);
+    add.hidden = !mine;
+    add.onclick = mine ? () => (sheet.close(), setTimeout(() => notes.add({ mat: mine.M.id }), 200)) : null;
   }
 
   async function grades(found, t) {
@@ -105,6 +128,7 @@ export function createCourseSheet({ schedule, matcher, isSignedIn, onWrite, prom
     $('[data-cs-exam]', dialog).replaceChildren(none('Recherche des examens…'));
     const notes = ev.notes.filter((n) => !/^\s*$/.test(n));
     sheet.open();
+    myNotes(ev);
     grades(found, t);
 
     const monday = D.mondayOf(ev.day);

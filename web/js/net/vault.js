@@ -11,7 +11,9 @@
 
 export const SESSION_KEY = 'hub.session';
 export const CACHE_KEY = 'hub.cache';
-export const MAILPREFS_KEY = 'hub.mailprefs';
+export const MAILPREFS_KEY = 'hub.mailprefs'; // ancien emplacement des règles (repris une fois)
+export const USERDATA_KEY = 'hub.userdata';
+export const SYNC_KEY = 'hub.sync';
 const SEALED = [SESSION_KEY, CACHE_KEY];
 const DB = 'isis-hub';
 const STORE = 'keys';
@@ -123,10 +125,30 @@ export async function openVault() {
     // Étiquettes et règles des mails : sur l'appareil, chiffrées, gardées quand la session
     // universitaire expire ; effacées par « Se déconnecter ».
     loadMailPrefs: async () => (await read(MAILPREFS_KEY, device)) ?? null,
-    saveMailPrefs: (prefs) => write(MAILPREFS_KEY, prefs, device),
     forgetMailPrefs: () => {
       try {
         device?.removeItem(MAILPREFS_KEY);
+      } catch {}
+    },
+    // Données personnelles (notes, examens marqués, règles de mails) : sur l'appareil, chiffrées.
+    loadUserData: async () => (await read(USERDATA_KEY, device)) ?? null,
+    saveUserData: (data) => write(USERDATA_KEY, data, device),
+    // Secret de la sauvegarde anonyme, dérivé à la connexion : rangé comme la session (onglet ou
+    // appareil selon « Rester connecté »), mais gardé quand la session universitaire expire.
+    loadSync: async () => {
+      const v = (await read(SYNC_KEY, device)) ?? (await read(SYNC_KEY, tab));
+      return Array.isArray(v) && v.length === 96 ? Uint8Array.from(v) : null;
+    },
+    saveSync: (bits) => {
+      try {
+        (where === device ? tab : device)?.removeItem(SYNC_KEY);
+      } catch {}
+      return write(SYNC_KEY, Array.from(bits));
+    },
+    forgetSync: () => {
+      try {
+        tab?.removeItem(SYNC_KEY);
+        device?.removeItem(SYNC_KEY);
       } catch {}
     },
 

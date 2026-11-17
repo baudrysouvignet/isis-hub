@@ -38,6 +38,7 @@ type ContentStore struct {
 	dir      string
 	data     Content
 	classes  calendar.Data
+	grades   GradeBook
 	OnChange func(calendar.Data) // appelé quand la répartition des classes change
 }
 
@@ -69,6 +70,9 @@ func OpenContent(dir string, defaults calendar.Data) (*ContentStore, error) {
 		}
 		c.classes = saved
 	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	if err := c.loadGrades(); err != nil {
 		return nil, err
 	}
 	return c, nil
@@ -202,6 +206,9 @@ func (s *Service) adminContent(w http.ResponseWriter, r *http.Request, action st
 			return true
 		}
 		reply(w, http.StatusOK, s.cfg.Content.Get())
+		return true
+	case "grades":
+		s.adminGrades(w, r)
 		return true
 	case "classes":
 		var in calendar.Data

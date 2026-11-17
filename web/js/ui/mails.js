@@ -25,7 +25,7 @@ const avatarClass = (text) => `av-${([...text].reduce((a, c) => (a * 31 + c.char
 const who = (p) => (p.name && p.address && p.name !== p.address ? `${p.name} <${p.address}>` : p.name || p.address);
 const tagChip = (t) => h('span.mtag', { class: `mtag--${t.color}`, text: t.name });
 
-export function createMails({ app, onSessionLost, onLogin, onReply }) {
+export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) {
   const tile = $('.tile--mail');
   const slot = $('[data-slot="mail"]', tile);
   const live = $('[data-mail-live]', tile);
@@ -77,8 +77,8 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     noResult.hidden = true;
     if (!listShown) {
       searchInput.value = '';
-      expanded = false;
-      tile.classList.remove('is-searching', 'is-more');
+      expandedMore = false;
+      if (!expanded()) tile.classList.remove('is-searching', 'is-more');
     }
   }
 
@@ -350,7 +350,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     $$('.mail-sep', tile).forEach((x) => (x.hidden = narrowed));
     if (more) more.hidden = narrowed;
     // La recherche montre tous les résultats ; une fois effacée, on revient à l'état choisi.
-    tile.classList.toggle('is-more', narrowed || expanded);
+    tile.classList.toggle('is-more', narrowed || expandedMore || expanded());
     searchCount.textContent = narrowed ? `${n} résultat${n > 1 ? 's' : ''}` : '';
     noResult.hidden = !narrowed || n > 0;
     if (narrowed && n === 0) {
@@ -375,9 +375,9 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
       filter();
     }
   });
-  let expanded = false; // « Afficher plus » cliqué (téléphone)
+  let expandedMore = false; // « Afficher plus » cliqué (téléphone)
   showMore.addEventListener('click', () => {
-    expanded = true;
+    expandedMore = true;
     tile.classList.add('is-more');
     $$('.mail-list > li', tile)[5]?.querySelector('button')?.focus({ preventScroll: true });
   });
@@ -507,13 +507,100 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     }
   }
 
+  // --------------------------------------------- messagerie plein écran (maquette v7)
+  // Ordinateur (≥ 1100 px) : liste à gauche, lecture à droite. Tablette, téléphone : la liste en
+  // plein écran, le mail par-dessus. Une seule sortie, « Fermer », en haut à droite.
+  const mailExp = $('[data-mail-expand]', tile);
+  const splitMQ = matchMedia('(min-width: 1100px)');
+  const bentoEl = $('[data-bento]');
+  let ghost = null;
+  const expanded = () => tile.classList.contains('is-expanded');
+  const docked = () => reader.classList.contains('is-docked');
+
+  function markActive(i) {
+    $$('.mail-row.is-active', tile).forEach((r) => {
+      r.setAttribute('aria-current', 'false');
+      r.classList.toggle('is-active', false);
+    });
+    const r = i >= 0 ? rowFor(i) : null;
+    if (r) {
+      r.setAttribute('aria-current', 'true');
+      r.classList.add('is-active');
+    }
+  }
+
+  function expandMail(animate = true) {
+    if (expanded()) return;
+    onExpand?.();
+    const first = tile.getBoundingClientRect();
+    ghost = h('div.tile-ghost', { class: (tile.className.match(/\b(cw|rh)-\d+\b/g) || []).join(' ') });
+    ghost.style.setProperty('height', `${first.height}px`);
+    tile.after(ghost);
+    tile.classList.add('is-expanded', 'is-more');
+    app.classList.add('has-expanded', 'mail-expanded');
+    app.classList.toggle('mail-split', splitMQ.matches);
+    $$('.bento > .tile').forEach((t) => t !== tile && (t.inert = true));
+    lockScroll(true);
+    mailExp.setAttribute('aria-pressed', 'true');
+    mailExp.setAttribute('aria-label', 'Fermer la messagerie plein écran');
+    const last = tile.getBoundingClientRect();
+    if (animate && motionOK()) tile.animate([{ clipPath: clipFrom(first, last, 22) }, { clipPath: 'inset(0px 0px 0px 0px round 22px)' }], { duration: 520, easing: EASE });
+  }
+
+  function collapseMail() {
+    if (!expanded()) return;
+    if (!reader.hidden) {
+      reader.hidden = true;
+      reader.classList.toggle('is-docked', false);
+      app.classList.toggle('has-overlay', false);
+      bentoEl.inert = false;
+    }
+    markActive(-1);
+    const finish = () => {
+      tile.classList.toggle('is-expanded', false);
+      if (!expandedMore && !searchInput.value.trim() && !tagFilter) tile.classList.toggle('is-more', false);
+      app.classList.toggle('mail-expanded', false);
+      app.classList.toggle('mail-split', false);
+      ghost?.replaceWith();
+      ghost = null;
+      $$('.bento > .tile').forEach((t) => (t.inert = false));
+      lockScroll(false);
+      mailExp.setAttribute('aria-pressed', 'false');
+      mailExp.setAttribute('aria-label', 'Afficher en plein écran');
+      mailExp.focus({ preventScroll: true });
+    };
+    app.classList.toggle('has-expanded', false);
+    if (motionOK() && ghost) {
+      const to = ghost.getBoundingClientRect();
+      const cur = tile.getBoundingClientRect();
+      tile.animate([{ clipPath: 'inset(0px 0px 0px 0px round 22px)' }, { clipPath: clipFrom(to, cur, 22) }], { duration: 400, easing: EASE_IO }).onfinish = finish;
+    } else finish();
+  }
+
+  function openDocked(i) {
+    const wasHidden = reader.hidden;
+    fill(i);
+    reader.classList.add('is-docked');
+    reader.hidden = false;
+    markActive(i);
+    rowFor(i)?.scrollIntoView({ block: 'nearest' });
+    if (wasHidden && motionOK()) reader.animate([{ opacity: 0, transform: 'translateX(14px)' }, { opacity: 1, transform: 'none' }], { duration: 340, easing: EASE });
+  }
+
   function open(i) {
+    if (splitMQ.matches) {
+      // Ordinateur : la messagerie passe en plein écran, liste et lecture côte à côte.
+      if (!expanded()) expandMail();
+      openDocked(i);
+      return;
+    }
     const row = rowFor(i);
     const first = row.getBoundingClientRect();
     fill(i);
+    reader.classList.toggle('is-docked', false);
     reader.hidden = false;
     app.classList.add('has-overlay');
-    $('[data-bento]').inert = true;
+    bentoEl.inert = true;
     lockScroll(true);
     const last = reader.getBoundingClientRect();
     if (motionOK()) {
@@ -523,13 +610,13 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
   }
 
   function close() {
-    if (reader.hidden) return;
+    if (reader.hidden || docked()) return collapseMail(); // côte à côte : « Fermer » ferme tout le plein écran
     const row = rowFor(current);
-    app.classList.remove('has-overlay');
-    $('[data-bento]').inert = false;
+    app.classList.toggle('has-overlay', false);
+    bentoEl.inert = false;
     const done = () => {
       reader.hidden = true;
-      lockScroll(false);
+      if (!expanded()) lockScroll(false);
       row?.focus({ preventScroll: true });
     };
     if (motionOK() && row) {
@@ -540,6 +627,36 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     } else done();
   }
 
+  mailExp.addEventListener('click', () => (expanded() ? collapseMail() : expandMail()));
+  $$('[data-mail-close]', tile).forEach((b) => b.addEventListener('click', collapseMail));
+  splitMQ.addEventListener('change', () => {
+    if (!expanded()) return;
+    app.classList.toggle('mail-split', splitMQ.matches);
+    if (reader.hidden) return;
+    if (splitMQ.matches) {
+      reader.classList.add('is-docked');
+      app.classList.toggle('has-overlay', false);
+      bentoEl.inert = false;
+      markActive(current);
+    } else {
+      reader.classList.toggle('is-docked', false);
+      app.classList.add('has-overlay');
+      bentoEl.inert = true;
+    }
+  });
+  // ↑ ↓ dans la liste : passe d'un mail à l'autre en lecture côte à côte
+  tile.addEventListener('keydown', (e) => {
+    if (!expanded() || !splitMQ.matches || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
+    const row = e.target.closest('[data-mail]');
+    if (!row) return;
+    const rows = $$('.mail-row', tile).filter((r) => r.offsetParent);
+    const k = rows.indexOf(row) + (e.key === 'ArrowDown' ? 1 : -1);
+    if (k < 0 || k >= rows.length) return;
+    e.preventDefault();
+    rows[k].focus();
+    openDocked(Number(rows[k].dataset.mail));
+  });
+
   /** Retire le mail affiché de la liste et passe au suivant (ou ferme le lecteur). */
   function dropCurrent() {
     const m = mails[current];
@@ -548,13 +665,16 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     redraw();
     if (!mails.length) {
       reader.hidden = true;
+      reader.classList.remove('is-docked');
       app.classList.remove('has-overlay');
-      $('[data-bento]').inert = false;
-      lockScroll(false);
+      bentoEl.inert = false;
+      if (!expanded()) lockScroll(false);
       if (!ids.length) load();
       return;
     }
-    fill(Math.min(current, mails.length - 1));
+    const next = Math.min(current, mails.length - 1);
+    fill(next);
+    if (docked()) markActive(next);
   }
 
   async function act(button, run, done) {
@@ -599,7 +719,13 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
       const i = current + Number(b.dataset.readerStep);
       if (i < 0 || i >= ids.length) return;
       if (i >= mails.length) await loadMore();
-      if (mails[i]) fill(i);
+      if (mails[i]) {
+        fill(i);
+        if (docked()) {
+          markActive(i);
+          rowFor(i)?.scrollIntoView({ block: 'nearest' });
+        }
+      }
     }),
   );
   $$('[data-reply]', reader).forEach((b) =>
@@ -607,6 +733,8 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
       const m = mails[current];
       if (!m) return;
       reader.hidden = true; // le compositeur prend la place du lecteur
+      reader.classList.remove('is-docked');
+      markActive(-1);
       onReply(b.dataset.reply, m, currentText);
     }),
   );
@@ -676,7 +804,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     load,
     showSignedOut,
     close,
-    isOpen: () => !reader.hidden,
+    isOpen: () => !reader.hidden || expanded(),
     unread: () => unread,
     /** Après l'ajout d'une règle : l'appliquer aux mails déjà affichés. */
     async applyRulesNow() {

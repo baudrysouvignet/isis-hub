@@ -6,6 +6,7 @@
 // site ne peut pas ajouter. Tout ce qui vient des étudiants est affiché comme du texte.
 
 import { $, $$, h, toast, motionOK, EASE } from './core/dom.js';
+import { setupGradesAdmin } from './admin-grades.js';
 
 if (window.top !== window.self) throw new Error('Refus d’affichage dans un cadre.');
 
@@ -367,6 +368,8 @@ async function loadStats() {
   );
 }
 
+const gradesAdmin = setupGradesAdmin({ api, getClasses: () => classes });
+
 // ------------------------------------------------------------ départ
 
 async function load() {
@@ -382,6 +385,7 @@ async function load() {
   ]);
   renderClasses();
   renderLinks();
+  await gradesAdmin.load().catch((err) => toast(`Maquettes de notes indisponibles : ${err.message}`));
   await loadStats().catch((err) => toast(`Fréquentation indisponible : ${err.message}`));
 }
 

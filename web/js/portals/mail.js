@@ -12,6 +12,7 @@ let inbox = null; // { uid }
 let folders = null; // nom complet → { uid, id } (INBOX, Outbox, Sent, Trash…)
 
 export const reset = () => {
+  recentCache = null;
   session = null;
   inbox = null;
   folders = null;
@@ -278,6 +279,35 @@ export async function destroy(mails) {
     const steps = moveTrace.map((t) => `${t.step} → ${t.error}`).join(' ; ');
     throw new Error(`mail non supprimé${steps ? ` (${steps})` : ''}`);
   }
+}
+
+// -------------------------------------------------------------- destinataires récents
+
+let recentCache = null; // { at, list } : en mémoire seulement, jamais enregistré
+
+/**
+ * Personnes à qui l'étudiant a écrit dernièrement, d'après sa boîte « Envoyés » (les 60 derniers
+ * messages) : la plus récente d'abord, puis la plus fréquente. Lu dans la messagerie, rien n'est
+ * gardé ailleurs qu'en mémoire.
+ */
+export async function recentRecipients() {
+  if (recentCache && Date.now() - recentCache.at < 10 * 60_000) return recentCache.list;
+  const { ids } = await listInbox('sent');
+  const sent = await getMails(ids.slice(0, 60), 'sent');
+  const seen = new Map();
+  for (const m of sent) {
+    for (const p of [...m.to, ...m.cc]) {
+      const email = (p.address || '').toLowerCase();
+      if (!EMAIL_RE.test(email)) continue;
+      const r = seen.get(email) ?? { email, name: p.name && p.name !== p.address ? p.name : email, last: 0, n: 0, cat: 'recent' };
+      r.n++;
+      r.last = Math.max(r.last, m.date.getTime());
+      seen.set(email, r);
+    }
+  }
+  const list = [...seen.values()].sort((a, b) => b.last - a.last || b.n - a.n).slice(0, 30);
+  recentCache = { at: Date.now(), list };
+  return list;
 }
 
 // -------------------------------------------------------------- annuaire

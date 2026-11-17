@@ -17,7 +17,7 @@ const initials = (name) =>
     .map((w) => w[0].toUpperCase())
     .join('') || '?';
 const avatarClass = (text) => `av-${([...text].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % 6) + 1}`;
-const CAT_LABEL = { staff: 'Personnel', etud: 'Étudiant', liste: 'Liste de diffusion' };
+const CAT_LABEL = { staff: 'Personnel', etud: 'Étudiant', liste: 'Liste de diffusion', recent: 'Écrit récemment' };
 
 export function createComposer({ app, onSessionLost }) {
   const comp = $('[data-composer]');
@@ -90,6 +90,7 @@ export function createComposer({ app, onSessionLost }) {
           },
           h('span.avatar', { class: avatarClass(p.email), text: initials(p.name) }),
           h('span.link-txt', {}, h('b', { text: p.name }), h('span', { text: `${CAT_LABEL[p.cat] ?? ''} · ${p.email}` })),
+          p.cat === 'recent' ? h('span.ac-recent', { attrs: { 'aria-hidden': 'true' } }, icon('clock', 'ic ic--xs')) : null,
         ),
       ),
     );
@@ -98,14 +99,32 @@ export function createComposer({ app, onSessionLost }) {
     input.setAttribute('aria-expanded', 'true');
   }
 
+  /** Destinataires récents (boîte « Envoyés ») qui correspondent à ce qui est tapé. */
+  let recents = [];
+  const loadRecents = () =>
+    mail
+      .recentRecipients()
+      .then((list) => (recents = list))
+      .catch(() => (recents = []));
+  function recentMatches(q, box) {
+    const n = normalize(q);
+    return recents.filter((p) => !chips(box).some((c) => c.address === p.email) && (!n || normalize(`${p.name} ${p.email}`).includes(n)));
+  }
+
   function suggest(input, box) {
     const q = input.value.trim();
     clearTimeout(searchTimer);
-    if (q.length < 2) return closeAc();
+    // Champ vide ou une lettre : les dernières personnes à qui l'étudiant a écrit, en premier.
+    if (q.length < 2) {
+      const mine = recentMatches(q, box).slice(0, 6);
+      return mine.length && document.activeElement === input ? renderAc(input, box, mine, '') : closeAc();
+    }
     const token = ++searchToken;
     searchTimer = setTimeout(async () => {
       try {
-        const found = (await mail.searchContacts(q, 8)).filter((p) => !chips(box).some((c) => c.address === p.email));
+        const mine = recentMatches(q, box).slice(0, 4);
+        const dir = (await mail.searchContacts(q, 8)).filter((p) => !chips(box).some((c) => c.address === p.email) && !mine.some((r) => r.email === p.email));
+        const found = [...mine, ...dir].slice(0, 10);
         if (token !== searchToken || input.value.trim() !== q) return;
         renderAc(input, box, found, /@/.test(q) ? 'Entrée pour ajouter cette adresse' : 'Aucun contact trouvé');
       } catch (err) {
@@ -117,6 +136,7 @@ export function createComposer({ app, onSessionLost }) {
   for (const box of Object.values(boxes)) {
     const input = $('[data-recip-input]', box);
     input.addEventListener('input', () => suggest(input, box));
+    input.addEventListener('focus', () => !input.value && suggest(input, box));
     input.addEventListener('blur', () => setTimeout(closeAc, 150));
     input.addEventListener('keydown', (e) => {
       const { items } = acState;
@@ -172,9 +192,9 @@ export function createComposer({ app, onSessionLost }) {
       ),
     );
   }
-  $('[data-cmp-attach]', comp).addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', async () => {
-    for (const file of fileInput.files) {
+  async function addFiles(list) {
+    for (const file of list) {
+      if (!file.size && !file.type) continue; // dossier glissé : ignoré
       const total = files.reduce((n, f) => n + f.size, 0) + file.size;
       if (total > mail.MAX_ATTACHMENTS) {
         toast(`« ${file.name} » dépasse la limite de 15 Mo de pièces jointes.`);
@@ -182,9 +202,43 @@ export function createComposer({ app, onSessionLost }) {
       }
       files.push({ name: file.name, type: file.type, size: file.size, bytes: new Uint8Array(await file.arrayBuffer()) });
     }
-    fileInput.value = '';
     renderFiles();
+  }
+  $('[data-cmp-attach]', comp).addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    await addFiles([...fileInput.files]);
+    fileInput.value = '';
   });
+  // Glisser des fichiers n'importe où sur le message les ajoute en pièces jointes.
+  const hasFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files');
+  let dragDepth = 0;
+  comp.addEventListener('dragenter', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth++;
+    comp.classList.add('is-dropping');
+  });
+  comp.addEventListener('dragover', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  comp.addEventListener('dragleave', () => {
+    if (--dragDepth <= 0) {
+      dragDepth = 0;
+      comp.classList.toggle('is-dropping', false);
+    }
+  });
+  comp.addEventListener('drop', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth = 0;
+    comp.classList.toggle('is-dropping', false);
+    addFiles([...e.dataTransfer.files]);
+  });
+  // Un fichier lâché à côté ne doit pas remplacer la page (le navigateur l'ouvrirait).
+  addEventListener('dragover', (e) => !comp.hidden && hasFiles(e) && e.preventDefault());
+  addEventListener('drop', (e) => !comp.hidden && hasFiles(e) && e.preventDefault());
 
   // ------------------------------------------------------------ affichage
 
@@ -203,7 +257,7 @@ export function createComposer({ app, onSessionLost }) {
       if (reader.hidden) {
         app.classList.remove('has-overlay');
         $('[data-bento]').inert = false;
-        lockScroll(false);
+        if (!app.classList.contains('has-expanded')) lockScroll(false); // messagerie plein écran : reste figée
       }
     };
     if (motionOK()) comp.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(24px) scale(.985)' }], { duration: 260, easing: EASE_IO }).onfinish = done;
@@ -243,6 +297,7 @@ export function createComposer({ app, onSessionLost }) {
     }
     renderFiles();
     show();
+    loadRecents();
     try {
       const from = await mail.me();
       $('[data-cmp-from]', comp).textContent = `Envoyé par ta messagerie universitaire (${from.address}), via le tunnel chiffré.`;

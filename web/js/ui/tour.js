@@ -9,6 +9,7 @@ const STEPS = [
   { sel: '#edt .ev.has-mdl', t: 'Un cours, son Moodle', p: 'La pastille en haut à droite d’un cours ouvre son espace Moodle. « ≈ » signale une correspondance approximative.' },
   { sel: '[data-open-ical]', t: 'Dans l’agenda de ton téléphone', p: 'Abonne-toi à l’emploi du temps : Apple Calendrier, Google Agenda ou Outlook le tiennent à jour tout seuls.' },
   { sel: '#mails', t: 'Tes mails, sans quitter le Hub', p: 'Clique sur un mail pour le lire ici : il est aussi marqué comme lu dans ta messagerie. Les plus anciens se chargent en faisant défiler.' },
+  { sel: '#notes', t: 'Tes notes, tes moyennes', p: 'Saisis tes notes au bon endroit : moyennes par UE et par semestre, rattrapages repérés. Le mode simulation répond à « est-ce que je valide ? ». Tout est chiffré : personne d’autre ne les lit.' },
   { sel: '#moodle', t: 'Le bon cours au bon moment', p: 'Le cours en cours, ou le prochain, est mis en avant. Tape « / » pour chercher parmi tous tes cours.' },
   { sel: '[data-menu="view-menu"]', t: 'À ta façon', p: 'Affiche ou masque les tuiles. Le reste de la grille s’adapte.' },
   { sel: '.top [data-open-transparence]', t: 'Tout est vérifiable', p: 'L’écran Transparence montre ce que fait la page, ce qui est gardé, et lance des contrôles en direct.', go: 'C’est parti' },

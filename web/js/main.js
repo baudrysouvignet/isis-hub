@@ -24,7 +24,11 @@ import { createCrousSheet, menus as crousMenus } from './ui/crous.js';
 import { setupMailRules } from './ui/mailrules.js';
 import { setupInstall } from './ui/install.js';
 import { countVisit } from './core/stats.js';
+import { watchUpdates } from './core/update.js';
 import { initMailPrefs, resetMailPrefs } from './core/mailprefs.js';
+import * as UD from './core/userdata.js';
+import { deriveSecret } from './net/sync.js';
+import { createNotes } from './ui/notes.js';
 import { setupFeedback } from './ui/feedback.js';
 import { fetchContent, renderLinks } from './ui/content.js';
 import { setupTransparency, versionLabel } from './ui/transparency.js';
@@ -54,8 +58,28 @@ jar.onchange = () => vault.save(jar.toJSON());
 state.signedIn = hasCasSession(jar);
 // Cache des portails (Moodle par matière…), chiffré comme la session ; vide sans session.
 initCache(state.signedIn ? await vault.loadCache() : {}, (entries) => vault.saveCache(entries));
-// Étiquettes et règles des mails : chiffrées sur l'appareil.
-await initMailPrefs(vault);
+// Données personnelles (notes, examens marqués, règles de mails) : chiffrées sur l'appareil, puis
+// synchronisées dans la sauvegarde anonyme dès qu'un secret de connexion est connu. Les anciens
+// emplacements (avant la sauvegarde) sont repris une fois puis effacés.
+await UD.initUserData(vault, { evals: prefs.get('evals'), mail: await vault.loadMailPrefs() });
+prefs.set('evals', null);
+vault.forgetMailPrefs();
+initMailPrefs();
+vault.loadSync().then((bits) => bits && UD.connect(bits).catch(() => {}));
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && UD.refresh());
+
+/** Après une connexion par mot de passe : secret de la sauvegarde anonyme (calcul de ~1 s, en fond). */
+async function startSync(username, password) {
+  try {
+    const previous = await vault.loadSync();
+    const bits = await deriveSecret(username, password);
+    await vault.saveSync(bits);
+    const same = previous && previous.every((b, i) => b === bits[i]);
+    await UD.connect(bits, same ? null : previous);
+  } catch {
+    // sauvegarde indisponible : les données restent sur l'appareil, nouvel essai à la prochaine connexion
+  }
+}
 
 // Le moteur TLS (1,4 Mo) se charge dès maintenant, pendant que l'écran s'affiche.
 ready().catch(() => {});
@@ -78,6 +102,7 @@ const login = createLogin({
     vault.choose(remember);
     await casLogin(jar, username, password);
     await vault.save(jar.toJSON());
+    startSync(username, password);
     state.signedIn = true;
     state.username = username;
     if (wantsAdmin) return openAdmin();
@@ -151,6 +176,7 @@ let mails;
 let courses;
 let composer;
 let courseSheet;
+let notes;
 let dashboardReady = false;
 let install;
 let bento;
@@ -170,8 +196,25 @@ function setupDashboard() {
     },
   });
   composer = createComposer({ app, onSessionLost: sessionLost });
-  mails = createMails({ app, onSessionLost: sessionLost, onLogin: openLogin, onReply: (kind, m, text) => composer.respond(kind, m, text) });
+  mails = createMails({
+    app,
+    onSessionLost: sessionLost,
+    onLogin: openLogin,
+    onReply: (kind, m, text) => composer.respond(kind, m, text),
+    onExpand: () => {
+      notes?.close();
+      if (schedule.isExpanded()) schedule.collapse();
+    },
+  });
+  notes = createNotes({
+    app,
+    beforeOpen: () => {
+      mails.close();
+      if (schedule.isExpanded()) schedule.collapse();
+    },
+  });
   courseSheet = createCourseSheet({
+    notes,
     schedule,
     matcher,
     isSignedIn: () => state.signedIn,
@@ -217,6 +260,7 @@ async function enterDashboard(promoChanged = true) {
   if (promoChanged || !schedule.started) {
     schedule.started = true;
     schedule.start(state.promo, state.choice);
+    notes.load(state.promo);
   }
   if (state.signedIn) {
     loadUser()
@@ -267,8 +311,12 @@ async function logout() {
     jar.clear(); // le CAS injoignable n'empêche pas d'oublier la session ici
   }
   vault.clear();
-  vault.forgetMailPrefs(); // se déconnecter efface aussi étiquettes et règles de cet appareil
+  // Se déconnecter efface de cet appareil les données personnelles (notes, règles, examens marqués)
+  // et le secret de la sauvegarde ; la sauvegarde chiffrée reste, retrouvée à la prochaine connexion.
+  UD.disconnect({ wipeLocal: true });
+  vault.forgetSync();
   resetMailPrefs();
+  notes?.load(state.promo);
   clearCache();
   moodle.reset();
   mail.reset();
@@ -285,7 +333,22 @@ async function logout() {
 
 // ------------------------------------------------------------ Transparence
 
-const transparency = setupTransparency({ sessionPlace: () => vault.place });
+const transparency = setupTransparency({ sessionPlace: () => vault.place, syncId: UD.syncId });
+// « Supprimer mes données sauvegardées » (Transparence) : appareil et sauvegarde anonyme.
+$$('[data-erase-data]').forEach((b) =>
+  b.addEventListener('click', async () => {
+    if (!confirm('Effacer tes notes saisies, séances marquées examen, étiquettes et règles de mails, sur cet appareil et dans la sauvegarde ? C’est définitif.')) return;
+    try {
+      await UD.eraseEverywhere();
+      vault.forgetSync();
+      notes?.load(state.promo);
+      schedule?.rerender();
+      toast('Tes données sauvegardées ont été effacées.', 'check');
+    } catch (err) {
+      toast(`Effacement impossible : ${err.message}`, 'alert');
+    }
+  }),
+);
 let versionText = '';
 setupFeedback({
   username: () => (state.signedIn ? state.username || state.user?.email?.split('@')[0] || '' : ''),
@@ -304,7 +367,21 @@ document.addEventListener('keydown', (e) => {
   if (document.querySelector('dialog[open]') || tourActive()) return; // géré par « cancel » du dialog
   if (composer?.isOpen()) return; // géré par le compositeur
   if (mails?.isOpen()) return mails.close();
+  if (notes?.isOpen()) return notes.close();
   if (schedule?.isExpanded()) schedule.collapse();
+});
+
+// Nouvelle version publiée : rechargée au retour sur l'onglet si rien n'est en cours, sinon proposée.
+watchUpdates({
+  busy: () =>
+    Boolean(
+      composer?.isOpen() ||
+        mails?.isOpen() ||
+        notes?.isOpen() ||
+        document.querySelector('dialog[open]') ||
+        tourActive() ||
+        (state.screen === 'login' && [...document.querySelectorAll('[data-screen="login"] input')].some((i) => i.value)),
+    ),
 });
 
 window.addEventListener('unhandledrejection', (e) => {

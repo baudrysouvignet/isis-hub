@@ -10,6 +10,7 @@ import { createMatcher, moodleCode, codeOfCourse } from '../web/js/portals/match
 import { pickParts } from '../web/js/portals/mail.js';
 import { sniff, safeName } from '../web/js/portals/files.js';
 import * as MP from '../web/js/core/mailprefs.js';
+import * as UD from '../web/js/core/userdata.js';
 import { casLogin, LoginRefused } from '../web/js/portals/cas.js';
 import * as D from '../web/js/core/dates.js';
 import { setClasses } from '../web/js/portals/classes.js';
@@ -216,7 +217,12 @@ test('pièces jointes : type reconnu aux octets, jamais au nom', () => {
 
 test('mails : étiquettes et règles appliquées sur l’appareil', async () => {
   const saved = [];
-  await MP.initMailPrefs({ loadMailPrefs: async () => ({ tags: [{ id: 'x', name: '<b>', color: 'evil' }], rules: [{ id: 'r', field: 'from', text: '', action: 'trash' }] }), saveMailPrefs: (s) => saved.push(s) });
+  // Les règles vivent dans les données personnelles (chiffrées, synchronisées) : coffre simulé.
+  await UD.initUserData(
+    { loadUserData: async () => null, saveUserData: (d) => saved.push(d) },
+    { mail: { tags: [{ id: 'x', name: '<b>', color: 'evil' }], rules: [{ id: 'r', field: 'from', text: '', action: 'trash' }] } },
+  );
+  MP.initMailPrefs();
   assert.equal(MP.tags()[0].color, 'blue', 'couleur inconnue remplacée');
   assert.equal(MP.rules().length, 0, 'règle vide écartée');
   const stage = MP.addTag('Stage');

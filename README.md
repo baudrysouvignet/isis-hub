@@ -118,6 +118,24 @@ code servi. D'où les moyens de vérification ci-dessous.
   puis vérifiée (le message doit avoir quitté la boîte d'envoi).
 - **Fiche cours** au clic sur une séance : salle, horaire, enseignant (bouton « Écrire »), séances de
   la semaine et des 8 suivantes, examens d'après ADE, notes du carnet Moodle.
+- **Notes** (tuile et vue « Mes notes », maquette v7) : l'étudiant saisit ses notes dans la maquette
+  de sa classe (UE, matières, coefficients, évaluations prévues, publiés dans l'administration).
+  Moyennes par matière, UE, semestre et année, rattrapages repérés (UE sous 10, matière sous 7,
+  seuils réglables), « À surveiller » avec la note nécessaire, **mode simulation** (rien n'est
+  enregistré) et **Viser une moyenne**. La fiche d'un cours montre les notes de la matière liée
+  par son code ADE.
+- **Sauvegarde anonyme et chiffrée** des données créées dans le Hub (notes, séances marquées
+  examen, étiquettes et règles de mails) : retrouvées sur tous les appareils. À la connexion, la
+  page tire du mot de passe (PBKDF2-SHA-256, 600 000 tours) un identifiant, une preuve et une clé
+  AES-GCM ; le serveur (`/api/vault`) ne reçoit que l'identifiant, l'empreinte de la preuve et des
+  octets chiffrés : il ne peut ni lire les données ni savoir à qui elles sont. Transparence détaille
+  ce qui n'est pas gardé, ce qui l'est anonymement et ce qui est relié à quelqu'un, et permet de
+  tout effacer.
+- **Messagerie plein écran** (maquette v7) : sur ordinateur, liste à gauche et lecture à droite
+  (↑ ↓ pour passer d'un mail à l'autre) ; filtres, étiquettes, Envoyés, Corbeille et actions y
+  restent. Tous les pleins écrans se ferment par « ✕ Fermer » en haut à droite.
+- **Écrire** : pièces jointes par glisser-déposer, destinataires récents (boîte « Envoyés »)
+  proposés en premier.
 - **Retours** (« Une idée ? ») et page d'**administration** `/admin` (voir plus bas).
 - **Moodle** : cours suivis, recherche (`/`), et le bon cours mis en avant selon l'heure (en cours,
   sinon le prochain).
@@ -125,6 +143,10 @@ code servi. D'où les moyens de vérification ci-dessous.
   `FIA4-1-ISI-2`. Cherché parmi les cours suivis, puis dans tout Moodle ; à défaut, même intitulé
   dans la même classe (pastille « ≈ »).
 - **Raccourcis** publiés par l'administrateur (ENT par défaut).
+- **Mises à jour sans manipulation** : la page compare régulièrement l'empreinte de `/manifest.json`
+  à celle du code chargé. Nouvelle version : rechargement automatique au retour sur l'onglet (ou
+  l'application installée) si rien n'est en cours, sinon un bandeau « Recharger ». Tout est servi en
+  `no-cache` : ne pas activer « Cache Assets » dans Nginx Proxy Manager.
 - **Installer l'application** : tutoriel iPhone / Android / ordinateur proposé une fois après la
   première connexion (et depuis le menu du compte).
 - **Fréquentation anonyme** (onglet *Fréquentation* de l'administration) : appareils distincts par
@@ -135,7 +157,7 @@ code servi. D'où les moyens de vérification ci-dessous.
 
 ### Administration
 
-`/admin` (retours, répartition des emplois du temps, raccourcis, fréquentation) **n'existe que pour les identifiants
+`/admin` (retours, répartition des emplois du temps, maquettes de notes, raccourcis, fréquentation) **n'existe que pour les identifiants
 de `ADMIN_USERS`** (ex. `bsouvign`) : pour tous les autres, l'adresse renvoie à l'accueil. Pas de mot
 de passe propre à ISIS Hub.
 
@@ -153,6 +175,12 @@ sans toucher au code. Pour chaque classe :
 - le mode : toutes les séances, groupe (et langue), parcours et groupe, parcours ;
 - pour les parcours : les codes de matières de la maquette, les alias de codes et le repère des
   événements communs.
+
+**Maquettes de notes** : dans l'onglet *Notes*, pour chaque classe et semestre, les UE, matières,
+coefficients, codes ADE et évaluations prévues. **Import JSON** : une classe (`{ "semesters": [...] }`)
+ou plusieurs (`{ "FIA4": {...}, "FIE5": {...} }`), dates en `AAAA-MM-JJ`, `JJ/MM/AAAA` ou « 14 janv. » ;
+les identifiants manquants sont créés, aucune note d'étudiant n'est importée. **Export** pour
+sauvegarder ou recopier une maquette.
 
 La répartition est vérifiée avant d'être acceptée, puis appliquée aussitôt à l'emploi du temps des
 étudiants et à leurs abonnements d'agenda. Elle est gardée dans le volume `/data` ; tant qu'elle n'a
@@ -248,7 +276,8 @@ dans `test/fixtures/calendars/expected.json` (séances) et `internal/calendar/te
 cmd/isis-hub/       le binaire : serveur, `manifest`, `verify`, `healthcheck`
 internal/wisp/      relais aveugle (WebSocket RFC 6455 + Wisp v1, sans dépendance)
 internal/site/      fichiers intégrés, en-têtes de sécurité, empreintes
-internal/feedback/  retours « Une idée ? », raccourcis, répartition des classes, administration (CAS)
+internal/feedback/  retours « Une idée ? », raccourcis, répartition des classes, maquettes de notes,
+                    sauvegarde anonyme (vault.go), fréquentation, administration (CAS)
 internal/calendar/  calendriers filtrés par groupe, langue, parcours (abonnement des agendas)
 internal/crous/     menu du midi du Resto U' de Castres (Croustillant, secours CROUS), cache 12 h
 web/data/           classes.json : ressources ADE et règles de filtrage, lues par la page et le serveur

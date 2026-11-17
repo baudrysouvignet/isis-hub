@@ -96,7 +96,7 @@ export async function versionLabel() {
 
 // ------------------------------------------------------------ écran
 
-export function setupTransparency({ sessionPlace }) {
+export function setupTransparency({ sessionPlace, syncId = () => null, onErase }) {
   const dialog = $('[data-sheet]');
   let timer = null;
 
@@ -111,6 +111,10 @@ export function setupTransparency({ sessionPlace }) {
     $('[data-stat-hosts]', dialog).textContent = stats.hosts.size
       ? [...stats.hosts].map(([host, n]) => `${host} × ${n}`).join(' · ')
       : 'aucune pour l’instant';
+    const id = syncId();
+    const idEl = $('[data-keep-id]', dialog);
+    idEl.hidden = !id;
+    if (id) idEl.replaceChildren('Ta sauvegarde, vue du serveur : ', h('code', { text: `${id.slice(0, 10)}…${id.slice(-6)}` }), ' — rien d’autre.');
     const place = sessionPlace();
     $('[data-fact-session]', dialog).textContent =
       place === 'device'

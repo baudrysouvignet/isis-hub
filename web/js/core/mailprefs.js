@@ -1,5 +1,8 @@
-// Étiquettes et règles automatiques des mails. Elles ne quittent jamais l'appareil : gardées
-// chiffrées dans le coffre (voir net/vault.js), appliquées par la page elle-même.
+// Étiquettes et règles automatiques des mails, appliquées par la page elle-même. Gardées dans les
+// données personnelles (core/userdata.js) : chiffrées sur l'appareil et dans la sauvegarde anonyme,
+// donc retrouvées sur tous les appareils après connexion, jamais lisibles par le serveur.
+
+import * as UD from './userdata.js';
 
 const MAX_TAGS = 12;
 const MAX_RULES = 30;
@@ -7,7 +10,6 @@ const MAX_MARKS = 2000;
 export const TAG_COLORS = ['blue', 'green', 'orange', 'violet', 'pink', 'teal'];
 
 let state = { tags: [], marks: {}, rules: [] };
-let persist = () => {};
 const listeners = new Set();
 
 const str = (v, max) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '');
@@ -38,14 +40,16 @@ function sanitize(raw) {
 }
 
 function changed() {
-  persist(state);
+  UD.set('mail', state);
   for (const fn of listeners) fn();
 }
 
-export async function initMailPrefs(vault) {
-  persist = (s) => vault.saveMailPrefs(s);
-  state = sanitize(await vault.loadMailPrefs().catch(() => null));
+/** Lit les étiquettes et règles depuis les données personnelles (au démarrage et après synchronisation). */
+export function initMailPrefs() {
+  state = sanitize(UD.get('mail'));
+  for (const fn of listeners) fn();
 }
+UD.onUserData((touched) => touched.includes('mail') && initMailPrefs());
 export const onMailPrefs = (fn) => listeners.add(fn);
 export const resetMailPrefs = () => {
   state = { tags: [], marks: {}, rules: [] };

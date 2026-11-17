@@ -68,11 +68,12 @@ function sizesFor(hidden) {
     return {
       edt: [on('mail') ? 8 : 12, 11],
       mail: [on('edt') ? 4 : 12, 11],
-      moodle: [on('links') ? 8 : 12, 5],
-      links: [on('moodle') ? 4 : 12, on('moodle') ? 5 : 3],
+      notes: [on('moodle') ? 4 : 12, 5],
+      moodle: [on('notes') ? 8 : 12, 5],
+      links: [12, 1],
     };
   }
-  return { edt: [12, 11], mail: [on('moodle') ? 6 : 12, 9], moodle: [on('mail') ? 6 : 12, 9], links: [12, 3] };
+  return { edt: [12, 11], mail: [on('notes') ? 6 : 12, 9], notes: [on('mail') ? 6 : 12, 9], moodle: [12, 7], links: [12, 1] };
 }
 
 export function setupBento() {
@@ -115,7 +116,7 @@ export function setupBento() {
       $$('[data-show-tile]').forEach((c) => (c.checked = !view.hidden[c.dataset.showTile]));
       $$('[data-link]').forEach((li) => (li.hidden = view.hiddenLinks.includes(li.dataset.link)));
       $$('[data-show-link]').forEach((c) => (c.checked = !view.hiddenLinks.includes(c.dataset.showLink)));
-      const dock = { '#edt': 'edt', '#mails': 'mail', '#moodle': 'moodle' };
+      const dock = { '#edt': 'edt', '#mails': 'mail', '#notes': 'notes', '#moodle': 'moodle' };
       $$('.dock a').forEach((a) => (a.hidden = Boolean(view.hidden[dock[a.getAttribute('href')]])));
     };
     if (animate) flip(run);

@@ -140,6 +140,10 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("contenu : %w", err)
 	}
+	vaultStore, err := feedback.OpenVaultStore(env("DATA_DIR", "data"))
+	if err != nil {
+		return fmt.Errorf("coffre : %w", err)
+	}
 	stats, err := feedback.OpenStats(env("DATA_DIR", "data"))
 	if err != nil {
 		return fmt.Errorf("statistiques : %w", err)
@@ -158,6 +162,7 @@ func serve() error {
 		Store:          store,
 		Content:        content,
 		Stats:          stats,
+		Vault:          vaultStore,
 		AdminUsers:     admins,
 		CASValidate:    feedback.CASValidator(env("CAS_URL", "https://auth.univ-jfc.fr"), feedback.ENTService),
 		AllowedOrigins: origins,
