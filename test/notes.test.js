@@ -204,3 +204,16 @@ test('import : erreurs claires', () => {
   assert.notEqual(a.id, b.id);
   assert.equal(isoDate('14/01/2027'), '2027-01-14');
 });
+
+import { EXAMPLE } from '../web/js/admin-grades-example.js';
+
+test('import : le JSON d’exemple de l’administration est valide et utilisable', () => {
+  const { FIA4 } = normalizeImport(structuredClone(EXAMPLE), { currentClass: 'FIA4' });
+  assert.equal(FIA4.semesters.length, 2);
+  const ids = FIA4.semesters.flatMap((s) => s.ues.flatMap((u) => u.matieres.flatMap((m) => [m.id, ...m.evals.map((e) => e.id)])));
+  assert.equal(new Set(ids).size, ids.length, 'identifiants uniques');
+  assert.ok(ids.every((id) => /^[a-z0-9][a-z0-9-]{0,47}$/.test(id)), 'identifiants au format du serveur');
+  const N = createGrades(FIA4, { today: '2026-11-16' });
+  assert.equal(N.currentSem().id, 'S7');
+  assert.equal(N.semState(N.currentSem()).kind, 'none');
+});

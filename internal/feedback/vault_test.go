@@ -185,3 +185,36 @@ func TestGradesAdminAndPublic(t *testing.T) {
 		t.Fatalf("relecture : %v", err)
 	}
 }
+
+func TestGradesDisabledStaysPrivate(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := Open(dir)
+	content, _ := OpenContent(dir, calendar.Data{})
+	api := New(Config{Store: store, Content: content, AdminUsers: []string{"bsouvign"}, CASValidate: fakeCAS, AllowedOrigins: []string{origin}})
+	cookie := adminCookie(t, api)
+	admin := map[string]string{"X-Hub-Admin": "1"}
+
+	// Brouillon vide accepté seulement si les notes sont désactivées.
+	if rec := call(api, "POST", "/api/admin/grades", map[string]any{"class": "FIE1", "grades": map[string]any{"semesters": []any{}}}, admin, cookie); rec.Code != http.StatusBadRequest {
+		t.Fatalf("maquette vide active acceptée : %d", rec.Code)
+	}
+	draft := sampleGrades()
+	draft.Disabled = true
+	draft.Semesters[0].UEs[0].Matieres[0].Evals = nil
+	if rec := call(api, "POST", "/api/admin/grades", map[string]any{"class": "FIE1", "grades": draft}, admin, cookie); rec.Code != http.StatusOK {
+		t.Fatalf("brouillon désactivé refusé : %d %s", rec.Code, rec.Body)
+	}
+	var pub GradeBook
+	json.Unmarshal(call(api, "GET", "/api/grades", nil, nil).Body.Bytes(), &pub)
+	if !pub["FIE1"].Disabled || len(pub["FIE1"].Semesters) != 0 || pub["FIE1"].Message != DefaultGradesMessage {
+		t.Fatalf("les étudiants ne doivent voir que le message : %+v", pub["FIE1"])
+	}
+	var full GradeBook
+	json.Unmarshal(call(api, "GET", "/api/admin/grades", nil, admin, cookie).Body.Bytes(), &full)
+	if len(full["FIE1"].Semesters) != 1 {
+		t.Fatal("l'administration garde le brouillon complet")
+	}
+	if rec := call(api, "GET", "/api/admin/grades", nil, admin); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("brouillon lisible sans session : %d", rec.Code)
+	}
+}

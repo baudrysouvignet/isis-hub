@@ -43,6 +43,8 @@ function normalizeClass(raw, label) {
     return v;
   };
   return {
+    ...(typeof raw.disabled === 'boolean' && { disabled: raw.disabled }),
+    ...(typeof raw.message === 'string' && { message: text(raw.message, 400) }),
     rules: { ue: num(raw.rules?.ue, 10), matiere: num(raw.rules?.matiere, 7) },
     semesters: raw.semesters.slice(0, 4).map((S, si) => {
       const id = /^[A-Za-z0-9]{1,6}$/.test(S?.id ?? '') ? S.id : `S${si + 1}`;

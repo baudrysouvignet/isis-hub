@@ -48,6 +48,7 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
 
   let promo = null;
   let def = null;
+  let waitMessage = ''; // notes désactivées pour la classe : message de l'administration
   let N = null; // carnet (core/grades.js)
   let semId = null;
   let viewOpen = false;
@@ -75,7 +76,10 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
   async function load(newPromo) {
     promo = newPromo;
     const book = await loadBook();
-    def = book?.[promo] ?? null;
+    const entry = book?.[promo] ?? null;
+    waitMessage = entry?.disabled ? entry.message || '' : '';
+    def = entry && !entry.disabled && entry.semesters?.length ? entry : null;
+    if (!def && viewOpen) closeView();
     semId = null;
     build();
     renderAll();
@@ -120,16 +124,22 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
 
   // ------------------------------------------------------------ tuile
 
+  /** Classe sans maquette, ou notes désactivées par l'administration : message d'attente. */
   function renderEmptyTile() {
     $('[data-nt-sem]', nTile).hidden = true;
     $('[data-open-notes]', nTile).hidden = true;
     tileBody.replaceChildren(
       h(
-        'div.empty.nt-empty',
+        'div.empty.nt-empty.nt-wait',
         {},
-        h('span.empty-ic', {}, icon('chart', 'ic ic--lg')),
-        h('h3', { text: promo ? `Pas encore de maquette de notes pour ${promo}` : 'Choisis ta classe' }),
-        h('p', { text: 'Les UE, matières et coefficients sont publiés par l’équipe ISIS Hub ; tu pourras alors saisir tes notes ici.' }),
+        h('span.empty-ic', {}, icon('clock', 'ic ic--lg')),
+        h('h3', { text: promo ? 'Tes notes arrivent bientôt' : 'Choisis ta classe' }),
+        h('p', {
+          text:
+            waitMessage ||
+            'Ta maquette de notes n’a pas encore été saisie. Le système de notes sera disponible très bientôt : merci de ta patience !',
+        }),
+        promo ? h('span.chip.nt-wait-chip', {}, icon('lock', 'ic ic--xs'), 'Tes notes resteront privées et chiffrées') : null,
       ),
     );
   }

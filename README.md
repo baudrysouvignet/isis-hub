@@ -176,7 +176,12 @@ sans toucher au code. Pour chaque classe :
 - pour les parcours : les codes de matières de la maquette, les alias de codes et le repère des
   événements communs.
 
-**Maquettes de notes** : dans l'onglet *Notes*, pour chaque classe et semestre, les UE, matières,
+**Maquettes de notes** : dans l'onglet *Notes*, chaque classe a un interrupteur **Système de notes** :
+désactivé, les étudiants voient seulement un message d'attente (personnalisable, aperçu à côté) et la
+maquette en cours de saisie reste privée (`/api/grades` ne la publie pas). Pour chaque semestre, les UE
+se déplient une par une, puis leurs matières (coefficient, code ADE, évaluations prévues) ; une barre
+signale les modifications non enregistrées. **JSON d'exemple** à télécharger ou à charger d'un clic.
+Pour chaque classe et semestre, les UE, matières,
 coefficients, codes ADE et évaluations prévues. **Import JSON** : une classe (`{ "semesters": [...] }`)
 ou plusieurs (`{ "FIA4": {...}, "FIE5": {...} }`), dates en `AAAA-MM-JJ`, `JJ/MM/AAAA` ou « 14 janv. » ;
 les identifiants manquants sont créés, aucune note d'étudiant n'est importée. **Export** pour

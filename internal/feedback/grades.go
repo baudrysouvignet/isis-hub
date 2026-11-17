@@ -53,8 +53,28 @@ type GradeRules struct {
 }
 
 type GradeClass struct {
+	// Disabled : système de notes désactivé pour la classe (maquette pas encore prête). Les
+	// étudiants voient alors seulement Message ; la maquette en cours de saisie reste privée.
+	Disabled  bool            `json:"disabled,omitempty"`
+	Message   string          `json:"message,omitempty"`
 	Rules     GradeRules      `json:"rules"`
 	Semesters []GradeSemester `json:"semesters"`
+}
+
+// DefaultGradesMessage : affiché aux étudiants d'une classe dont les notes sont désactivées.
+const DefaultGradesMessage = "Ta maquette de notes n’a pas encore été saisie. Le système de notes sera disponible très bientôt : merci de ta patience !"
+
+// Public rend ce que voient les étudiants : rien de la maquette tant qu'elle est désactivée.
+func (g GradeClass) Public() GradeClass {
+	if !g.Disabled {
+		g.Message = ""
+		return g
+	}
+	msg := g.Message
+	if msg == "" {
+		msg = DefaultGradesMessage
+	}
+	return GradeClass{Disabled: true, Message: msg, Rules: g.Rules, Semesters: []GradeSemester{}}
 }
 
 // GradeBook : classe (FIE4, FIA3…) → maquette de notes.
@@ -83,8 +103,10 @@ func (g *GradeClass) Validate() error {
 	if g.Rules.UE < 0 || g.Rules.UE > 20 || g.Rules.Matiere < 0 || g.Rules.Matiere > 20 || math.IsNaN(g.Rules.UE) || math.IsNaN(g.Rules.Matiere) {
 		return errors.New("seuils : entre 0 et 20")
 	}
-	if len(g.Semesters) < 1 || len(g.Semesters) > 4 {
-		return errors.New("1 à 4 semestres")
+	g.Message = clean(g.Message, 400, true)
+	// Désactivée, une maquette peut rester en brouillon (même vide).
+	if (!g.Disabled && len(g.Semesters) < 1) || len(g.Semesters) > 4 {
+		return errors.New("1 à 4 semestres (ou désactive les notes le temps de la saisie)")
 	}
 	ids := map[string]bool{} // identifiants uniques dans toute la classe
 	unique := func(kind, id string) error {
@@ -106,6 +128,9 @@ func (g *GradeClass) Validate() error {
 		if !validDate(s.Start) || !validDate(s.End) || s.End < s.Start {
 			return fmt.Errorf("%s : dates de début et de fin invalides", s.Label)
 		}
+		if !g.Disabled && len(s.UEs) == 0 {
+			return fmt.Errorf("%s : au moins une UE (ou désactive les notes le temps de la saisie)", s.Label)
+		}
 		if len(s.UEs) > 15 {
 			return fmt.Errorf("%s : 15 UE au maximum", s.Label)
 		}
@@ -118,7 +143,7 @@ func (g *GradeClass) Validate() error {
 			if err := unique("u", u.ID); err != nil {
 				return err
 			}
-			if len(u.Matieres) < 1 || len(u.Matieres) > 20 {
+			if (!g.Disabled && len(u.Matieres) < 1) || len(u.Matieres) > 20 {
 				return fmt.Errorf("UE %s : 1 à 20 matières", u.ID)
 			}
 			for mi := range u.Matieres {
@@ -231,10 +256,18 @@ func (s *Service) handleGrades(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-cache")
-	reply(w, http.StatusOK, s.cfg.Content.Grades())
+	out := GradeBook{}
+	for k, g := range s.cfg.Content.Grades() {
+		out[k] = g.Public()
+	}
+	reply(w, http.StatusOK, out)
 }
 
 func (s *Service) adminGrades(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet { // maquettes complètes, brouillons compris
+		reply(w, http.StatusOK, s.cfg.Content.Grades())
+		return
+	}
 	var in struct {
 		Class  string      `json:"class"`
 		Grades *GradeClass `json:"grades"` // null : retire la maquette de la classe
