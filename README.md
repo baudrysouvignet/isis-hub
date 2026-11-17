@@ -1,0 +1,256 @@
+# ISIS Hub
+
+Emploi du temps ADE (FIE1 à FIE5, FIA3 à FIA5), mails et cours Moodle d'ISIS sur une seule page, sur ordinateur comme sur
+téléphone. Tout est lu **en direct sur les portails de l'université**, et le serveur ne peut rien lire
+de ce qui transite par lui. La seule donnée conservée par le serveur : les retours que les étudiants
+choisissent d'envoyer depuis « Une idée ? ».
+
+```bash
+DOMAIN=hub.exemple.fr docker compose up -d --build
+```
+
+## Comment c'est sécurisé
+
+Un navigateur interdit à une page de lire un autre site, et aucun portail de l'université ne
+l'autorise. La page embarque donc son propre client HTTPS : **curl + mbedTLS compilés en
+WebAssembly** (`web/vendor/libcurl`). Le chiffrement TLS est négocié *dans la page*, directement
+avec le certificat de `auth.univ-jfc.fr`, `adecampus`, `mail` ou `moodle`. Les octets, déjà chiffrés,
+passent par un unique WebSocket vers le relais (protocole **Wisp**), qui les recopie en TCP vers le
+portail.
+
+```
+navigateur ──TLS de bout en bout (clés dans la page)──────────────────────▶ portail de l'université
+     └── WebSocket ──▶ relais ISIS Hub ──TCP──▶                          (le relais ne voit que du chiffré)
+```
+
+| Le relais voit | Le relais ne voit pas | Le relais ne peut pas |
+| --- | --- | --- |
+| l'adresse IP du visiteur, le portail contacté, l'heure, le volume | mot de passe, cookies, mails, cours, emploi du temps | se faire passer pour un portail (la page vérifie le certificat), joindre autre chose que les 4 portails (liste compilée dans le binaire), garder une trace (aucun journal) |
+
+Les autres verrous :
+
+- **Politique de sécurité stricte** (en-tête HTTP) : la page ne charge que ses propres fichiers, ne
+  se connecte qu'à elle-même, n'exécute ni code en ligne ni `eval`, et ne peut pas être affichée dans
+  un cadre. Trusted Types activé.
+- **Double liste de destinations** : le client de la page refuse tout hôte hors des 4 portails ; le
+  relais aussi, indépendamment, et seulement vers des adresses IP publiques sur le port 443.
+- **Cookies cloisonnés** : chacun ne repart que vers le portail qui l'a posé ; les en-têtes propres à
+  un portail (clé d'API de la messagerie) ne suivent pas une redirection.
+- **Session chiffrée sur l'appareil** : les cookies des portails sont gardés chiffrés (AES-GCM 256),
+  avec une clé que le navigateur crée **non exportable** : aucun script ne peut en lire la valeur.
+  Dans l'onglet par défaut, sur l'appareil si « Rester connecté » est coché. Le mot de passe n'est
+  jamais stocké : le champ est vidé dès l'envoi.
+- **Mails inertes** : le HTML d'un mail est reconstruit balise par balise à partir d'une liste
+  fermée. Scripts, styles, formulaires, cadres et images distantes (qui préviendraient l'expéditeur)
+  ne sont jamais recopiés.
+- **Cache chiffré** : cours Moodle, correspondances et notes sont mis en cache par matière (cours
+  suivis 6 h, correspondance 7 jours, notes 30 min) pour ne pas solliciter Moodle à chaque clic. Le
+  cache est chiffré avec la même clé que la session et effacé à la déconnexion.
+- **Presque rien côté serveur** : ni compte, ni base de données, ni journal. Seuls les retours
+  « Une idée ? » sont gardés (fichier `feedback.json` du volume `/data`), sans adresse IP ; l'auteur
+  est celui que la page déclare (non vérifié) ou anonyme. « Mes propositions » marche sans compte :
+  la page garde un jeton secret, le serveur n'en conserve que l'empreinte. Le conteneur tourne en lecture
+  seule, sans privilège, dans une image `scratch` qui ne contient que le binaire (8 Mo).
+
+Le prix de cette architecture : le mot de passe se tape dans ISIS Hub et non sur la page du CAS. Il
+ne part que dans la requête chiffrée adressée à `auth.univ-jfc.fr`, mais il faut faire confiance au
+code servi. D'où les moyens de vérification ci-dessous.
+
+## Vérifier par soi-même
+
+- **Dans l'appli**, écran *Transparence* : connexions et volumes en direct, ce qui est gardé, et
+  quatre contrôles exécutés pour de vrai dans le navigateur :
+  1. aucune ressource ne vient d'une autre origine ;
+  2. `eval` et un script en ligne sont bloqués ;
+  3. le relais refuse `example.com` ;
+  4. un relais malhonnête est simulé (le trafic pour `auth.univ-jfc.fr` est envoyé vers un autre
+     serveur) : la page refuse la connexion, faute du bon certificat ;
+
+  L'écran recalcule aussi l'empreinte SHA-256 de chaque fichier reçu et la compare à
+  `/manifest.json`.
+- **Le site sert-il ce code ?** `go run ./cmd/isis-hub verify https://hub.exemple.fr/` télécharge
+  chaque fichier en ligne et le compare à ce dépôt.
+- **Le relais ne voit que du chiffré** : outils de développement, onglet Réseau, filtre WS. Les
+  messages Wisp transportent des enregistrements TLS (`17 03 03 …`).
+
+## Ce que fait l'appli
+
+- **Connexion** au CAS de l'université, puis **choix de la classe** (FIE1 à FIE5, FIA3 à FIA5) et de
+  ses options à la première visite, modifiable depuis le compte. Sans connexion, l'emploi du temps
+  reste disponible.
+- **Emploi du temps filtré par groupe, langue et parcours**, avec exactement les règles du projet
+  « Calendriers ISIS » (vérifié séance par séance et octet par octet, voir plus bas) :
+
+  | Classe | Choix | Règle |
+  | --- | --- | --- |
+  | FIE1 | groupe 1 (chinois) ou 2 (espagnol) | séance sans groupe ou du groupe, sans langue ou de la langue |
+  | FIE2, FIE3 | groupe 1/2 et langue | idem |
+  | FIE4 | parcours (IA, Développement, Management) et groupe | codes de la maquette FIE4 du parcours, événements communs `ISIS-FIE4-SEMESTRE7`, puis groupe |
+  | FIE5 | parcours | codes de la maquette FIE5 du parcours, événements sans code conservés |
+  | FIA3–5 | aucun | tout est conservé |
+
+  L'abonnement d'agenda des classes à options pointe vers `/calendar/…ics` (mêmes URL que l'ancien
+  projet : `fie1/1.ics`, `fie2/1/chinois.ics`, `fie4/ia/1.ics`, `fie5/ia.ics`) : le serveur lit
+  l'export **public** d'ADE (aucune donnée personnelle), au plus toutes les 15 minutes, et garde la
+  dernière version si ADE ne répond pas.
+- **Emploi du temps** : vue jour heure par heure (la salle en premier), vue semaine, plein écran
+  (toujours en vue semaine), navigation sans limite, séance en cours et ligne « maintenant », semaines
+  sans cours, glisser sur téléphone, abonnement iCal (Apple, Google, Outlook).
+- **Mails** : boîte de réception chargée au fil du défilement, lus et non lus, recherche (expéditeur,
+  objet, aperçu), 5 mails sur téléphone puis « Afficher plus », état « mis à jour il y a… » cliquable.
+  Un clic ouvre le mail en plein écran **et le marque comme lu dans la messagerie** (`\Seen`).
+- **Écrire, répondre, répondre à tous, transférer**, avec pièces jointes (15 Mo au total) et
+  l'**annuaire partagé** de la messagerie (autocomplétion et fiche Annuaire). Le message part par la
+  messagerie de l'étudiant : pièces déposées, message créé dans la boîte d'envoi, expédition demandée
+  puis vérifiée (le message doit avoir quitté la boîte d'envoi).
+- **Fiche cours** au clic sur une séance : salle, horaire, enseignant (bouton « Écrire »), séances de
+  la semaine et des 8 suivantes, examens d'après ADE, notes du carnet Moodle.
+- **Retours** (« Une idée ? ») et page d'**administration** `/admin` (voir plus bas).
+- **Moodle** : cours suivis, recherche (`/`), et le bon cours mis en avant selon l'heure (en cours,
+  sinon le prochain).
+- **Lien séance ↔ Moodle** par le code : `TD-A4-1-ISI-2 Aide à la décision` → cours
+  `FIA4-1-ISI-2`. Cherché parmi les cours suivis, puis dans tout Moodle ; à défaut, même intitulé
+  dans la même classe (pastille « ≈ »).
+- **Raccourcis** publiés par l'administrateur (ENT par défaut).
+- **Plein écran** de l'emploi du temps : toujours en vue semaine, sans le choix Jours / Semaine.
+
+### Administration
+
+`/admin` (retours, répartition des emplois du temps, raccourcis) **n'existe que pour les identifiants
+de `ADMIN_USERS`** (ex. `bsouvign`) : pour tous les autres, l'adresse renvoie à l'accueil. Pas de mot
+de passe propre à ISIS Hub.
+
+Comment l'identité est prouvée sans que le serveur voie la connexion : la page de l'administrateur,
+déjà connectée au CAS, demande un ticket de service pour l'**ENT** (service enregistré auprès du CAS ;
+ISIS Hub, lui, ne l'est pas) et ne suit pas la redirection. Le serveur reçoit ce ticket et le fait
+valider **directement par `auth.univ-jfc.fr`** (`/cas/serviceValidate`) : c'est l'université qui
+renvoie l'identifiant, la page ne peut pas le falsifier. Le ticket est à usage unique et l'ENT ne le
+reçoit jamais. Seul celui qui ouvre `/admin` envoie un ticket ; le serveur ne garde rien d'un refus.
+Session de 8 h (cookie HttpOnly, SameSite=Strict), 5 essais par quart d'heure, en-tête anti-CSRF.
+
+**Répartition des emplois du temps** : dans l'onglet *Emplois du temps*, chaque classe se règle
+sans toucher au code. Pour chaque classe :
+- les ressources ADE ;
+- le mode : toutes les séances, groupe (et langue), parcours et groupe, parcours ;
+- pour les parcours : les codes de matières de la maquette, les alias de codes et le repère des
+  événements communs.
+
+La répartition est vérifiée avant d'être acceptée, puis appliquée aussitôt à l'emploi du temps des
+étudiants et à leurs abonnements d'agenda. Elle est gardée dans le volume `/data` ; tant qu'elle n'a
+pas été modifiée, c'est celle de `web/data/classes.json` qui s'applique.
+
+## Mettre en ligne
+
+### Avec un proxy inverse existant (production)
+
+`./build` construit l'image pour **Linux x86 (amd64) et Linux ARM (arm64)** et l'envoie sur le
+registre GitHub `ghcr.io/baudrysouvignet/isis-hub` ; arm64 est aussi l'image qui tourne sur un Mac
+Apple Silicon. La compilation est croisée, sans émulation. Le script marche sur macOS et sur Linux ;
+seul Docker est nécessaire (Go et Node, s'ils sont là, relancent les tests avant).
+
+La première fois, se connecter au registre. Docker demande « Password » : coller un **jeton GitHub**
+(github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → droits
+`write:packages` et `read:packages`), pas le mot de passe GitHub ni un jeton Docker.
+
+```bash
+docker login ghcr.io -u baudrysouvignet
+```
+
+```bash
+./build
+```
+
+Pour construire directement sur le VPS (ou sur le Mac), sans passer par le registre :
+
+```bash
+./build --local
+```
+
+Sur le serveur, copier `compose.prod.yaml` et `.env.example.prod` (renommé en `.env`, à remplir),
+puis :
+
+```bash
+docker compose -f compose.prod.yaml pull && docker compose -f compose.prod.yaml up -d
+```
+
+Aucun port n'est publié : le conteneur `isis-hub` est sur le réseau externe `proxy-network`. Le proxy
+doit envoyer le domaine vers `isis-hub:8080`, **laisser passer les WebSockets** (chemin `/wisp/`) et
+ajouter `X-Forwarded-For`. Si le paquet GHCR est privé, faire aussi `docker login ghcr.io` sur le
+serveur (ou rendre le paquet public dans GitHub).
+
+### Seul, avec Caddy pour le HTTPS
+
+```bash
+cp .env.example .env    # puis mettre le domaine et ADMIN_USERS dans .env
+```
+
+```bash
+docker compose up -d --build
+```
+
+### Après la mise en ligne
+
+```bash
+go run ./cmd/isis-hub verify https://hub.exemple.fr/
+```
+
+Variables : `PUBLIC_ORIGIN` (origine publique, seule page autorisée à utiliser le relais et l'API),
+`ADMIN_USERS`, `TRUST_PROXY=1` derrière un proxy, `MAX_CONNS_PER_IP` (8), `MAX_CONNS` (2000),
+`MAX_STREAMS` (64 connexions par visiteur). `CAS_URL` ne sert qu'aux tests (faux CAS).
+
+Toutes les connexions arrivent à l'université depuis l'adresse IP du serveur, et un formulaire de
+mot de passe hors du domaine universitaire ressemble à de l'hameçonnage : **prévenir la DSI avant
+d'ouvrir le site à d'autres étudiants.**
+
+## Développer
+
+```bash
+go run ./cmd/isis-hub
+```
+
+Puis ouvrir http://localhost:8080. Les fichiers de `web/` sont intégrés au binaire : relancer après
+une modification. Aucune étape de construction côté page (modules ES servis tels quels).
+
+```bash
+go test -race ./...
+```
+
+```bash
+npm test
+```
+
+Les tests comparent les filtres à la sortie du projet de référence « Calendriers ISIS », enregistrée
+dans `test/fixtures/calendars/expected.json` (séances) et `internal/calendar/testdata/reference.json`
+(empreinte de chaque fichier .ics) sur ses propres instantanés ADE.
+
+## Organisation
+
+```
+cmd/isis-hub/       le binaire : serveur, `manifest`, `verify`, `healthcheck`
+internal/wisp/      relais aveugle (WebSocket RFC 6455 + Wisp v1, sans dépendance)
+internal/site/      fichiers intégrés, en-têtes de sécurité, empreintes
+internal/feedback/  retours « Une idée ? », raccourcis, répartition des classes, administration (CAS)
+internal/calendar/  calendriers filtrés par groupe, langue, parcours (abonnement des agendas)
+web/data/           classes.json : ressources ADE et règles de filtrage, lues par la page et le serveur
+web/                la page (servie telle quelle)
+  js/net/           moteur TLS, cookies et redirections, coffre de session chiffré
+  js/portals/       CAS, ADE, Moodle, messagerie, correspondance des cours, nettoyage des mails
+  js/ui/            écrans et tuiles
+  assets/           styles (hub.css = maquette, intacte), police, icônes
+  vendor/libcurl/   libcurl.js 0.7.5 (curl + mbedTLS en WebAssembly, LGPL-3.0)
+deploy/Caddyfile    frontal HTTPS (compose.yaml)
+build               construit et envoie l'image sur ghcr.io
+compose.prod.yaml   production derrière un proxy inverse (réseau proxy-network)
+test/               tests de la page (Node)
+poc/                ancienne preuve de concept, pour mémoire
+```
+
+## Changer d'année
+
+Dans `/admin`, onglet *Emplois du temps* : projet ADE de l'année (10 pour 2026-2027), période des
+abonnements d'agenda, ressources de chaque classe et codes de matières de chaque parcours (d'après les
+maquettes de l'année). `web/data/classes.json` n'est que la répartition par défaut. Pour retrouver
+les ressources : ouvrir ADE, déplier *Trainees > ISIS >
+ISIS-FIA-ANNEE1-2-3* et lire l'identifiant des lignes dans l'inspecteur
+(`id="Direct Planning Tree_3612"` → `3612`).
+# isis-hub
