@@ -1,0 +1,97 @@
+{
+ "fie1/1": {
+  "sha256": "5d04d6cf11f0d6a7f6ddf1c688ee31a2975984f776494186494e5d6500159db7",
+  "count": 208,
+  "size": 95448
+ },
+ "fie1/2": {
+  "sha256": "443aa0d71bc301604bc2e8d618731ca7029947afda9ea24e584ffc775e5c54f9",
+  "count": 197,
+  "size": 90047
+ },
+ "fie2/1/chinois": {
+  "sha256": "05633adb6a52c6e6f5d03d4a0551c20f44ee99c427480edc115903a6390266d3",
+  "count": 218,
+  "size": 103207
+ },
+ "fie2/1/espagnol": {
+  "sha256": "8226bb24c54511ae7a8b9fb4f52a4518b3ec08712c8603c693a722b98e0b1a02",
+  "count": 220,
+  "size": 104134
+ },
+ "fie2/2/chinois": {
+  "sha256": "27fa55a0a5e65465cc48a1cc56c99a3751a750b28bea602a56a164b5e0751c04",
+  "count": 218,
+  "size": 103054
+ },
+ "fie2/2/espagnol": {
+  "sha256": "77df13669014c1c8f2f2db78347c60fb6bbc668b7984bf2079f4b3010b51c9df",
+  "count": 220,
+  "size": 103981
+ },
+ "fie3/1/chinois": {
+  "sha256": "6456325036beb73b5e017e6fb4f8cc88dd3c9e4888f09023a38046e1634ef18a",
+  "count": 238,
+  "size": 112115
+ },
+ "fie3/1/espagnol": {
+  "sha256": "12155f43c6ddf1c9bff1b7dd983316bbc2bb8add1154bdff99ccb6236ca1eec2",
+  "count": 238,
+  "size": 112170
+ },
+ "fie3/2/chinois": {
+  "sha256": "bb402fc6d72330f533869257e6d1cdb4d29b72885b7540afb1fb68284e20d71b",
+  "count": 238,
+  "size": 112219
+ },
+ "fie3/2/espagnol": {
+  "sha256": "a622a0c2f893feac900fa00e038fdf62d5f3fcdd721adabca0bb0f865a328012",
+  "count": 238,
+  "size": 112274
+ },
+ "fie4/ia/1": {
+  "sha256": "dd934b02ade7ae16b23b1758c01cc24ab1aa967fa6d2ebf4d66c9db6a83aef16",
+  "count": 174,
+  "size": 79020
+ },
+ "fie4/ia/2": {
+  "sha256": "75d3254971c37d6dee7257107b473670fb07e067217788b3e1ebf92f33b59356",
+  "count": 169,
+  "size": 76734
+ },
+ "fie4/developpement/1": {
+  "sha256": "1a0a7d85f3b7c0282769a166f069825d90c6abf6ad4c5d40035d4db3519cc351",
+  "count": 181,
+  "size": 81975
+ },
+ "fie4/developpement/2": {
+  "sha256": "cbf93a920e0525be25005e70c365d29492d922b1d075f0ba965467a34a08ce36",
+  "count": 176,
+  "size": 79689
+ },
+ "fie4/management/1": {
+  "sha256": "ffe760a3eeb6e6d6e0d171fadd808430b233349409c711faed3b8086adfa11e5",
+  "count": 179,
+  "size": 82344
+ },
+ "fie4/management/2": {
+  "sha256": "3df998d7f96eb0f6adb3c985060c856b18217fc4bdff87963b2b6eb271b70457",
+  "count": 179,
+  "size": 82362
+ },
+ "fie5/ia": {
+  "sha256": "113f5d4f48b708c2380349976f1abfbcd44f3f963ae6ae4becf4709919101747",
+  "count": 74,
+  "size": 36936
+ },
+ "fie5/developpement": {
+  "sha256": "2d4a1219f1c8a3789c1d86d5c8fa9e427376a320a79840523135b8d5491041f0",
+  "count": 78,
+  "size": 40095
+ },
+ "fie5/management": {
+  "sha256": "f5b670dd8f59c3315c0025349784f06075830ad5717ad9c9c06628cdf470931a",
+  "count": 76,
+  "size": 39199
+ }
+}

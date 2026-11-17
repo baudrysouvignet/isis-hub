@@ -1,0 +1,257 @@
+// En-tête, menus, grille bento (tuiles affichées ou masquées), barre d'onglets mobile, fiches modales.
+
+import { $, $$, h, icon, restartClass, motionOK, EASE } from '../core/dom.js';
+import { prefs } from '../core/store.js';
+import { subscriptionUrl } from '../portals/ade.js';
+import { feedPath, choiceLabel } from '../portals/classes.js';
+
+// ------------------------------------------------------------------ menus
+
+const menuButtons = () => $$('[data-menu]');
+export function closeMenus(except) {
+  for (const b of menuButtons()) {
+    if (b === except) continue;
+    const m = document.getElementById(b.dataset.menu);
+    if (m && !m.hidden) {
+      m.hidden = true;
+      b.setAttribute('aria-expanded', 'false');
+    }
+  }
+}
+export const anyMenuOpen = () => menuButtons().some((b) => b.getAttribute('aria-expanded') === 'true');
+
+export function setupMenus() {
+  for (const b of menuButtons()) {
+    const m = document.getElementById(b.dataset.menu);
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = m.hidden;
+      closeMenus(b);
+      m.hidden = !open;
+      b.setAttribute('aria-expanded', String(open));
+      if (open) $('[role^="menuitem"], input', m)?.focus();
+    });
+    m.addEventListener('keydown', (e) => {
+      const items = $$('[role^="menuitem"]', m);
+      const i = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown' && items.length) {
+        e.preventDefault();
+        items[(i + 1) % items.length].focus();
+      }
+      if (e.key === 'ArrowUp' && items.length) {
+        e.preventDefault();
+        items[(i - 1 + items.length) % items.length].focus();
+      }
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        closeMenus();
+        b.focus();
+      }
+    });
+    m.addEventListener('click', (e) => {
+      if (e.target.closest('[role="menuitem"]')) closeMenus();
+    });
+  }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.menu')) closeMenus();
+  });
+}
+
+// ------------------------------------------------------------ grille bento
+
+const desktopMQ = matchMedia('(min-width: 1180px)');
+
+/** Largeur (sur 12 colonnes) et hauteur (rangées de 64 px) selon les tuiles visibles : jamais de trou. */
+function sizesFor(hidden) {
+  const on = (id) => !hidden[id];
+  if (desktopMQ.matches) {
+    return {
+      edt: [on('mail') ? 8 : 12, 11],
+      mail: [on('edt') ? 4 : 12, 11],
+      moodle: [on('links') ? 8 : 12, 5],
+      links: [on('moodle') ? 4 : 12, on('moodle') ? 5 : 3],
+    };
+  }
+  return { edt: [12, 11], mail: [on('moodle') ? 6 : 12, 9], moodle: [on('mail') ? 6 : 12, 9], links: [12, 3] };
+}
+
+export function setupBento() {
+  const bento = $('[data-bento]');
+  const tiles = () => $$('[data-tile]', bento);
+  const saved = prefs.get('view', null);
+  const view = { hidden: saved?.hidden ?? {}, hiddenLinks: Array.isArray(saved?.hiddenLinks) ? saved.hiddenLinks : [] };
+
+  function flip(mutate) {
+    const els = tiles().filter((e) => !e.hidden);
+    if (!motionOK()) return mutate();
+    const first = new Map(els.map((e) => [e, e.getBoundingClientRect()]));
+    mutate();
+    for (const e of els) {
+      if (e.hidden) continue;
+      const a = first.get(e);
+      const b = e.getBoundingClientRect();
+      const dx = a.left - b.left;
+      const dy = a.top - b.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(a.width - b.width) < 1 && Math.abs(a.height - b.height) < 1) continue;
+      e.animate(
+        [
+          { transform: `translate(${dx}px, ${dy}px)`, clipPath: `inset(0 ${Math.max(0, b.width - a.width)}px ${Math.max(0, b.height - a.height)}px 0 round 22px)` },
+          { transform: 'none', clipPath: 'inset(0 0 0 0 round 22px)' },
+        ],
+        { duration: 420, easing: EASE },
+      );
+    }
+  }
+
+  function render(animate) {
+    const run = () => {
+      const size = sizesFor(view.hidden);
+      for (const t of tiles()) {
+        const id = t.dataset.tile;
+        t.hidden = Boolean(view.hidden[id]);
+        t.classList.remove(...[...t.classList].filter((c) => /^(cw|rh)-\d+$/.test(c)));
+        t.classList.add(`cw-${size[id][0]}`, `rh-${size[id][1]}`);
+      }
+      $$('[data-show-tile]').forEach((c) => (c.checked = !view.hidden[c.dataset.showTile]));
+      $$('[data-link]').forEach((li) => (li.hidden = view.hiddenLinks.includes(li.dataset.link)));
+      $$('[data-show-link]').forEach((c) => (c.checked = !view.hiddenLinks.includes(c.dataset.showLink)));
+      const dock = { '#edt': 'edt', '#mails': 'mail', '#moodle': 'moodle' };
+      $$('.dock a').forEach((a) => (a.hidden = Boolean(view.hidden[dock[a.getAttribute('href')]])));
+    };
+    if (animate) flip(run);
+    else run();
+  }
+
+  render(false);
+  setTimeout(() => bento.classList.add('is-ready'), 900);
+  return { refresh: () => render(false) };
+  desktopMQ.addEventListener('change', () => render(false));
+  $$('[data-show-tile]').forEach((c) =>
+    c.addEventListener('change', () => {
+      view.hidden[c.dataset.showTile] = !c.checked;
+      if (tiles().every((t) => view.hidden[t.dataset.tile])) {
+        view.hidden[c.dataset.showTile] = false; // au moins une tuile reste visible
+        c.checked = true;
+        return;
+      }
+      prefs.set('view', view);
+      render(true);
+      const t = $(`[data-tile="${c.dataset.showTile}"]`, bento);
+      if (c.checked && t && motionOK()) t.animate([{ opacity: 0, transform: 'scale(.97)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: EASE });
+    }),
+  );
+
+  // Les cases des raccourcis sont créées après coup (contenu publié) : écoute déléguée.
+  document.addEventListener('change', (e) => {
+    const c = e.target.closest?.('[data-show-link]');
+    if (!c) return;
+    view.hiddenLinks = $$('[data-show-link]').filter((x) => !x.checked).map((x) => x.dataset.showLink);
+    prefs.set('view', view);
+    render(false);
+  });
+
+  // Barre d'onglets (téléphone) : suit la tuile visible.
+  const dockLinks = $$('.dock a');
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const en of entries) {
+        if (en.isIntersecting) dockLinks.forEach((a) => a.setAttribute('aria-current', String(a.getAttribute('href') === `#${en.target.id}`)));
+      }
+    },
+    { rootMargin: '-45% 0px -50% 0px' },
+  );
+  dockLinks.forEach((a) => {
+    const t = document.querySelector(a.getAttribute('href'));
+    if (t) io.observe(t);
+  });
+}
+
+// ----------------------------------------------------------- fiches modales
+
+export function modal(dialog, { onOpen, onClose } = {}) {
+  const open = () => {
+    if (dialog.open) return;
+    closeMenus();
+    dialog.showModal();
+    dialog.classList.remove('is-leaving');
+    restartClass(dialog, 'is-entering');
+    onOpen?.();
+  };
+  const close = () => {
+    if (!dialog.open) return;
+    dialog.classList.remove('is-entering');
+    dialog.classList.add('is-leaving');
+    let done = false;
+    const end = () => {
+      if (done) return;
+      done = true;
+      dialog.classList.remove('is-leaving');
+      dialog.close();
+      onClose?.();
+    };
+    dialog.addEventListener('animationend', end, { once: true });
+    setTimeout(end, 420);
+  };
+  dialog.addEventListener('cancel', (e) => {
+    e.preventDefault();
+    close();
+  });
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) close();
+  });
+  $$('[data-sheet-close]', dialog).forEach((b) => b.addEventListener('click', close));
+  return { open, close };
+}
+
+async function copyButton(button, text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    return; // presse-papiers refusé
+  }
+  const prev = [...button.childNodes];
+  const label = button.getAttribute('aria-label');
+  button.replaceChildren(icon('check', 'ic ic--sm'));
+  button.setAttribute('aria-label', 'Copié');
+  setTimeout(() => {
+    button.replaceChildren(...prev);
+    button.setAttribute('aria-label', label);
+  }, 1600);
+}
+export { copyButton };
+
+// ------------------------------------------------------------ abonnement iCal
+
+export function setupIcal(getClass) {
+  const dialog = $('[data-ical]');
+  const sheet = modal(dialog, {
+    onOpen() {
+      const { promo, choice } = getClass();
+      // Classes à options : calendrier filtré produit par ISIS Hub à partir de l'export public d'ADE
+      // (aucune donnée personnelle). Sans option : le lien d'ADE, lu directement par l'agenda.
+      const feed = feedPath(promo, choice);
+      const https = feed ? new URL(feed, location.href).href : subscriptionUrl(promo);
+      $('[data-class-label]', dialog).textContent = [promo, choiceLabel(promo, choice)].filter(Boolean).join(' · ');
+      $('[data-ical-source]', dialog).replaceChildren(
+        feed ? 'Calendrier filtré par ISIS Hub' : 'Export iCal d’ADE pour ta classe',
+        h('small', {
+          text: feed
+            ? 'Ton agenda lit ce lien sur ISIS Hub, qui le prépare à partir de l’export public d’ADE (aucune donnée personnelle, pas de compte).'
+            : 'Ton agenda lit ce lien directement chez l’université, sans passer par ISIS Hub.',
+        }),
+      );
+      const webcal = https.replace(/^https:/, 'webcal:');
+      $('[data-ical="apple"]', dialog).href = webcal;
+      $('[data-ical="google"]', dialog).href = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}`;
+      $('[data-ical="outlook"]', dialog).href =
+        `https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(https)}&name=${encodeURIComponent(`Emploi du temps ${promo} · ISIS`)}`;
+      $('[data-ical-url]', dialog).textContent = https;
+    },
+  });
+  $$('[data-open-ical]').forEach((b) => b.addEventListener('click', sheet.open));
+  const copy = $('[data-copy-ical]', dialog);
+  copy.addEventListener('click', () => copyButton(copy, $('[data-ical-url]', dialog).textContent));
+  return sheet;
+}
+
+export { h };

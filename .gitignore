@@ -1,0 +1,52 @@
+# Binaires et compilation Go
+/isis-hub
+/isis-hub.exe
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Node / NPM (tests JS)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+
+# Fichiers d'environnement et secrets
+.env
+.env.*
+!.env.example
+!.env.example.prod
+
+# Données locales d'exécution et logs
+data/
+feedback.json
+*.log
+
+# Outils IA et assistants locaux
+.claude/
+
+# Éditeurs et IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# Système d'exploitation (macOS / Windows / Linux)
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db

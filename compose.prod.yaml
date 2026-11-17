@@ -1,0 +1,36 @@
+# ISIS Hub en production, derrière un proxy inverse existant (réseau Docker « proxy-network »).
+#
+# Sur le serveur, dans un dossier contenant ce fichier et le .env (copié de .env.example.prod) :
+#   docker compose -f compose.prod.yaml pull
+#   docker compose -f compose.prod.yaml up -d
+#
+# Le proxy inverse doit envoyer https://<ton domaine>/ vers le conteneur « isis-hub », port 8080,
+# en laissant passer les WebSockets (chemin /wisp/) et en ajoutant l'en-tête X-Forwarded-For.
+
+services:
+  isis-hub:
+    image: ghcr.io/baudrysouvignet/isis-hub:${ISIS_HUB_VERSION:-latest}
+    container_name: isis-hub
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TRUST_PROXY: "1" # l'adresse du visiteur vient du proxy (limites par visiteur)
+    expose:
+      - "8080" # aucun port publié : seul le proxy y accède, par le réseau proxy-network
+    volumes:
+      - isis-hub-data:/data # retours des étudiants, répartition des classes, raccourcis
+    networks:
+      - proxy-network
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # Le serveur n'écrit rien sur les visiteurs ; on ne garde même pas sa ligne de démarrage.
+    logging:
+      driver: none
+
+volumes:
+  isis-hub-data:
+
+networks:
+  proxy-network:
+    external: true

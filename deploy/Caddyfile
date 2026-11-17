@@ -1,0 +1,8 @@
+# Frontal HTTPS d'ISIS Hub. Aucun journal d'accès (Caddy n'en écrit pas sans directive « log »).
+{
+	admin off
+}
+
+{$DOMAIN} {
+	reverse_proxy hub:8080
+}

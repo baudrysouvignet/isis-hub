@@ -1,0 +1,9 @@
+{
+  "name": "isis-hub",
+  "private": true,
+  "type": "module",
+  "description": "Tests du code de la page (le serveur se teste avec go test).",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

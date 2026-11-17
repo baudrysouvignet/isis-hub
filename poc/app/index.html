@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <!-- Adresse du relais. À la mise en ligne, changer cette ligne ET connect-src juste en dessous. -->
+    <meta name="isis-relay" content="ws://localhost:8787/" />
+    <!-- Verrou : la page ne charge que ses propres fichiers et ne peut parler qu'à elle-même et au relais. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self'; connect-src 'self' ws://localhost:8787; manifest-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#3b5bdb" />
+
+    <title>ISIS Hub</title>
+    <link rel="manifest" href="app.webmanifest" />
+    <link rel="icon" href="icons/icon48.png" />
+    <link rel="apple-touch-icon" href="icons/icon180.png" />
+    <link rel="stylesheet" href="dashboard.css" />
+  </head>
+  <body>
+    <noscript>ISIS Hub a besoin de JavaScript pour fonctionner.</noscript>
+    <script type="module" src="dashboard.js"></script>
+  </body>
+</html>

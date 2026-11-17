@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "ISIS Hub",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "description": "Emploi du temps ADE, mails et cours Moodle de l'INU Champollion / ISIS sur une seule page, directement depuis les portails officiels.",
+  "action": {
+    "default_title": "Ouvrir ISIS Hub"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://auth.univ-jfc.fr/*",
+    "https://ent.univ-jfc.fr/*",
+    "https://mail.univ-jfc.fr/*",
+    "https://moodle.univ-jfc.fr/*",
+    "https://adecampus.univ-jfc.fr/*"
+  ]
+}

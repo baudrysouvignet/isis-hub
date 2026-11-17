@@ -1,0 +1,150 @@
+/* Compléments à hub.css (la feuille de la maquette reste intacte) : écrans, corps de mail,
+   états propres aux données réelles. Mêmes variables, aucune ressource externe. */
+
+.screen { display: contents; }
+.tile-slot { display: contents; }
+
+.boot { min-height: 100dvh; display: grid; place-items: center; color: var(--brand); }
+.boot .spinner { width: 28px; height: 28px; border-width: 3px; }
+
+/* Connecté / déconnecté */
+.app[data-auth="in"] [data-when="out"],
+.app:not([data-auth="in"]) [data-when="in"] { display: none !important; }
+
+button.chip { border: 0; cursor: pointer; font-family: var(--font); }
+button.class-chip:hover { background: var(--hover); }
+
+.linklike {
+  border: 0; padding: 0; background: none; cursor: pointer;
+  font: inherit; color: var(--brand); text-decoration: underline; text-underline-offset: 2px;
+}
+
+/* Emploi du temps */
+.edt-status {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: -6px 0 12px; padding: 10px 12px; border-radius: 12px;
+  background: var(--err-soft); color: var(--err); font: 550 13px/1.4 var(--font);
+}
+.tile--edt.is-loading .cal-body { opacity: .45; transition: opacity var(--d) var(--ease); }
+.tile--edt.is-loading .cal-body::after {
+  content: ""; position: absolute; top: 40px; left: 50%; width: 22px; height: 22px; margin-left: -11px;
+  border-radius: 50%; border: 2px solid var(--brand); border-right-color: transparent;
+  animation: spin .7s linear infinite;
+}
+.day-empty {
+  grid-column: 1 / -1; grid-row: 1 / 60; align-self: start; z-index: 1;
+  margin-top: 24px; padding: 18px 12px;
+}
+.tile--edt[data-view="week"] .day-empty { display: none; }
+.week-note[data-kind="company"] .wn-holiday,
+.week-note[data-kind="holiday"] .wn-company { display: none; }
+
+/* Mails : lecteur */
+.reader-loading { display: flex; align-items: center; gap: 10px; color: var(--text-3); font: 500 14px/1.4 var(--font); }
+.reader-loading .spinner { color: var(--brand); }
+.reader-note {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px; border-radius: 12px; background: var(--sunken);
+  font: 500 13px/1.45 var(--font); color: var(--text-2);
+}
+.reader-note a { color: var(--brand); }
+.reader-html, .reader-plain { overflow-wrap: anywhere; min-width: 0; }
+.reader-html > * + *, .reader-plain > * + * { margin-top: .8em; }
+.reader-html a, .reader-plain a { color: var(--brand); }
+.reader-html table { border-collapse: collapse; max-width: 100%; display: block; overflow-x: auto; }
+.reader-html td, .reader-html th { padding: 4px 8px; vertical-align: top; text-align: left; }
+.reader-html blockquote {
+  margin: 0; padding: 2px 0 2px 14px; border-left: 3px solid var(--line-2); color: var(--text-2);
+}
+.reader-html pre, .reader-html code { font-family: var(--mono); font-size: 13px; white-space: pre-wrap; }
+.reader-html h1, .reader-html h2, .reader-html h3 { font-size: 1.1em; line-height: 1.35; }
+.reader-html ul, .reader-html ol { padding-left: 1.4em; list-style: revert; }
+.reader-html hr { border: 0; border-top: 1px solid var(--line); }
+.reader-files { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+.reader-files a {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 10px;
+  background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line);
+  font: 550 13px/1 var(--font); color: var(--text); text-decoration: none;
+}
+.reader-files small { color: var(--text-3); font-weight: 500; }
+
+/* Moodle */
+.course-empty { padding: 14px 10px; color: var(--text-3); font: 500 13px/1.4 var(--font); }
+
+/* Transparence */
+[data-files-status] { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0 8px; }
+[data-files-status].is-ok { color: var(--ok); }
+
+/* Notification brève */
+.toast {
+  position: fixed; z-index: 90; left: 0; right: 0; bottom: calc(24px + env(safe-area-inset-bottom));
+  width: fit-content; max-width: min(560px, calc(100vw - 32px)); margin: 0 auto; padding: 12px 16px; border-radius: 14px;
+  background: var(--text); color: var(--surface); box-shadow: var(--shadow-3);
+  font: 550 13.5px/1.4 var(--font);
+}
+.toast.is-in { animation: rise .32s var(--ease) both; }
+@media (max-width: 759.98px) { .toast { bottom: calc(84px + env(safe-area-inset-bottom)); } }
+
+/* Plein écran : toujours en semaine, le choix Jours / Semaine disparaît pour ne pas tromper. */
+.tile--edt.is-expanded .seg { display: none; }
+
+/* Nom de l'enseignant : sur une carte étroite, il passe avant le groupe et le code. */
+@container ev (max-width: 329.98px) and (max-height: 140px) and (min-height: 85px) {
+  .ev-teacher { display: inline-flex; }
+}
+.ev-teacher { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+/* « Mis à jour il y a… » : cliquer actualise. */
+button.chip.sync { gap: 5px; background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--text-3); }
+button.chip.sync:hover { background: var(--hover); color: var(--text); }
+button.chip.sync .ic { width: 12px; height: 12px; }
+button.chip.sync.is-busy { pointer-events: none; opacity: .7; }
+
+/* Pièces jointes d'un message en cours d'écriture */
+.cmp-files { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0 0; }
+.cmp-file {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 4px 0 10px; border-radius: 10px;
+  background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); font: 550 13px/1 var(--font);
+}
+.cmp-file > span { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-file small { color: var(--text-3); font-weight: 500; }
+.cmp-file button { display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 50%; background: transparent; color: var(--text-3); font: 600 15px/1 var(--font); }
+.cmp-file button:hover { background: var(--hover); color: var(--text); }
+.composer .alert { margin-top: 12px; }
+.cs-none .spinner { display: inline-block; vertical-align: -3px; color: var(--brand); width: 14px; height: 14px; }
+
+/* La notification de la maquette se centre par translation ; l'animation d'entrée l'écrase. */
+.toast { transform: none; }
+
+/* Administration : textes des étudiants avec leurs retours à la ligne ; connexion centrée. */
+.adm-desc, .fbm-reply span { white-space: pre-line; }
+.admin-login { display: grid; place-items: center; min-height: calc(100dvh - var(--head-h)); }
+.admin-login .auth-pane { width: min(440px, 100%); }
+
+/* Administration : onglets, maquettes, raccourcis */
+.adm-tabs { margin: 0 0 16px; }
+.adm-panel { display: grid; gap: 14px; }
+.adm-links { display: grid; gap: 8px; }
+.adm-link { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.6fr) auto; gap: 8px; align-items: center; }
+.adm-link .input { height: 38px; }
+@media (max-width: 759.98px) {
+  .adm-link, .adm-grid3 { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Administration : répartition des emplois du temps */
+.adm-season, .adm-classes { display: grid; gap: 10px; }
+.adm-class { border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); padding: 4px 14px; }
+.adm-class[open] { padding-bottom: 14px; }
+.adm-class > summary { cursor: pointer; padding: 10px 0; font: 500 13.5px/1.3 var(--font); color: var(--text-2); }
+.adm-class > summary b { font: 700 15px/1.2 var(--font); color: var(--text); }
+.adm-class > * + * { margin-top: 10px; }
+.adm-grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.adm-field { display: grid; gap: 4px; }
+.adm-field small { color: var(--text-3); font: 500 12px/1.35 var(--font); }
+.adm-field .input { height: 38px; }
+.adm-field .textarea { height: auto; min-height: 76px; font-family: var(--mono); font-size: 12.5px; }
+.adm-mode { display: grid; gap: 10px; }
+.adm-tracks { display: grid; gap: 10px; }
+.adm-track { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1fr) minmax(0, 1.6fr) auto; gap: 10px; align-items: start; padding: 10px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+.top-right .hint { margin-right: 8px; }
+@media (max-width: 759.98px) { .adm-track { grid-template-columns: minmax(0, 1fr); } }
