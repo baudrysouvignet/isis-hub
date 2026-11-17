@@ -122,7 +122,10 @@ func New(root fs.FS, opt Options) (*Site, error) {
 		"default-src 'none'",
 		"script-src 'self' 'wasm-unsafe-eval'",
 		"style-src 'self'",
-		"img-src 'self' data:",
+		// blob: : pièces jointes affichées dans le Hub (images et PDF reconnus à leurs premiers
+		// octets, voir web/js/ui/attachments.js). Rien d'autre n'est chargé dans un cadre.
+		"img-src 'self' data: blob:",
+		"frame-src blob:",
 		"font-src 'self'",
 		"connect-src " + connect,
 		"manifest-src 'self'",

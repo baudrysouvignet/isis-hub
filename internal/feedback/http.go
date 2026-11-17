@@ -61,6 +61,7 @@ func (l *limiter) allow(key string) bool {
 type Config struct {
 	Store      *Store
 	Content    *ContentStore
+	Stats      *Stats   // compteurs anonymes de fréquentation (facultatif)
 	AdminUsers []string // identifiants universitaires autorisés (ADMIN_USERS) ; vide = pas d'administration
 	// CASValidate fait valider un ticket de service par le CAS et rend l'identifiant (voir cas.go).
 	CASValidate    func(ctx context.Context, ticket string) (string, error)
@@ -76,6 +77,7 @@ type Service struct {
 	reads    *limiter // « mes propositions » par visiteur
 	loginIP  *limiter // essais de connexion admin par visiteur
 	loginAll *limiter // essais de connexion admin au total
+	pings    *limiter // statistiques : ouvertures comptées par visiteur
 	mu       sync.Mutex
 	sessions map[string]adminSession // empreinte du jeton → session
 }
@@ -93,6 +95,7 @@ func New(cfg Config) *Service {
 		cfg: cfg, origins: map[string]bool{}, sessions: map[string]adminSession{},
 		submit: newLimiter(5, 10*time.Minute), reads: newLimiter(60, time.Minute),
 		loginIP: newLimiter(5, 15*time.Minute), loginAll: newLimiter(30, 15*time.Minute),
+		pings: newLimiter(30, time.Hour),
 	}
 	for _, o := range cfg.AllowedOrigins {
 		s.origins[strings.TrimRight(o, "/")] = true
@@ -174,6 +177,8 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleContent(w, r)
 	case p == "/api/classes":
 		s.handleClasses(w, r)
+	case p == "/api/ping":
+		s.handlePing(w, r)
 	case strings.HasPrefix(p, "/api/admin/"):
 		if !s.AdminEnabled() {
 			fail(w, http.StatusNotFound, "inconnu")
@@ -315,6 +320,12 @@ func (s *Service) handleAdmin(w http.ResponseWriter, r *http.Request, action str
 		reply(w, http.StatusOK, map[string]string{"user": s.sessionUser(r)})
 	case s.adminContent(w, r, action):
 		// maquettes et raccourcis
+	case action == "stats" && r.Method == http.MethodGet:
+		if s.cfg.Stats == nil {
+			reply(w, http.StatusOK, Summary{})
+			return
+		}
+		reply(w, http.StatusOK, s.cfg.Stats.Summary())
 	case action == "feedback" && r.Method == http.MethodGet:
 		reply(w, http.StatusOK, s.cfg.Store.All())
 	case strings.HasPrefix(action, "feedback/"):

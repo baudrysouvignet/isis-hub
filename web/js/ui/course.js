@@ -4,11 +4,12 @@ import { $, h, icon } from '../core/dom.js';
 import * as D from '../core/dates.js';
 import * as moodle from '../portals/moodle.js';
 import { modal } from './layout.js';
+import { isEval, toggleEval } from '../core/evals.js';
 
 const TYPE_NAME = { CM: 'Cours magistral', TD: 'Travaux dirigés', TP: 'Travaux pratiques' };
 const AHEAD_WEEKS = 8;
 
-export function createCourseSheet({ schedule, matcher, isSignedIn, onWrite, promo }) {
+export function createCourseSheet({ schedule, matcher, isSignedIn, onWrite, promo, onEvalChange }) {
   const dialog = $('dialog[data-course]');
   const sheet = modal(dialog);
   const set = (k, v) => ($(`[data-cs-${k}]`, dialog).textContent = v);
@@ -60,15 +61,29 @@ export function createCourseSheet({ schedule, matcher, isSignedIn, onWrite, prom
     }
   }
 
+  function renderKicker(ev) {
+    $('[data-cs-kicker]', dialog).replaceChildren(
+      ev.kind ? h('span.type', { class: `type--${ev.kind.toLowerCase()}`, text: ev.kind }) : '',
+      h('span', { text: TYPE_NAME[ev.kind] ?? 'Séance' }),
+      ev.exam || isEval(ev) ? h('span.exam', {}, icon('alert', 'ic ic--xs'), 'Examen') : '',
+    );
+    const btn = $('[data-cs-eval]', dialog);
+    btn.hidden = ev.exam; // déjà un examen d'après ADE
+    btn.setAttribute('aria-pressed', String(isEval(ev)));
+    $('span', btn).textContent = isEval(ev) ? 'Marquée comme examen · retirer' : 'Marquer comme examen';
+  }
+
+  $('[data-cs-eval]', dialog).addEventListener('click', () => {
+    if (!current) return;
+    toggleEval(current);
+    renderKicker(current);
+    onEvalChange?.();
+  });
+
   async function open(ev) {
     const t = ++token;
     current = ev;
-    const kicker = $('[data-cs-kicker]', dialog);
-    kicker.replaceChildren(
-      ev.kind ? h('span.type', { class: `type--${ev.kind.toLowerCase()}`, text: ev.kind }) : '',
-      h('span', { text: TYPE_NAME[ev.kind] ?? 'Séance' }),
-      ev.exam ? h('span.exam', {}, icon('alert', 'ic ic--xs'), 'Examen') : '',
-    );
+    renderKicker(ev);
     set('title', ev.title);
     set('code', [ev.code, ...(ev.groups.length ? ev.groups : [])].filter(Boolean).join(' · ') || ev.summary);
     $('[data-cs-room] span', dialog).textContent = ev.room || 'Salle non précisée';
@@ -111,7 +126,7 @@ export function createCourseSheet({ schedule, matcher, isSignedIn, onWrite, prom
         : [h('li.cs-none', { text: `Aucune autre séance prévue dans les ${AHEAD_WEEKS} prochaines semaines.` })]),
     );
 
-    const exams = sessions.filter((x) => x.exam && (x === ev || isFuture(x)));
+    const exams = sessions.filter((x) => (x.exam || isEval(x)) && (x === ev || isFuture(x)));
     const examBox = $('[data-cs-exam]', dialog);
     examBox.replaceChildren(
       ...(exams.length
@@ -120,7 +135,7 @@ export function createCourseSheet({ schedule, matcher, isSignedIn, onWrite, prom
               'div.cs-exam',
               {},
               icon('alert', 'ic ic--sm'),
-              h('div', {}, h('b', { text: `${x === ev ? 'Cette séance est un examen' : 'Examen'} · ${D.dayTitle(x.day)} · ${D.hourLabel(x.startMin)}` }), h('span', { text: `${x.room ? `Salle ${x.room} · ` : ''}d’après l’emploi du temps ADE` })),
+              h('div', {}, h('b', { text: `${x === ev ? 'Cette séance est un examen' : 'Examen'} · ${D.dayTitle(x.day)} · ${D.hourLabel(x.startMin)}` }), h('span', { text: `${x.room ? `Salle ${x.room} · ` : ''}${x.exam ? 'd’après l’emploi du temps ADE' : 'marqué par toi'}` })),
             ),
           )
         : [none('Aucun examen prévu à l’emploi du temps pour l’instant.')]),

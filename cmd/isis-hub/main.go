@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"isishub/internal/calendar"
+	"isishub/internal/crous"
 	"isishub/internal/feedback"
 	"isishub/internal/site"
 	"isishub/internal/wisp"
@@ -139,6 +140,10 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("contenu : %w", err)
 	}
+	stats, err := feedback.OpenStats(env("DATA_DIR", "data"))
+	if err != nil {
+		return fmt.Errorf("statistiques : %w", err)
+	}
 	// Calendriers filtrés par groupe, langue et parcours (abonnement des agendas).
 	calendars := calendar.New(content.Classes())
 	content.OnChange = calendars.SetData
@@ -152,6 +157,7 @@ func serve() error {
 	api := feedback.New(feedback.Config{
 		Store:          store,
 		Content:        content,
+		Stats:          stats,
 		AdminUsers:     admins,
 		CASValidate:    feedback.CASValidator(env("CAS_URL", "https://auth.univ-jfc.fr"), feedback.ENTService),
 		AllowedOrigins: origins,
@@ -180,6 +186,12 @@ func serve() error {
 	mux.Handle("/api/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.Headers(w.Header())
 		api.ServeHTTP(w, r)
+	}))
+	// Menu public du Resto U' de Castres, relu au plus toutes les 12 heures.
+	menus := crous.New()
+	mux.Handle("/api/crous", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.Headers(w.Header())
+		menus.ServeHTTP(w, r)
 	}))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")

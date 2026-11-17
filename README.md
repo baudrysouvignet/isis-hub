@@ -95,10 +95,23 @@ code servi. D'où les moyens de vérification ci-dessous.
   dernière version si ADE ne répond pas.
 - **Emploi du temps** : vue jour heure par heure (la salle en premier), vue semaine, plein écran
   (toujours en vue semaine), navigation sans limite, séance en cours et ligne « maintenant », semaines
-  sans cours, glisser sur téléphone, abonnement iCal (Apple, Google, Outlook).
+  sans cours, glisser sur téléphone, abonnement iCal (Apple, Google, Outlook). Les flèches avancent
+  d'autant de jours qu'il y en a d'affichés (1, 2 ou 3). Toute séance peut être **marquée
+  « Évaluation »** depuis sa fiche : repère personnel, gardé sur l'appareil seulement.
+- **Resto U' de Castres** : bloc 12 h 30 – 13 h 30 chaque jour de cours ; un clic affiche le menu du
+  midi (ou « Menu non publié »). Le serveur lit le menu **public** (API Croustillant, à défaut la page
+  du CROUS Toulouse) au plus toutes les 12 heures (`/api/crous`) : la page ne contacte aucun tiers.
 - **Mails** : boîte de réception chargée au fil du défilement, lus et non lus, recherche (expéditeur,
   objet, aperçu), 5 mails sur téléphone puis « Afficher plus », état « mis à jour il y a… » cliquable.
   Un clic ouvre le mail en plein écran **et le marque comme lu dans la messagerie** (`\Seen`).
+- **Corbeille** : « Supprimer » déplace le mail dans la corbeille de la messagerie ; le filtre
+  *Corbeille* permet de le restaurer ou de le **supprimer définitivement** (confirmation demandée).
+- **Étiquettes et règles automatiques** (bouton réglages de la tuile) : « si l'expéditeur / l'objet
+  contient… alors corbeille / étiquette ». Étiquettes, filtres en pastilles (*Tous*, étiquettes,
+  *Corbeille*). Tout est gardé **chiffré sur l'appareil** et appliqué par la page ; effacé par
+  « Se déconnecter ».
+- **Pièces jointes vues et téléchargées dans le Hub** : images et PDF affichés seulement si leurs
+  premiers octets le confirment (jamais HTML ni SVG), tout le reste téléchargé sous un type neutre.
 - **Écrire, répondre, répondre à tous, transférer**, avec pièces jointes (15 Mo au total) et
   l'**annuaire partagé** de la messagerie (autocomplétion et fiche Annuaire). Le message part par la
   messagerie de l'étudiant : pièces déposées, message créé dans la boîte d'envoi, expédition demandée
@@ -112,11 +125,17 @@ code servi. D'où les moyens de vérification ci-dessous.
   `FIA4-1-ISI-2`. Cherché parmi les cours suivis, puis dans tout Moodle ; à défaut, même intitulé
   dans la même classe (pastille « ≈ »).
 - **Raccourcis** publiés par l'administrateur (ENT par défaut).
+- **Installer l'application** : tutoriel iPhone / Android / ordinateur proposé une fois après la
+  première connexion (et depuis le menu du compte).
+- **Fréquentation anonyme** (onglet *Fréquentation* de l'administration) : appareils distincts par
+  jour, moyenne par jour de la semaine, ouvertures au total. La page envoie seulement « première
+  ouverture du jour : oui / non » ; le serveur ne garde que deux nombres par jour (`stats.json`),
+  ni identifiant ni adresse IP.
 - **Plein écran** de l'emploi du temps : toujours en vue semaine, sans le choix Jours / Semaine.
 
 ### Administration
 
-`/admin` (retours, répartition des emplois du temps, raccourcis) **n'existe que pour les identifiants
+`/admin` (retours, répartition des emplois du temps, raccourcis, fréquentation) **n'existe que pour les identifiants
 de `ADMIN_USERS`** (ex. `bsouvign`) : pour tous les autres, l'adresse renvoie à l'accueil. Pas de mot
 de passe propre à ISIS Hub.
 
@@ -231,6 +250,7 @@ internal/wisp/      relais aveugle (WebSocket RFC 6455 + Wisp v1, sans dépendan
 internal/site/      fichiers intégrés, en-têtes de sécurité, empreintes
 internal/feedback/  retours « Une idée ? », raccourcis, répartition des classes, administration (CAS)
 internal/calendar/  calendriers filtrés par groupe, langue, parcours (abonnement des agendas)
+internal/crous/     menu du midi du Resto U' de Castres (Croustillant, secours CROUS), cache 12 h
 web/data/           classes.json : ressources ADE et règles de filtrage, lues par la page et le serveur
 web/                la page (servie telle quelle)
   js/net/           moteur TLS, cookies et redirections, coffre de session chiffré

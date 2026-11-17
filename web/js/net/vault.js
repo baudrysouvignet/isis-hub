@@ -11,6 +11,7 @@
 
 export const SESSION_KEY = 'hub.session';
 export const CACHE_KEY = 'hub.cache';
+export const MAILPREFS_KEY = 'hub.mailprefs';
 const SEALED = [SESSION_KEY, CACHE_KEY];
 const DB = 'isis-hub';
 const STORE = 'keys';
@@ -75,24 +76,25 @@ export async function openVault() {
   let where = device?.getItem(SESSION_KEY) ? device : tab;
   let pending = Promise.resolve();
 
-  async function read(name) {
-    const raw = where?.getItem(name);
+  async function read(name, store = where) {
+    const raw = store?.getItem(name);
     if (!key || !raw) return null;
     try {
       const data = unb64(raw);
       const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: data.slice(0, 12) }, key, data.slice(12));
       return JSON.parse(new TextDecoder().decode(plain));
     } catch {
-      where?.removeItem(name); // clé changée ou donnée abîmée : on repart de zéro
+      store?.removeItem(name); // clé changée ou donnée abîmée : on repart de zéro
       return null;
     }
   }
 
-  function write(name, value) {
+  function write(name, value, store) {
     // Les écritures sont mises en file pour garder l'ordre (chiffrement asynchrone).
     pending = pending.then(async () => {
+      const where_ = store ?? where;
       try {
-        if (value === null) return where?.removeItem(name);
+        if (value === null) return where_?.removeItem(name);
         if (!key) return;
         const iv = crypto.getRandomValues(new Uint8Array(12));
         const data = new TextEncoder().encode(JSON.stringify(value));
@@ -100,7 +102,7 @@ export async function openVault() {
         const out = new Uint8Array(12 + sealed.length);
         out.set(iv);
         out.set(sealed, 12);
-        where?.setItem(name, b64(out));
+        where_?.setItem(name, b64(out));
       } catch {
         // stockage plein ou refusé : la donnée reste en mémoire
       }
@@ -118,6 +120,15 @@ export async function openVault() {
     save: (cookies) => write(SESSION_KEY, cookies.length ? cookies : null),
     loadCache: async () => (await read(CACHE_KEY)) ?? {},
     saveCache: (entries) => write(CACHE_KEY, Object.keys(entries).length ? entries : null),
+    // Étiquettes et règles des mails : sur l'appareil, chiffrées, gardées quand la session
+    // universitaire expire ; effacées par « Se déconnecter ».
+    loadMailPrefs: async () => (await read(MAILPREFS_KEY, device)) ?? null,
+    saveMailPrefs: (prefs) => write(MAILPREFS_KEY, prefs, device),
+    forgetMailPrefs: () => {
+      try {
+        device?.removeItem(MAILPREFS_KEY);
+      } catch {}
+    },
 
     /** Change d'emplacement (case « Rester connecté »), en effaçant l'ancien. */
     choose(remember) {

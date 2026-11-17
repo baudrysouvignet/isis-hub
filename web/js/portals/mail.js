@@ -9,7 +9,7 @@ import { http } from '../net/http.js';
 
 let session = null; // { sid, domain, userId, defaultEmail, formatedName }
 let inbox = null; // { uid }
-let folders = null; // nom complet → uid (INBOX, Outbox, Sent…)
+let folders = null; // nom complet → { uid, id } (INBOX, Outbox, Sent, Trash…)
 
 export const reset = () => {
   session = null;
@@ -53,23 +53,44 @@ async function api(path, { method, body, bytes, raw = false } = {}, retry = true
     if (retry) return api(path, { method, body, bytes, raw }, false);
     throw new NotSignedIn('messagerie');
   }
-  if (!res.ok) throw new Error(`La messagerie a répondu HTTP ${res.status}`);
+  if (!res.ok) {
+    // Message d'erreur de BlueMind (JSON { message, errorCode }) : utile au diagnostic, sans contenu.
+    let detail = '';
+    try {
+      const err = JSON.parse(await res.text());
+      detail = [err.errorCode, err.message].filter(Boolean).join(' : ').slice(0, 200);
+    } catch {}
+    throw Object.assign(new Error(`La messagerie a répondu HTTP ${res.status}${detail ? ` (${detail})` : ''}`), { status: res.status });
+  }
   if (raw) return res;
   const text = await res.text();
   return text ? JSON.parse(text) : null;
 }
 
-async function folderUid(fullName) {
+const foldersPath = () => `mail_folders/${session.domain.replaceAll('.', '_')}/user.${session.userId}`;
+
+// Noms possibles de la corbeille selon la configuration de la messagerie.
+const ALIASES = {
+  Trash: /^(trash|corbeille|deleted( items| messages)?|éléments supprimés)$/i,
+  Sent: /^(sent( items| messages)?|envoyés|messages envoyés|éléments envoyés)$/i,
+};
+
+async function folder(fullName) {
   if (!session) await connect();
   if (!folders) {
-    const domain = session.domain.replaceAll('.', '_');
-    const all = await api(`mail_folders/${domain}/user.${session.userId}/_all`);
-    folders = new Map(all.map((f) => [f.value?.fullName, f.uid]));
+    const all = await api(`${foldersPath()}/_all`);
+    folders = new Map(all.map((f) => [f.value?.fullName, { uid: f.uid, id: f.internalId }]));
   }
-  const uid = folders.get(fullName);
-  if (!uid) throw new Error(`Dossier « ${fullName} » introuvable dans la messagerie`);
-  return uid;
+  let found = folders.get(fullName);
+  if (!found && ALIASES[fullName]) {
+    const name = [...folders.keys()].find((n) => ALIASES[fullName].test(n ?? ''));
+    found = name ? folders.get(name) : null;
+  }
+  if (!found) throw new Error(`Dossier « ${fullName} » introuvable dans la messagerie`);
+  return found;
 }
+const folderUid = async (fullName) => (await folder(fullName)).uid;
+const folderByUid = (uid) => [...(folders?.values() ?? [])].find((f) => f.uid === uid);
 
 async function inboxUid() {
   if (inbox) return inbox.uid;
@@ -79,9 +100,13 @@ async function inboxUid() {
 
 export const inboxUrl = () => `${HOSTS.mail}/webapp/mail/`;
 
-/** Tous les identifiants de la boîte de réception, du plus récent au plus ancien, et le nombre de non-lus. */
-export async function listInbox() {
-  const uid = await inboxUid();
+/** Boîtes affichées dans le Hub : réception et corbeille. */
+export const BOXES = { inbox: 'INBOX', sent: 'Sent', trash: 'Trash' };
+const boxUid = (box = 'inbox') => (box === 'inbox' ? inboxUid() : folderUid(BOXES[box]));
+
+/** Tous les identifiants d'une boîte, du plus récent au plus ancien, et le nombre de non-lus. */
+export async function listInbox(box = 'inbox') {
+  const uid = await boxUid(box);
   const [ids, unread] = await Promise.all([
     api(`mail_items/${uid}/_sorted`, {
       body: { fields: [{ column: 'internal_date', dir: 'Desc' }], filter: { must: [], mustNot: ['Deleted'] } },
@@ -108,6 +133,7 @@ function toMail(item, uid) {
     date: new Date(body.date || v.internalDate || Date.now()),
     preview: (body.preview || '').replace(/\s+/g, ' ').trim(),
     unread: !(item.flags ?? []).includes('Seen'),
+    folder: uid,
     structure: body.structure ?? null,
     messageId: body.messageId ?? null,
     references: body.references ?? [],
@@ -116,9 +142,9 @@ function toMail(item, uid) {
 }
 
 /** Détails de quelques mails, dans l'ordre des identifiants demandés. */
-export async function getMails(ids) {
+export async function getMails(ids, box = 'inbox') {
   if (!ids.length) return [];
-  const uid = await inboxUid();
+  const uid = await boxUid(box);
   const items = await api(`mail_items/${uid}/_mgetById`, { body: ids });
   const order = new Map(ids.map((id, i) => [id, i]));
   return items.sort((a, b) => order.get(a.internalId) - order.get(b.internalId)).map((item) => toMail(item, uid));
@@ -141,7 +167,7 @@ export function pickParts(structure) {
   const text = parts.find((p) => p.mime === 'text/plain' && !isAttachment(p));
   const attachments = parts
     .filter((p) => isAttachment(p) && !/^multipart\//.test(p.mime ?? ''))
-    .map((p) => ({ name: p.fileName || 'pièce jointe', size: p.size ?? 0, mime: p.mime }));
+    .map((p) => ({ name: p.fileName || 'pièce jointe', size: p.size ?? 0, mime: p.mime, part: p }));
   return { body: html ?? text ?? null, attachments };
 }
 
@@ -155,7 +181,7 @@ function decodeBytes(bytes, charset) {
 
 /** Contenu du mail : { kind: 'html'|'text', content, attachments }. */
 export async function fetchBody(mail) {
-  const uid = await inboxUid();
+  const uid = mail.folder ?? (await inboxUid());
   const { body, attachments } = pickParts(mail.structure);
   if (!body) return { kind: 'text', content: mail.preview, attachments };
   const query = new URLSearchParams({ mime: body.mime });
@@ -173,10 +199,85 @@ const SEEN = { flag: '\\Seen', value: 16 }; // MailboxItemFlag.System.Seen (5ᵉ
 
 /** Marque le mail comme lu dans la boîte (drapeau IMAP \Seen posé par le serveur). */
 export async function markRead(mail) {
-  const uid = await inboxUid();
+  const uid = mail.folder ?? (await inboxUid());
   await api(`mail_items/${uid}/_addFlag`, { method: 'PUT', body: { itemsId: [mail.id], mailboxItemFlag: SEEN } });
   const [after] = await api(`mail_items/${uid}/_mgetById`, { body: [mail.id] });
   return (after?.flags ?? []).includes('Seen');
+}
+
+// ------------------------------------------------- corbeille, suppression
+
+const DELETED = { flag: '\\Deleted', value: 4 }; // MailboxItemFlag.System.Deleted (1 << 2)
+
+/** Mails encore présents (non marqués supprimés) dans un dossier, parmi `ids`. */
+async function stillThere(uid, ids) {
+  const items = await api(`mail_items/${uid}/_mgetById`, { body: ids });
+  return (items ?? []).filter((i) => !(i.flags ?? []).includes('Deleted')).map((i) => i.internalId);
+}
+
+/** Journal du dernier déplacement ou de la dernière suppression (étapes et codes, jamais de contenu). */
+export const moveTrace = [];
+
+/**
+ * Déplace des mails (d'un même dossier) vers une autre boîte. Essaie, dans l'ordre :
+ * 1. IItemsTransfer.move de BlueMind : POST `mail_items_transfer/{source}/{destination}/move`,
+ *    corps = identifiants ; 2. IMailboxFolders.importItems : PUT `importItems/{destination}` avec
+ *    retrait de la source (API BlueMind 5, pkg.bluemind.net/pkg/5.3.2729/javadoc).
+ * Le résultat est vérifié : le mail doit avoir quitté le dossier d'origine.
+ */
+export async function moveTo(mails, box) {
+  if (!mails.length) return;
+  moveTrace.length = 0;
+  const src = mails[0].folder;
+  await folder('INBOX'); // charge la liste des dossiers
+  const from = folderByUid(src);
+  const to = await folder(BOXES[box]);
+  if (!from) throw new Error('dossier d’origine inconnu');
+  if (to.uid === src) return;
+  const ids = mails.map((m) => m.id);
+  const attempts = [
+    ['transfert', () => api(`mail_items_transfer/${encodeURIComponent(src)}/${encodeURIComponent(to.uid)}/move`, { method: 'POST', body: ids })],
+    ['import', () => api(`${foldersPath()}/importItems/${to.id}`, { method: 'PUT', body: { mailboxFolderId: from.id, ids: ids.map((id) => ({ id })), expectedIds: [], deleteFromSource: true } })],
+  ];
+  let lastError = null;
+  for (const [name, run] of attempts) {
+    try {
+      const out = await run();
+      moveTrace.push({ step: name, ok: true, out });
+    } catch (err) {
+      if (err instanceof NotSignedIn) throw err;
+      moveTrace.push({ step: name, ok: false, error: err.message });
+      lastError = err;
+      continue;
+    }
+    for (let i = 0; i < 6; i++) {
+      if (!(await stillThere(src, ids)).length) return;
+      await sleep(400); // la messagerie met parfois un instant à retirer l'original
+    }
+    lastError = new Error('la messagerie a accepté mais le mail est toujours là');
+  }
+  const steps = moveTrace.map((t) => `${t.step} → ${t.ok ? 'accepté' : t.error}`).join(' ; ');
+  throw new Error(`mail non déplacé (${steps || lastError?.message || 'raison inconnue'})`);
+}
+
+/** Supprime définitivement (drapeau \Deleted puis purge du dossier). Irréversible. */
+export async function destroy(mails) {
+  if (!mails.length) return;
+  const uid = mails[0].folder;
+  const ids = mails.map((m) => m.id);
+  moveTrace.length = 0;
+  await api(`mail_items/${uid}/_multipleDelete`, { method: 'DELETE', body: ids }).catch((e) => moveTrace.push({ step: '_multipleDelete', error: e.message }));
+  if (!(await stillThere(uid, ids)).length) return;
+  for (const id of ids) {
+    await api(`mail_items/${uid}/id/${id}`, { method: 'DELETE' }).catch((e) => moveTrace.push({ step: 'deleteById', error: e.message }));
+  }
+  if (!(await stillThere(uid, ids)).length) return;
+  await api(`mail_items/${uid}/_addFlag`, { method: 'PUT', body: { itemsId: ids, mailboxItemFlag: DELETED } });
+  await api(`mail_items/${uid}/_expunge`, { method: 'POST' }).catch((e) => moveTrace.push({ step: '_expunge', error: e.message }));
+  if ((await stillThere(uid, ids)).length) {
+    const steps = moveTrace.map((t) => `${t.step} → ${t.error}`).join(' ; ');
+    throw new Error(`mail non supprimé${steps ? ` (${steps})` : ''}`);
+  }
 }
 
 // -------------------------------------------------------------- annuaire
@@ -220,7 +321,7 @@ export async function me() {
 
 /** Octets bruts d'une partie (pièce jointe d'un mail transféré). */
 export async function partBytes(mail, part) {
-  const uid = await inboxUid();
+  const uid = mail.folder ?? (await inboxUid());
   const query = new URLSearchParams();
   if (part.encoding) query.set('encoding', part.encoding);
   const res = await api(`mail_items/${uid}/part/${mail.imapUid}/${encodeURIComponent(part.address)}?${query}`, { raw: true });

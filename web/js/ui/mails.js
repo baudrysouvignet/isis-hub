@@ -1,11 +1,15 @@
-// Tuile « Mails » : liste chargée au fil du défilement, lecteur plein écran dans le Hub.
-// Ouvrir un mail le marque comme lu dans la vraie boîte (drapeau \Seen côté serveur).
+// Tuile « Mails » : boîte de réception et corbeille, étiquettes et règles automatiques (gardées
+// sur l'appareil), lecteur plein écran dans le Hub. Ouvrir un mail le marque comme lu dans la
+// vraie boîte (drapeau \Seen côté serveur) ; « Supprimer » le déplace dans la corbeille.
 
 import { $, $$, h, icon, restartClass, clipFrom, lockScroll, motionOK, toast, EASE, EASE_IO } from '../core/dom.js';
 import * as D from '../core/dates.js';
 import * as mail from '../portals/mail.js';
+import * as MP from '../core/mailprefs.js';
 import { sanitizeMail, textToFragment } from '../portals/sanitize.js';
 import { NotSignedIn } from '../portals/config.js';
+import { modal } from './layout.js';
+import { createAttachmentViewer, viewable, kb } from './attachments.js';
 
 const PAGE = 20;
 
@@ -19,7 +23,7 @@ const initials = (name) =>
     .join('') || '?';
 const avatarClass = (text) => `av-${([...text].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % 6) + 1}`;
 const who = (p) => (p.name && p.address && p.name !== p.address ? `${p.name} <${p.address}>` : p.name || p.address);
-const kb = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} Mo` : `${Math.max(1, Math.round(n / 1024))} Ko`);
+const tagChip = (t) => h('span.mtag', { class: `mtag--${t.color}`, text: t.name });
 
 export function createMails({ app, onSessionLost, onLogin, onReply }) {
   const tile = $('.tile--mail');
@@ -28,7 +32,10 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
   const reader = $('[data-reader]');
   const badges = () => [$('[data-unread-count]', tile)];
   const dockLabel = $('[data-dock-mail]');
+  const viewer = createAttachmentViewer();
 
+  let box = 'inbox'; // 'inbox' | 'sent' | 'trash'
+  let tagFilter = null; // identifiant d'étiquette, ou null
   let ids = [];
   let mails = [];
   let unread = 0;
@@ -40,12 +47,14 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
   let generation = 0;
   let lastRefresh = 0;
   let currentText = '';
+  let currentFiles = [];
   const searchBox = $('[data-mail-searchbox]', tile);
   const searchInput = $('[data-mail-search]', tile);
   const searchCount = $('[data-mail-search-n]', tile);
   const noResult = $('[data-mail-noresult]', tile);
   const showMore = $('[data-mail-showmore]', tile);
   const sync = $('[data-sync="mail"]', tile);
+  const filters = $('[data-mail-filters]', tile);
 
   function setUnread(n) {
     unread = Math.max(0, n);
@@ -62,6 +71,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
 
   function chrome(listShown) {
     searchBox.hidden = !listShown;
+    filters.hidden = !listShown && !(box !== 'inbox' && lastRefresh);
     showMore.hidden = !listShown || ids.length <= 5;
     sync.hidden = !listShown && !lastRefresh;
     noResult.hidden = true;
@@ -76,7 +86,10 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     generation++;
     ids = [];
     lastRefresh = 0;
+    box = 'inbox';
+    tagFilter = null;
     chrome(false);
+    filters.hidden = true;
     setUnread(0);
     slot.replaceChildren(
       empty(
@@ -106,18 +119,70 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     );
   }
 
+  // ------------------------------------------------------------ filtres
+
+  function renderFilters() {
+    const pill = (key, label, extra) =>
+      h(
+        'button.mfilter',
+        {
+          type: 'button',
+          class: extra,
+          attrs: { 'aria-pressed': String((key === box && key !== 'inbox') || (key === 'all' && box === 'inbox' && !tagFilter) || (box === 'inbox' && tagFilter === key)) },
+          on: { click: () => choose(key) },
+        },
+        label,
+      );
+    filters.replaceChildren(
+      pill('all', 'Tous'),
+      ...MP.tags().map((t) => pill(t.id, h('span', {}, h('i.mdot', { class: `mtag--${t.color}` }), t.name))),
+      pill('sent', h('span', {}, icon('send', 'ic ic--xs'), 'Envoyés'), 'mfilter--sent'),
+      pill('trash', h('span', {}, icon('trash', 'ic ic--xs'), 'Corbeille')),
+    );
+  }
+
+  function choose(key) {
+    if (key === 'trash' || key === 'sent') {
+      if (box === key) return;
+      box = key;
+      tagFilter = null;
+      searchInput.value = '';
+      renderFilters();
+      return load();
+    }
+    const elsewhere = box !== 'inbox';
+    box = 'inbox';
+    tagFilter = key === 'all' ? null : key;
+    renderFilters();
+    if (elsewhere) return load();
+    filter();
+  }
+
+  // ------------------------------------------------------------ liste
+
+  /** Nom affiché sur une ligne : l'expéditeur, ou les destinataires dans « Envoyés ». */
+  function rowName(m) {
+    if (box !== 'sent') return m.from.name || m.from.address || 'Expéditeur inconnu';
+    const to = [...m.to, ...m.cc];
+    if (!to.length) return 'Sans destinataire';
+    const first = to[0].name || to[0].address;
+    return `À : ${first}${to.length > 1 ? ` +${to.length - 1}` : ''}`;
+  }
+
   function rowEl(m, i) {
-    const name = m.from.name || m.from.address || 'Expéditeur inconnu';
+    const name = rowName(m);
+    const who_ = box === 'sent' ? m.to[0]?.address || name : m.from.address || name;
+    const tags = MP.tagsOf(m);
     return h(
       'li',
       {},
       h(
         'button.mail-row',
         { type: 'button', class: m.unread ? 'is-unread' : '', data: { mail: i } },
-        h('span.avatar', { class: avatarClass(m.from.address || name), text: initials(name), attrs: { 'aria-hidden': 'true' } }),
+        h('span.avatar', { class: avatarClass(who_), text: initials(name.replace(/^À : /, '')), attrs: { 'aria-hidden': 'true' } }),
         h('span.mail-from', { text: name }),
         h('span.mail-time', {}, m.unread && h('span.sr-only', { text: 'Non lu, ' }), D.relative(m.date)),
-        h('span.mail-subj', { text: m.subject }),
+        h('span.mail-subj', {}, tags.length ? h('span.mail-tags', {}, ...tags.map(tagChip)) : null, m.subject),
         h('span.mail-prev', { text: m.preview }),
       ),
     );
@@ -136,11 +201,41 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     more.before(frag);
   }
 
+  /** Redessine les lignes déjà chargées (après suppression ou changement d'étiquette). */
+  function redraw() {
+    if (!list) return;
+    const keep = mails;
+    mails = [];
+    $$(':scope > li:not(.mail-more)', list).forEach((li) => li.remove());
+    append(keep);
+    $$('.mail-row.is-new', list).forEach((r) => r.classList.remove('is-new'));
+    filter();
+  }
+
   function endOfList() {
     more.classList.add('is-end');
     more.removeAttribute('aria-hidden');
-    more.replaceChildren(mails.length ? 'Tu as atteint le début de ta boîte de réception.' : '');
+    const END = { trash: 'Fin de la corbeille.', sent: 'Fin des messages envoyés.', inbox: 'Tu as atteint le début de ta boîte de réception.' };
+    more.replaceChildren(mails.length ? END[box] : '');
     observer?.disconnect();
+  }
+
+  /** Règles automatiques sur un lot (boîte de réception seulement). Rend le lot sans les mails mis à la corbeille. */
+  async function withRules(batch) {
+    if (box !== 'inbox' || !MP.rules().length) return batch;
+    const toTrash = MP.applyRules(batch);
+    if (!toTrash.length) return batch;
+    try {
+      await mail.moveTo(toTrash, 'trash');
+      const gone = new Set(toTrash.map((m) => m.id));
+      ids = ids.filter((id) => !gone.has(id));
+      setUnread(unread - toTrash.filter((m) => m.unread).length);
+      live.textContent = `${toTrash.length} mail${toTrash.length > 1 ? 's' : ''} mis à la corbeille par tes règles.`;
+      return batch.filter((m) => !gone.has(m.id));
+    } catch (err) {
+      toast(`Règles : mails non déplacés (${err.message})`, 'alert');
+      return batch;
+    }
   }
 
   async function loadMore() {
@@ -148,18 +243,19 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     loading = true;
     const gen = generation;
     try {
-      const batch = await mail.getMails(ids.slice(mails.length, mails.length + PAGE));
+      const batch = await withRules(await mail.getMails(ids.slice(mails.length, mails.length + PAGE), box));
       if (gen !== generation) return;
       append(batch);
       if (mails.length > PAGE) live.textContent = `${batch.length} mails plus anciens chargés, ${mails.length} au total.`;
       if (mails.length >= ids.length) endOfList();
       if (!reader.hidden) stepButtons();
+      filter();
     } catch (error) {
       if (gen === generation) toast(`Mails plus anciens indisponibles : ${error.message}`);
     } finally {
       loading = false;
       // si la fin de liste est encore visible, on continue
-      if (gen === generation && mails.length < ids.length && more.getBoundingClientRect().top < list.getBoundingClientRect().bottom + 240) {
+      if (gen === generation && list && mails.length < ids.length && more.getBoundingClientRect().top < list.getBoundingClientRect().bottom + 240) {
         setTimeout(loadMore, 0);
       }
     }
@@ -167,20 +263,29 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
 
   async function load() {
     const gen = ++generation;
+    list = null;
     chrome(false);
+    renderFilters();
+    filters.hidden = false;
     sync.hidden = false;
     sync.classList.add('is-busy');
     sync.textContent = 'Mise à jour…';
     showLoading();
     try {
-      const result = await mail.listInbox();
+      const result = await mail.listInbox(box);
       if (gen !== generation) return;
       ids = result.ids;
       mails = [];
-      setUnread(result.unread);
+      if (box === 'inbox') setUnread(result.unread);
       lastRefresh = Date.now();
       if (!ids.length) {
-        slot.replaceChildren(empty('', 'inbox', 'Aucun mail', 'Ta boîte de réception universitaire est vide.'));
+        const EMPTY = {
+          trash: ['trash', 'Corbeille vide', 'Les mails supprimés depuis ISIS Hub ou la messagerie arrivent ici.'],
+          sent: ['send', 'Aucun message envoyé', 'Les mails que tu envoies, depuis ISIS Hub ou la messagerie, apparaissent ici.'],
+          inbox: ['inbox', 'Aucun mail', 'Ta boîte de réception universitaire est vide.'],
+        };
+        slot.replaceChildren(empty('', ...EMPTY[box]));
+        filters.hidden = false;
         return;
       }
       more = h(
@@ -189,13 +294,14 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
         h('div.skel-mail', {}, h('span.skel.skel--av'), h('div', {}, h('span.skel.skel--line.w-40'), h('span.skel.skel--line.w-90'))),
         h('div.skel-mail', {}, h('span.skel.skel--av'), h('div', {}, h('span.skel.skel--line.w-50'), h('span.skel.skel--line.w-70'))),
       );
-      list = h('ul.mail-list', { data: { mailList: '' } }, more);
-      const first = await mail.getMails(ids.slice(0, PAGE));
+      const newList = h('ul.mail-list', { data: { mailList: '' } }, more);
+      const first = await withRules(await mail.getMails(ids.slice(0, PAGE), box));
       if (gen !== generation) return;
+      list = newList;
       slot.replaceChildren(list);
       append(first);
       chrome(true);
-      if (searchInput.value.trim()) filter();
+      filter();
       if (mails.length >= ids.length) endOfList();
       observer?.disconnect();
       observer = new IntersectionObserver((entries) => entries.some((x) => x.isIntersecting) && loadMore(), {
@@ -225,30 +331,33 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
   });
   setInterval(() => lastRefresh && !sync.classList.contains('is-busy') && renderSync(), 30_000);
 
-  // --------------------------------------------------------- recherche
+  // --------------------------------------------------------- recherche et étiquette
 
   const norm = (t) => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
   function filter() {
+    if (!list) return;
     const q = norm(searchInput.value.trim());
-    tile.classList.toggle('is-searching', Boolean(q));
+    const narrowed = Boolean(q) || Boolean(tagFilter);
+    tile.classList.toggle('is-searching', narrowed);
     let n = 0;
     for (const row of $$('[data-mail]', tile)) {
       const m = mails[Number(row.dataset.mail)];
-      const hay = norm(`${m.from.name} ${m.from.address} ${m.subject} ${m.preview}`);
-      const ok = !q || hay.includes(q);
+      const hay = norm(`${m.from.name} ${m.from.address} ${[...m.to, ...m.cc].map((p) => `${p.name} ${p.address}`).join(' ')} ${m.subject} ${m.preview}`);
+      const ok = (!q || hay.includes(q)) && (!tagFilter || MP.tagsOf(m).some((t) => t.id === tagFilter));
       row.parentElement.hidden = !ok;
       if (ok) n++;
     }
-    $$('.mail-sep', tile).forEach((x) => (x.hidden = Boolean(q)));
-    if (more) more.hidden = Boolean(q);
+    $$('.mail-sep', tile).forEach((x) => (x.hidden = narrowed));
+    if (more) more.hidden = narrowed;
     // La recherche montre tous les résultats ; une fois effacée, on revient à l'état choisi.
-    tile.classList.toggle('is-more', Boolean(q) || expanded);
-    searchCount.textContent = q ? `${n} résultat${n > 1 ? 's' : ''}` : '';
-    noResult.hidden = !q || n > 0;
-    if (q && n === 0) {
+    tile.classList.toggle('is-more', narrowed || expanded);
+    searchCount.textContent = narrowed ? `${n} résultat${n > 1 ? 's' : ''}` : '';
+    noResult.hidden = !narrowed || n > 0;
+    if (narrowed && n === 0) {
       const left = ids.length - mails.length;
+      const what = q ? `« ${searchInput.value.trim()} »` : `l’étiquette « ${MP.tagById(tagFilter)?.name ?? ''} »`;
       noResult.replaceChildren(
-        `Aucun des ${mails.length} mails chargés ne correspond à « ${searchInput.value.trim()} ».`,
+        `Aucun des ${mails.length} mails chargés ne correspond à ${what}.`,
         left > 0 ? h('br') : '',
         left > 0 ? h('button.linklike', { type: 'button', text: `Chercher aussi dans les ${Math.min(left, 100)} suivants`, on: { click: searchOlder } }) : '',
       );
@@ -290,16 +399,54 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     const row = rowFor(i);
     row?.classList.remove('is-unread');
     $('.sr-only', row ?? document.createElement('i'))?.remove();
-    setUnread(unread - 1);
+    if (box === 'inbox') setUnread(unread - 1);
     try {
       const confirmed = await mail.markRead(m);
       if (!confirmed) toast('La messagerie n’a pas confirmé la lecture de ce mail.');
     } catch (error) {
       m.unread = true;
       row?.classList.add('is-unread');
-      setUnread(unread + 1);
+      if (box === 'inbox') setUnread(unread + 1);
       toast(`Mail non marqué comme lu : ${error.message}`);
     }
+  }
+
+  function renderReaderTags() {
+    const m = mails[current];
+    const box_ = $('[data-reader-tags]', reader);
+    const tags = m ? MP.tagsOf(m) : [];
+    box_.hidden = !tags.length;
+    box_.replaceChildren(...tags.map(tagChip));
+  }
+
+  function readerMode() {
+    const inTrash = box === 'trash';
+    $('[data-mail-delete]', reader).hidden = inTrash;
+    $('[data-mail-restore]', reader).hidden = !inTrash;
+    $('[data-mail-destroy]', reader).hidden = !inTrash;
+    $('[data-mail-tag]', reader).hidden = inTrash;
+  }
+
+  function filesEl(m, attachments) {
+    return h(
+      'ul.reader-files',
+      {},
+      ...attachments.map((a) =>
+        h(
+          'li.rfile',
+          {},
+          viewable(a)
+            ? h('button.rfile-main', { type: 'button', title: `Voir ${a.name}`, on: { click: () => viewer.view(m, a) } }, icon('clip', 'ic ic--sm'), h('span', { text: a.name }), a.size ? h('small', { text: kb(a.size) }) : null)
+            : h('span.rfile-main', {}, icon('clip', 'ic ic--sm'), h('span', { text: a.name }), a.size ? h('small', { text: kb(a.size) }) : null),
+          h('button.rfile-dl', {
+            type: 'button',
+            title: `Télécharger ${a.name}`,
+            attrs: { 'aria-label': `Télécharger ${a.name}` },
+            on: { click: (e) => viewer.download(m, a, e.currentTarget) },
+          }, icon('download', 'ic ic--sm')),
+        ),
+      ),
+    );
   }
 
   async function fill(i) {
@@ -315,6 +462,8 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     av.textContent = initials(m.from.name || m.from.address || '?');
     av.className = `avatar ${avatarClass(m.from.address || m.from.name || '?')}`;
     $('[data-reader-open]', reader).href = m.url;
+    readerMode();
+    renderReaderTags();
     stepButtons();
     restartClass($('[data-reader-body]', reader), 'reader-anim');
     $('.reader-scroll', reader).scrollTop = 0;
@@ -322,6 +471,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     const target = $('[data-r="body"]', reader);
     target.replaceChildren(h('div.reader-loading', {}, h('span.spinner'), 'Ouverture du mail…'));
     currentText = m.preview;
+    currentFiles = [];
     markRead(i);
     if (i >= mails.length - 3) loadMore();
     try {
@@ -339,17 +489,8 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
         out.push(h('div.reader-html', {}, fragment));
       } else out.push(h('div.reader-plain', {}, textToFragment(content.content)));
       currentText = content.kind === 'html' ? null : content.content;
-      if (content.attachments.length) {
-        out.push(
-          h(
-            'ul.reader-files',
-            {},
-            ...content.attachments.map((a) =>
-              h('li', {}, h('a', { href: m.url, target: '_blank', rel: 'noopener' }, icon('clip', 'ic ic--sm'), h('span', { text: a.name }), a.size ? h('small', { text: kb(a.size) }) : null)),
-            ),
-          ),
-        );
-      }
+      currentFiles = content.attachments;
+      if (content.attachments.length) out.push(filesEl(m, content.attachments));
       target.replaceChildren(...out);
       if (currentText === null) currentText = $('.reader-html', target)?.innerText ?? m.preview;
     } catch (error) {
@@ -399,6 +540,55 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     } else done();
   }
 
+  /** Retire le mail affiché de la liste et passe au suivant (ou ferme le lecteur). */
+  function dropCurrent() {
+    const m = mails[current];
+    mails.splice(current, 1);
+    ids = ids.filter((id) => id !== m.id);
+    redraw();
+    if (!mails.length) {
+      reader.hidden = true;
+      app.classList.remove('has-overlay');
+      $('[data-bento]').inert = false;
+      lockScroll(false);
+      if (!ids.length) load();
+      return;
+    }
+    fill(Math.min(current, mails.length - 1));
+  }
+
+  async function act(button, run, done) {
+    const m = mails[current];
+    if (!m || button.classList.contains('is-busy')) return;
+    button.classList.add('is-busy');
+    try {
+      await run(m);
+      toast(done, 'check');
+      dropCurrent();
+    } catch (err) {
+      if (err instanceof NotSignedIn) return onSessionLost('mail');
+      toast(`Action impossible : ${err.message}`, 'alert');
+    } finally {
+      button.classList.remove('is-busy');
+    }
+  }
+
+  const delBtn = $('[data-mail-delete]', reader);
+  delBtn.addEventListener('click', () => act(delBtn, async (m) => {
+    await mail.moveTo([m], 'trash');
+    if (m.unread) setUnread(unread - 1);
+  }, 'Mail mis à la corbeille.'));
+  const restoreBtn = $('[data-mail-restore]', reader);
+  restoreBtn.addEventListener('click', () => act(restoreBtn, (m) => mail.moveTo([m], 'inbox'), 'Mail remis dans la boîte de réception.'));
+  const destroyBtn = $('[data-mail-destroy]', reader);
+  destroyBtn.addEventListener('click', () => {
+    const m = mails[current];
+    if (!m) return;
+    // Suppression irréversible : confirmation explicite.
+    if (!confirm(`Supprimer définitivement « ${m.subject} » ? Il ne pourra pas être récupéré.`)) return;
+    act(destroyBtn, (x) => mail.destroy([x]), 'Mail supprimé définitivement.');
+  });
+
   tile.addEventListener('click', (e) => {
     const row = e.target.closest('[data-mail]');
     if (row) open(Number(row.dataset.mail));
@@ -421,8 +611,60 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     }),
   );
   reader.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' && e.altKey) $('[data-reader-step="1"]', reader).click();
+    if (e.target.closest('dialog')) return;
+    if (e.key === 'ArrowRight' || (e.key === 'ArrowDown' && e.altKey)) $('[data-reader-step="1"]', reader).click();
     if (e.key === 'ArrowLeft') $('[data-reader-step="-1"]', reader).click();
+  });
+
+  // ------------------------------------------------------- étiquettes d'un mail
+
+  const tagsDialog = $('dialog[data-tags-sheet]');
+  const tagsSheet = modal(tagsDialog);
+  function renderTagPick() {
+    const m = mails[current];
+    const on = new Set(m ? MP.tagsOf(m).map((t) => t.id) : []);
+    const pick = $('[data-tag-pick]', tagsDialog);
+    pick.replaceChildren(
+      ...(MP.tags().length
+        ? MP.tags().map((t) =>
+            h(
+              'li',
+              {},
+              h(
+                'label.check',
+                {},
+                h('input', { type: 'checkbox', checked: on.has(t.id), on: { change: (e) => m && MP.setTag(m, t.id, e.target.checked) } }),
+                h('span.check-box', { attrs: { 'aria-hidden': 'true' } }),
+                h('span.check-text', {}, h('span', {}, h('i.mdot', { class: `mtag--${t.color}` }), t.name)),
+              ),
+            ),
+          )
+        : [h('li.cs-none', { text: 'Aucune étiquette pour l’instant : crée la première ci-dessous.' })]),
+    );
+  }
+  $('[data-mail-tag]', reader).addEventListener('click', () => {
+    renderTagPick();
+    tagsSheet.open();
+  });
+  $('[data-tag-quick]', tagsDialog).addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = $('input', e.currentTarget);
+    try {
+      const t = MP.addTag(input.value);
+      if (t && mails[current]) MP.setTag(mails[current], t.id, true);
+      input.value = '';
+      renderTagPick();
+    } catch (err) {
+      toast(err.message, 'alert');
+    }
+  });
+
+  // Toute modification d'étiquettes ou de règles se voit tout de suite.
+  MP.onMailPrefs(() => {
+    if (tagFilter && !MP.tagById(tagFilter)) tagFilter = null;
+    if (!filters.hidden) renderFilters();
+    if (list) redraw();
+    if (!reader.hidden) renderReaderTags();
   });
 
   // Nouveau courrier : rafraîchi quand on revient sur l'onglet (au plus toutes les 2 minutes).
@@ -436,5 +678,15 @@ export function createMails({ app, onSessionLost, onLogin, onReply }) {
     close,
     isOpen: () => !reader.hidden,
     unread: () => unread,
+    /** Après l'ajout d'une règle : l'appliquer aux mails déjà affichés. */
+    async applyRulesNow() {
+      if (box !== 'inbox' || !mails.length) return;
+      const before = mails.length;
+      const kept = await withRules(mails.slice());
+      if (kept.length !== before) {
+        mails = kept;
+        redraw();
+      }
+    },
   };
 }

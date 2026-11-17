@@ -8,6 +8,8 @@ import { useTransport } from '../web/js/net/http.js';
 import { parseIcal, courseCode, fetchSchedule } from '../web/js/portals/ade.js';
 import { createMatcher, moodleCode, codeOfCourse } from '../web/js/portals/match.js';
 import { pickParts } from '../web/js/portals/mail.js';
+import { sniff, safeName } from '../web/js/portals/files.js';
+import * as MP from '../web/js/core/mailprefs.js';
 import { casLogin, LoginRefused } from '../web/js/portals/cas.js';
 import * as D from '../web/js/core/dates.js';
 import { setClasses } from '../web/js/portals/classes.js';
@@ -194,7 +196,42 @@ test('mail : partie HTML préférée, pièces jointes listées', () => {
     ],
   });
   assert.equal(body.address, '1.2');
-  assert.deepEqual(attachments, [{ name: 'a.pdf', size: 10, mime: 'application/pdf' }]);
+  assert.deepEqual(
+    attachments.map(({ part, ...a }) => ({ ...a, address: part.address })),
+    [{ name: 'a.pdf', size: 10, mime: 'application/pdf', address: '2' }],
+  );
+});
+
+test('pièces jointes : type reconnu aux octets, jamais au nom', () => {
+  const b = (...x) => Uint8Array.from(x);
+  assert.equal(sniff(b(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0)), 'image/png');
+  assert.equal(sniff(b(0xff, 0xd8, 0xff, 0xe0)), 'image/jpeg');
+  assert.equal(sniff(enc.encode('%PDF-1.7')), 'application/pdf');
+  assert.equal(sniff(enc.encode('<svg onload=alert(1)>')), null, 'SVG jamais affiché');
+  assert.equal(sniff(enc.encode('<!doctype html><script>')), null, 'HTML jamais affiché');
+  assert.ok(!/[\\/]|^\./.test(safeName('../../etc/passwd')), 'ni chemin ni fichier caché');
+  assert.equal(safeName('rapport\u0000.pdf'), 'rapport_.pdf');
+  assert.equal(safeName(''), 'piece-jointe');
+});
+
+test('mails : étiquettes et règles appliquées sur l’appareil', async () => {
+  const saved = [];
+  await MP.initMailPrefs({ loadMailPrefs: async () => ({ tags: [{ id: 'x', name: '<b>', color: 'evil' }], rules: [{ id: 'r', field: 'from', text: '', action: 'trash' }] }), saveMailPrefs: (s) => saved.push(s) });
+  assert.equal(MP.tags()[0].color, 'blue', 'couleur inconnue remplacée');
+  assert.equal(MP.rules().length, 0, 'règle vide écartée');
+  const stage = MP.addTag('Stage');
+  assert.equal(MP.addTag('stage').id, stage.id, 'pas de doublon');
+  MP.addRule({ field: 'subject', text: 'offre de STAGE', action: 'tag', tag: stage.id });
+  MP.addRule({ field: 'from', text: 'newsletter', action: 'trash' });
+  const a = { messageId: '<a@x>', subject: 'Offre de stage chez X', from: { name: 'RH', address: 'rh@x.fr' } };
+  const n = { messageId: '<n@x>', subject: 'Nouveautés', from: { name: 'News', address: 'newsletter@x.fr' } };
+  const trash = MP.applyRules([a, n]);
+  assert.deepEqual(trash, [n]);
+  assert.deepEqual(MP.tagsOf(a).map((t) => t.name), ['Stage']);
+  MP.removeTag(stage.id);
+  assert.equal(MP.tagsOf(a).length, 0);
+  assert.equal(MP.rules().length, 1, 'la règle de l’étiquette supprimée part avec elle');
+  assert.ok(saved.length > 0, 'chaque changement est enregistré');
 });
 
 // --------------------------------------------------------------- dates

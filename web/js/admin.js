@@ -333,6 +333,40 @@ $('[data-adm-links-save]').addEventListener('click', async () => {
   }
 });
 
+// ------------------------------------------------------------ fréquentation
+
+const WEEK = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+const nf = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
+
+function bars(box, rows) {
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  box.replaceChildren(
+    ...rows.map((r) => {
+      const bar = h('i', { attrs: { 'aria-hidden': 'true' } });
+      bar.style.setProperty('--v', String(r.value / max));
+      return h('div.adm-bar', { title: `${r.title} : ${nf.format(r.value)}` }, h('b', { text: nf.format(r.value) }), bar, h('span', { text: r.label }));
+    }),
+  );
+}
+
+async function loadStats() {
+  const st = await api('stats');
+  const days = st.days ?? [];
+  const counted = days.filter((d) => d.unique > 0);
+  const avg = st.totalDays ? days.slice(-Math.min(st.totalDays, days.length)).reduce((n, d) => n + d.unique, 0) / Math.min(st.totalDays, days.length) : 0;
+  $('[data-st="today"]').textContent = nf.format(st.today?.unique ?? 0);
+  $('[data-st="avg"]').textContent = counted.length ? nf.format(avg) : '–';
+  $('[data-st="total"]').textContent = nf.format(st.total ?? 0);
+  bars($('[data-st-week]'), (st.weekdays ?? []).map((v, i) => ({ value: v, label: WEEK[i], title: `Moyenne du ${WEEK[i].toLowerCase()}.` })));
+  bars(
+    $('[data-st-days]'),
+    days.slice(-30).map((d) => {
+      const date = new Date(`${d.date}T12:00:00Z`);
+      return { value: d.unique, label: String(date.getUTCDate()), title: shortFmt.format(date) };
+    }),
+  );
+}
+
 // ------------------------------------------------------------ départ
 
 async function load() {
@@ -348,6 +382,7 @@ async function load() {
   ]);
   renderClasses();
   renderLinks();
+  await loadStats().catch((err) => toast(`Fréquentation indisponible : ${err.message}`));
 }
 
 load().catch((err) => toast(`Chargement impossible : ${err.message}`));

@@ -5,6 +5,11 @@ import { $, $$, h, icon, restartClass, clipFrom, lockScroll, motionOK, isTyping,
 import * as D from '../core/dates.js';
 import { prefs } from '../core/store.js';
 import { fetchSchedule } from '../portals/ade.js';
+import { isEval } from '../core/evals.js';
+import { hasMenu } from './crous.js';
+
+// Créneau du Resto U' affiché chaque jour de cours (lundi – vendredi).
+const LUNCH = { startMin: 12 * 60 + 30, endMin: 13 * 60 + 30 };
 
 const GRID_START = 8 * 60; // la grille de la maquette couvre 8 h – 19 h, par pas de 5 minutes
 const GRID_END = 19 * 60;
@@ -22,7 +27,7 @@ const toMin = (s) => {
   return hh * 60 + mm;
 };
 
-export function createSchedule({ app, matcher, onData, onOpen }) {
+export function createSchedule({ app, matcher, onData, onOpen, onLunch }) {
   const tile = $('.tile--edt');
   const cal = $('.cal', tile);
   const body = $('[data-swipe]', tile);
@@ -116,8 +121,32 @@ export function createSchedule({ app, matcher, onData, onOpen }) {
     );
   }
 
+  /** Bloc « Resto U' » de 12 h 30 à 13 h 30 : ouvre le menu du jour. */
+  function lunchEl(day) {
+    const published = hasMenu(day);
+    const el = h(
+      'article.ev.ev--crous',
+      {
+        class: published ? '' : 'is-unpublished',
+        data: { start: LUNCH.startMin, end: LUNCH.endMin, lunch: '1' },
+        title: published ? 'Voir le menu du midi' : 'Menu pas encore publié',
+      },
+      h(
+        'div.ev-in',
+        {},
+        h('div.ev-top', {}, h('span.crous-badge', { text: 'crous', attrs: { 'aria-hidden': 'true' } }), h('span.crous-when', { text: '12:30 – 13:30' })),
+        h('h4.ev-title', { text: 'Resto U’ · menu du midi' }),
+      ),
+    );
+    el.style.setProperty('grid-row', `${rowOf(LUNCH.startMin)} / ${rowOf(LUNCH.endMin)}`);
+    el.prepend(h('button.ev-hit', { type: 'button', attrs: { 'aria-label': `Menu du Resto U’ de Castres, ${D.dayTitle(day)}` }, on: { click: () => onLunch?.(day) } }));
+    return el;
+  }
+
   function eventEl(ev) {
+    if (ev.lunch) return lunchEl(ev.day);
     const kind = (ev.kind ?? 'autre').toLowerCase();
+    const exam = ev.exam || isEval(ev); // repère personnel « examen » : même affichage qu'un examen ADE
     const el = h(
       'article.ev',
       { class: `ev--${ev.kind ? kind : 'cm'}`, data: { start: ev.startMin, end: ev.endMin } },
@@ -132,7 +161,7 @@ export function createSchedule({ app, matcher, onData, onOpen }) {
             'div.ev-top',
             {},
             ev.kind && h('span.type', { class: `type--${kind}`, text: ev.kind, title: TYPE_TITLE[ev.kind] }),
-            ev.exam && h('span.exam', {}, icon('alert', 'ic ic--xs'), 'Examen'),
+            exam && h('span.exam', {}, icon('alert', 'ic ic--xs'), 'Examen'),
           ),
           h('h4.ev-title', { text: ev.title, title: ev.title }),
           h(
@@ -163,8 +192,12 @@ export function createSchedule({ app, matcher, onData, onOpen }) {
     return el;
   }
 
-  /** Répartit les séances qui se chevauchent sur plusieurs colonnes. */
-  function layoutDay(col, events) {
+  /** Répartit les séances qui se chevauchent sur plusieurs colonnes (avec le Resto U' les jours de cours). */
+  function layoutDay(col, events, day) {
+    // Resto U' : jours de cours seulement, à partir d'aujourd'hui.
+    if (events.length && D.weekday(day) < 5 && day >= D.todayKey()) {
+      events = [...events, { lunch: true, day, ...LUNCH }].sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin);
+    }
     const lanes = [];
     const placed = events.map((ev) => {
       let lane = lanes.findIndex((end) => end <= ev.startMin);
@@ -213,6 +246,14 @@ export function createSchedule({ app, matcher, onData, onOpen }) {
     $('[data-nav="-1"]', tile).setAttribute('aria-label', week ? 'Semaine précédente' : 'Jour précédent');
     $('[data-nav="1"]', tile).setAttribute('aria-label', week ? 'Semaine suivante' : 'Jour suivant');
   }
+
+  /** Nombre de jours affichés côte à côte en vue jour (1, 2 ou 3 selon la largeur de la tuile). */
+  function visibleDays() {
+    if (tile.dataset.view !== 'day') return 1;
+    const n = cols.filter((c) => getComputedStyle(c).display !== 'none').length;
+    return Math.min(Math.max(n, 1), 3);
+  }
+  const windowStart = (k) => Math.min(active, 5 - k);
 
   function setWindows() {
     const w2 = active < 4 ? [active, active + 1] : [3, 4];
@@ -271,7 +312,7 @@ export function createSchedule({ app, matcher, onData, onOpen }) {
       col.replaceChildren();
       const key = D.addDays(monday, i);
       const events = eventsOn(key);
-      layoutDay(col, events);
+      layoutDay(col, events, key);
       if (!events.length && i === active && weekEvents(monday).length) col.append(dayEmpty(key));
     });
     matcher.resolve(weekEvents(monday), () => token === renderToken && refreshChips());
@@ -321,9 +362,9 @@ export function createSchedule({ app, matcher, onData, onOpen }) {
   function refreshChips() {
     for (const el of $$('.ev', tile)) el.remove();
     cols.forEach((col, i) => {
-      const events = eventsOn(D.addDays(monday, i));
+      const key = D.addDays(monday, i);
       const empty = $('.day-empty', col);
-      layoutDay(col, events);
+      layoutDay(col, eventsOn(key), key);
       if (empty) col.append(empty);
     });
     tick();
@@ -350,7 +391,7 @@ export function createSchedule({ app, matcher, onData, onOpen }) {
       const day = D.addDays(monday, cols.indexOf(el.closest('.day-col')));
       const s = Number(el.dataset.start);
       const e = Number(el.dataset.end);
-      const isNow = day === key && s <= minutes && minutes < e;
+      const isNow = !el.dataset.lunch && day === key && s <= minutes && minutes < e;
       el.classList.toggle('is-now', isNow);
       el.classList.toggle('is-past', day < key || (day === key && e <= minutes));
       const live = $('.live', el);
@@ -409,7 +450,19 @@ export function createSchedule({ app, matcher, onData, onOpen }) {
     if (!eventsOn(key).length && weekEvents(monday).length && chunks.has(chunkOf(monday))) cols[active].append(dayEmpty(key));
   }
 
-  const step = (n) => (tile.dataset.view === 'week' ? setWeek(D.addDays(monday, 7 * n), n) : setDay(active + n, n));
+  /** Flèches : une semaine en vue semaine ; en vue jour, autant de jours qu'il y en a d'affichés. */
+  function step(n) {
+    if (tile.dataset.view === 'week') return setWeek(D.addDays(monday, 7 * n), n);
+    const k = visibleDays();
+    if (k === 1) return setDay(active + n, n);
+    const start = windowStart(k);
+    if (n > 0) {
+      if (start + k <= 4) return setDay(start + k, 1); // fenêtre suivante dans la semaine
+      return setWeek(D.addDays(monday, 7), 0).then(() => setDay(0, 1));
+    }
+    if (start > 0) return setDay(Math.max(start - k, 0), -1);
+    return setWeek(D.addDays(monday, -7), 0).then(() => setDay(5 - k, -1));
+  }
 
   /** Aujourd'hui, ou le lundi suivant pendant le week-end. */
   function home() {

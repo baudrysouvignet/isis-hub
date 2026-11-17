@@ -148,3 +148,219 @@ button.chip.sync.is-busy { pointer-events: none; opacity: .7; }
 .adm-track { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1fr) minmax(0, 1.6fr) auto; gap: 10px; align-items: start; padding: 10px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
 .top-right .hint { margin-right: 8px; }
 @media (max-width: 759.98px) { .adm-track { grid-template-columns: minmax(0, 1fr); } }
+
+/* ==========================================================================
+   Correctifs multi-navigateurs (Chrome, Firefox, Edge, Safari iOS, Android)
+   ========================================================================== */
+
+/* Défilement : arrivée en haut ou en bas d'une liste ou de la grille, la page reprend la main
+   (plus de « piège » à la molette). Les fiches modales gardent leur défilement isolé. */
+.tile--edt .cal, .moodle-list .course-list, .mail-list { overscroll-behavior: auto; }
+
+/* Un onglet de la barre du bas amène la tuile sous l'en-tête collant, pas dessous. */
+.bento > .tile { scroll-margin-top: calc(var(--head-h) + 10px); }
+
+/* Safari iOS zoome sur tout champ écrit en moins de 16 px, et ne dézoome pas ensuite :
+   sur écran tactile, tous les champs passent à 16 px (le zoom manuel reste permis). */
+@media (pointer: coarse), (max-width: 759.98px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select,
+  .input, .textarea, .search input, .recip-input, .cmp-subject { font-size: 16px !important; }
+}
+
+/* Formulaires : même rendu partout (Firefox et Chrome ajoutent leurs propres styles). */
+textarea, select { font: inherit; color: inherit; }
+input[type="search"] { -webkit-appearance: none; appearance: none; }
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+input::-ms-reveal, input::-ms-clear { display: none; }
+button { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.input:focus-visible, .search input:focus-visible, .recip-input:focus-visible, .cmp-subject:focus-visible { outline: none; }
+
+/* Barres de défilement fines et discrètes, aussi sous Chrome / Edge Windows (Firefox : scrollbar-width). */
+.app { scrollbar-color: color-mix(in srgb, var(--text) 22%, transparent) transparent; }
+.app ::-webkit-scrollbar { width: 10px; height: 10px; }
+.app ::-webkit-scrollbar-track { background: transparent; }
+.app ::-webkit-scrollbar-thumb {
+  border: 3px solid transparent; border-radius: 999px; background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--text) 22%, transparent);
+}
+.app ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--text) 38%, transparent); }
+
+/* Hauteur d'écran : dvh partout où il existe, vh sinon (anciens Android). */
+@supports not (height: 100dvh) {
+  .boot { min-height: 100vh; }
+  .admin-login { min-height: calc(100vh - var(--head-h)); }
+}
+
+/* ==========================================================================
+   Emploi du temps : examens marqués à la main, Resto U' (couleurs du CROUS)
+   ========================================================================== */
+.app { --crous: #D6001C; --crous-ink: #FFFFFF; --crous-soft: #FDEBEC; }
+
+.cs-eval { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.cs-eval small { font: 500 12px/1.35 var(--font); color: var(--text-3); }
+.cs-eval .btn[aria-pressed="true"] { background: var(--exam-soft); color: var(--exam); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--exam) 35%, transparent); }
+.cs-eval .btn[aria-pressed="false"] .ic { opacity: .35; }
+
+/* Badge « crous » : rappel des couleurs du réseau, sans reprendre son logo déposé. */
+.crous-badge {
+  display: inline-grid; place-items: center; height: 19px; padding: 0 7px; border-radius: 5px;
+  background: var(--crous); color: var(--crous-ink);
+  font: 800 11px/1 var(--font); letter-spacing: .02em; text-transform: lowercase;
+}
+.ev--crous {
+  background: var(--crous-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--crous) 22%, transparent);
+  border-left: 3px solid var(--crous);
+}
+.ev--crous .ev-in { gap: 3px; padding: 6px 9px; }
+.ev--crous .ev-title { font-size: 12.5px; -webkit-line-clamp: 1; }
+.crous-when { font: 600 11.5px/1 var(--font); color: var(--crous); font-variant-numeric: tabular-nums; }
+.ev--crous.is-past { opacity: .45; }
+/* Créneau court (1 h) : le badge et l'heure restent visibles, le titre passe s'il y a la place. */
+.ev--crous .ev-in { justify-content: center; }
+@container ev (max-height: 70px) {
+  .ev--crous .ev-top { display: flex; flex-wrap: nowrap; }
+  .ev--crous .ev-title { display: none; }
+}
+@container ev (min-height: 70.01px) { .ev--crous .ev-title { display: -webkit-box; } }
+
+.crous-sheet .cs-kicker { display: flex; align-items: center; gap: 8px; }
+.crous-cat + .crous-cat { margin-top: 18px; }
+.crous-cat h3 { font: 650 12px/1 var(--font); letter-spacing: .07em; text-transform: uppercase; color: var(--crous); margin-bottom: 8px; }
+.crous-cat ul { display: grid; gap: 6px; }
+.crous-cat li { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); font: 550 14px/1.35 var(--font); }
+.crous-empty { display: grid; gap: 6px; padding: 18px; border-radius: 16px; background: var(--crous-soft); color: var(--text-2); font: 500 13.5px/1.45 var(--font); }
+.crous-empty b { font: 700 16px/1.2 var(--font); color: var(--crous); }
+.crous-source { margin-top: 18px; font: 500 12px/1.4 var(--font); color: var(--text-3); }
+
+/* ==========================================================================
+   Mails : filtres, étiquettes, bouton d'écriture, corbeille, pièces jointes, règles
+   ========================================================================== */
+.app {
+  --tag-blue: #1F4FD1; --tag-green: #18794E; --tag-orange: #A9430A;
+  --tag-violet: #6A2FC9; --tag-pink: #B4235E; --tag-teal: #0E7C86;
+}
+.mtag--blue { --tag: var(--tag-blue); } .mtag--green { --tag: var(--tag-green); } .mtag--orange { --tag: var(--tag-orange); }
+.mtag--violet { --tag: var(--tag-violet); } .mtag--pink { --tag: var(--tag-pink); } .mtag--teal { --tag: var(--tag-teal); }
+
+.mail-filters { display: flex; gap: 6px; margin: 0 0 10px; overflow-x: auto; scrollbar-width: none; flex: none; -webkit-overflow-scrolling: touch; }
+.mail-filters::-webkit-scrollbar { display: none; }
+.mfilter {
+  display: inline-flex; align-items: center; flex: none; height: 30px; padding: 0 12px; border: 0; border-radius: 999px;
+  background: var(--sunken); color: var(--text-2); font: 600 12.5px/1 var(--font); white-space: nowrap;
+  transition: background-color var(--d-fast), color var(--d-fast);
+}
+.mfilter > span { display: inline-flex; align-items: center; gap: 6px; }
+.mfilter:hover { background: var(--hover); color: var(--text); }
+.mfilter[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.mfilter--sent { margin-left: auto; }
+.mdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--tag, var(--text-3)); }
+
+.mtag {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 5px; vertical-align: 1px;
+  background: color-mix(in srgb, var(--tag, var(--text-3)) 13%, transparent); color: var(--tag, var(--text-2));
+  font: 700 11px/1 var(--font); letter-spacing: .01em; white-space: nowrap;
+}
+.mail-tags { display: inline-flex; gap: 4px; margin-right: 6px; }
+.reader-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: -14px 0 22px; }
+.reader-actions-sep { flex: 1; }
+.btn--danger-soft .ic { color: var(--err); }
+.btn--danger-soft:hover { background: var(--err-soft); color: var(--err); }
+.is-busy { pointer-events: none; opacity: .6; }
+
+/* Bouton rond « Écrire » en bas à droite de la tuile */
+.tile--mail { position: relative; }
+.tile--mail .mail-list { padding-bottom: 64px; }
+.mail-fab {
+  position: absolute; right: 16px; bottom: 16px; z-index: 4;
+  display: grid; place-items: center; width: 52px; height: 52px; border: 0; border-radius: 50%;
+  background: var(--brand); color: var(--brand-ink);
+  box-shadow: 0 10px 24px -8px color-mix(in srgb, var(--brand) 70%, transparent), var(--shadow-2);
+  transition: transform var(--d) var(--spring), box-shadow var(--d) var(--ease);
+}
+.mail-fab:hover { transform: translateY(-2px) scale(1.04); }
+.mail-fab:active { transform: scale(.96); }
+.mail-fab .ic { width: 22px; height: 22px; }
+.mail-rules-btn { margin-left: auto; }
+@media (max-width: 759.98px) {
+  .tile--mail { padding-bottom: 76px; }
+  .tile--mail .mail-list { padding-bottom: 0; }
+}
+
+/* Pièces jointes du lecteur : voir et télécharger sans quitter le Hub */
+.reader-files { list-style: none; }
+.rfile { display: inline-flex; align-items: stretch; border-radius: 10px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.rfile-main {
+  display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px 0 12px; border: 0; background: transparent;
+  font: 550 13px/1 var(--font); color: var(--text); max-width: 300px;
+}
+.rfile-main > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rfile-main small { color: var(--text-3); font-weight: 500; flex: none; }
+button.rfile-main:hover, .rfile-dl:hover { background: var(--hover); }
+.rfile-dl { display: grid; place-items: center; width: 38px; border: 0; border-left: 1px solid var(--line); background: transparent; color: var(--brand); }
+
+.att-sheet { width: min(980px, calc(100vw - 32px)); }
+.att-head { flex: 1; min-width: 0; }
+.att-head h2 { font: 700 17px/1.3 var(--font); overflow-wrap: anywhere; }
+.att-sheet .sheet-head { gap: 8px; align-items: center; }
+.att-body { display: grid; place-items: center; gap: 10px; min-height: 240px; }
+.att-img { max-width: 100%; max-height: 72dvh; border-radius: 12px; object-fit: contain; background: var(--sunken); }
+.att-pdf { width: 100%; height: 72dvh; border: 0; border-radius: 12px; background: var(--sunken); }
+
+/* Règles et étiquettes */
+.tag-list, .tag-pick, .rule-list { display: grid; gap: 8px; margin: 10px 0 12px; }
+.tag-list li, .rule-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); }
+.rule-text { font: 500 13.5px/1.45 var(--font); color: var(--text-2); }
+.rule-text b { color: var(--text); font-weight: 650; }
+.rule-form { display: flex; gap: 8px; align-items: center; }
+.rule-form .input { height: 40px; }
+.rule-form--grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, 1.2fr) auto; align-items: end; }
+@media (max-width: 759.98px) { .rule-form--grid { grid-template-columns: minmax(0, 1fr); } }
+.icon-btn--sm { min-width: 32px; min-height: 32px; width: 32px; height: 32px; }
+.tag-pick .check { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); align-items: center; }
+.tag-pick .check-text > span { display: inline-flex; align-items: center; gap: 8px; }
+
+/* Installation de l'application (onglets sans curseur glissant : 3 choix) */
+.install-tabs { display: flex; width: 100%; margin-bottom: 16px; }
+.install-tabs .seg-btn { flex: 1; border-radius: 9px; }
+.install-tabs .seg-btn[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1, 0 1px 2px rgba(0,0,0,.08)); }
+.install-steps { display: grid; gap: 10px; counter-reset: step; }
+.install-steps li {
+  position: relative; display: grid; gap: 3px; padding: 12px 14px 12px 50px; border-radius: 14px;
+  background: var(--surface-2); border: 1px solid var(--line); counter-increment: step;
+}
+.install-steps li::before {
+  content: counter(step); position: absolute; left: 14px; top: 12px; display: grid; place-items: center;
+  width: 24px; height: 24px; border-radius: 50%; background: var(--brand); color: var(--brand-ink); font: 700 12px/1 var(--font);
+}
+.install-steps b { font: 650 14.5px/1.3 var(--font); }
+.install-steps span { font: 450 13px/1.45 var(--font); color: var(--text-2); }
+.install-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+
+/* Administration : fréquentation (barres en CSS, valeurs posées par le CSSOM) */
+.adm-stat-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.adm-stat-kpis .kpi { display: grid; gap: 4px; cursor: default; }
+.adm-stat-kpis .kpi > span { font: 600 12.5px/1.2 var(--font); color: var(--text-3); }
+.adm-stat-kpis .kpi small { font: 500 12px/1.3 var(--font); color: var(--text-3); }
+.adm-st-title { font: 650 12px/1 var(--font); letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); margin-top: 6px; }
+.adm-bars { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: end; gap: 6px; height: 180px; padding: 8px 0 0; }
+.adm-bars--days { gap: 3px; height: 160px; }
+.adm-bar { display: grid; grid-template-rows: auto 1fr auto; justify-items: center; gap: 4px; height: 100%; min-width: 0; }
+.adm-bar b { font: 650 11px/1 var(--font); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.adm-bar i { align-self: end; width: 100%; max-width: 46px; height: calc(var(--v, 0) * 100%); min-height: 2px; border-radius: 6px 6px 2px 2px; background: var(--brand); }
+.adm-bar span { font: 600 11px/1 var(--font); color: var(--text-3); }
+.adm-bars--days .adm-bar b { display: none; }
+.adm-bars--days .adm-bar:hover b { display: block; }
+@media (max-width: 759.98px) { .adm-stat-kpis { grid-template-columns: minmax(0, 1fr); } .adm-bars--days .adm-bar span { font-size: 9px; } }
+.fb-github { margin: 4px 22px 20px; }
+
+/* Resto U' sans menu publié : pointillés, fond transparent (le clic reste possible). */
+.ev--crous.is-unpublished {
+  background: transparent; box-shadow: none;
+  border: 1.5px dashed color-mix(in srgb, var(--crous) 45%, transparent); border-left-width: 1.5px;
+}
+.ev--crous.is-unpublished .crous-badge { background: transparent; color: var(--crous); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--crous) 45%, transparent); }
+.ev--crous.is-unpublished .crous-when, .ev--crous.is-unpublished .ev-title { opacity: .75; }
+@container ev (min-width: 330px) { .ev--crous .ev-in { justify-content: flex-start; align-items: center; } }

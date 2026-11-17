@@ -20,6 +20,11 @@ import { createMoodle } from './ui/moodle.js';
 import { setupMenus, setupBento, setupIcal, anyMenuOpen, closeMenus, modal } from './ui/layout.js';
 import { createComposer } from './ui/composer.js';
 import { createCourseSheet } from './ui/course.js';
+import { createCrousSheet, menus as crousMenus } from './ui/crous.js';
+import { setupMailRules } from './ui/mailrules.js';
+import { setupInstall } from './ui/install.js';
+import { countVisit } from './core/stats.js';
+import { initMailPrefs, resetMailPrefs } from './core/mailprefs.js';
 import { setupFeedback } from './ui/feedback.js';
 import { fetchContent, renderLinks } from './ui/content.js';
 import { setupTransparency, versionLabel } from './ui/transparency.js';
@@ -49,6 +54,8 @@ jar.onchange = () => vault.save(jar.toJSON());
 state.signedIn = hasCasSession(jar);
 // Cache des portails (Moodle par matière…), chiffré comme la session ; vide sans session.
 initCache(state.signedIn ? await vault.loadCache() : {}, (entries) => vault.saveCache(entries));
+// Étiquettes et règles des mails : chiffrées sur l'appareil.
+await initMailPrefs(vault);
 
 // Le moteur TLS (1,4 Mo) se charge dès maintenant, pendant que l'écran s'affiche.
 ready().catch(() => {});
@@ -145,6 +152,8 @@ let courses;
 let composer;
 let courseSheet;
 let dashboardReady = false;
+let install;
+let bento;
 
 function setupDashboard() {
   if (dashboardReady) return;
@@ -153,6 +162,7 @@ function setupDashboard() {
     app,
     matcher,
     onOpen: (ev) => courseSheet.open(ev),
+    onLunch: (day) => crousSheet.open(day),
     onData: () => {
       // Les séances à venir servent aussi à Moodle (cours mis en avant).
       if (state.signedIn) matcher.resolve(schedule.upcoming(new Date(), 21), () => courses.refresh());
@@ -167,11 +177,17 @@ function setupDashboard() {
     isSignedIn: () => state.signedIn,
     promo: () => state.promo,
     onWrite: ({ name, subject }) => composer.open({ subject, body: 'Bonjour,\n\n', focusRecipient: name }),
+    onEvalChange: () => schedule.rerender(),
   });
+  const crousSheet = createCrousSheet();
+  // Menus du Resto U' : dès qu'ils sont connus, les blocs du midi indiquent s'il y a un menu.
+  crousMenus().then((m) => m && schedule.rerender());
+  setupMailRules({ onRuleAdded: () => mails.applyRulesNow() });
+  install = setupInstall();
   $$('[data-compose]').forEach((b) => b.addEventListener('click', () => composer.open()));
   courses = createMoodle({ matcher, schedule, onSessionLost: sessionLost, onLogin: openLogin });
   setupMenus();
-  const bento = setupBento();
+  bento = setupBento();
   fetchContent().then((content) => {
     renderLinks(content);
     bento.refresh();
@@ -195,6 +211,9 @@ async function enterDashboard(promoChanged = true) {
   setupDashboard();
   renderHeader();
   show('dash');
+  requestAnimationFrame(() => bento.syncDock()); // onglet du bas : la tuile en haut de l'écran
+  setTimeout(() => bento.syncDock(), 300);
+  countVisit();
   if (promoChanged || !schedule.started) {
     schedule.started = true;
     schedule.start(state.promo, state.choice);
@@ -206,6 +225,7 @@ async function enterDashboard(promoChanged = true) {
     mails.load();
     courses.load();
     if (!prefs.get('tourDone')) setTimeout(() => !document.querySelector('dialog[open]') && state.screen === 'dash' && startTour(app), 1200);
+    install.maybeOffer(); // après la visite guidée : installer l'application sur le téléphone
   } else {
     mails.showSignedOut(false);
     courses.showSignedOut(false);
@@ -247,6 +267,8 @@ async function logout() {
     jar.clear(); // le CAS injoignable n'empêche pas d'oublier la session ici
   }
   vault.clear();
+  vault.forgetMailPrefs(); // se déconnecter efface aussi étiquettes et règles de cet appareil
+  resetMailPrefs();
   clearCache();
   moodle.reset();
   mail.reset();

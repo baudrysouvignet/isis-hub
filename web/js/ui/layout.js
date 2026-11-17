@@ -124,7 +124,6 @@ export function setupBento() {
 
   render(false);
   setTimeout(() => bento.classList.add('is-ready'), 900);
-  return { refresh: () => render(false) };
   desktopMQ.addEventListener('change', () => render(false));
   $$('[data-show-tile]').forEach((c) =>
     c.addEventListener('change', () => {
@@ -150,20 +149,66 @@ export function setupBento() {
     render(false);
   });
 
-  // Barre d'onglets (téléphone) : suit la tuile visible.
+  // Barre d'onglets (téléphone) : l'onglet touché s'allume tout de suite, puis l'onglet suit la
+  // tuile qui occupe le milieu de l'écran pendant le défilement.
   const dockLinks = $$('.dock a');
-  const io = new IntersectionObserver(
-    (entries) => {
-      for (const en of entries) {
-        if (en.isIntersecting) dockLinks.forEach((a) => a.setAttribute('aria-current', String(a.getAttribute('href') === `#${en.target.id}`)));
-      }
-    },
-    { rootMargin: '-45% 0px -50% 0px' },
+  let pinned = 0; // pendant le défilement lancé par un onglet, l'onglet actif ne bouge pas
+  const setCurrent = (id) => dockLinks.forEach((a) => a.setAttribute('aria-current', String(a.getAttribute('href') === `#${id}`)));
+  const targets = () =>
+    dockLinks
+      .filter((a) => !a.hidden)
+      .map((a) => document.querySelector(a.getAttribute('href')))
+      .filter((t) => t && !t.hidden);
+  dockLinks.forEach((a) =>
+    a.addEventListener('click', (e) => {
+      const t = document.querySelector(a.getAttribute('href'));
+      if (!t) return;
+      e.preventDefault();
+      setCurrent(t.id);
+      pinned = Date.now() + 1000;
+      t.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' });
+    }),
   );
-  dockLinks.forEach((a) => {
-    const t = document.querySelector(a.getAttribute('href'));
-    if (t) io.observe(t);
-  });
+  const pick = () => {
+    if (Date.now() < pinned) return;
+    const mid = innerHeight / 2;
+    let best = null;
+    let dist = Infinity;
+    for (const t of targets()) {
+      const r = t.getBoundingClientRect();
+      const d = r.top <= mid && r.bottom >= mid ? 0 : Math.min(Math.abs(r.top - mid), Math.abs(r.bottom - mid));
+      if (d < dist) [best, dist] = [t, d];
+    }
+    // Tout en bas d'une page qui défile, la dernière tuile l'emporte même si elle est courte.
+    const root = document.documentElement;
+    if (root.scrollHeight > innerHeight + 40 && innerHeight + scrollY >= root.scrollHeight - 4) best = targets().pop() ?? best;
+    if (best) setCurrent(best.id);
+  };
+  // Au plus une mesure toutes les 100 ms pendant le défilement, plus une à l'arrêt.
+  let last = 0;
+  let trailing = 0;
+  addEventListener(
+    'scroll',
+    () => {
+      clearTimeout(trailing);
+      if (Date.now() - last > 100) {
+        last = Date.now();
+        pick();
+      }
+      trailing = setTimeout(pick, 140);
+    },
+    { passive: true },
+  );
+  addEventListener('scrollend', () => ((pinned = 0), pick()));
+
+  return {
+    refresh: () => {
+      render(false);
+      pick();
+    },
+    /** À appeler quand le tableau de bord devient visible. */
+    syncDock: pick,
+  };
 }
 
 // ----------------------------------------------------------- fiches modales
