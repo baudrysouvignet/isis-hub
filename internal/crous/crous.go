@@ -22,8 +22,16 @@ const (
 	croustillantURL = "https://api.croustillant.menu/v1/restaurants/117/menu"
 	crousURL        = "https://www.crous-toulouse.fr/restaurant/resto-u-castres/"
 	ttl             = 12 * time.Hour
+	retry           = 30 * time.Minute // menu du jour pas encore connu : on relit toutes les 30 minutes
 	keep            = 21 * 24 * time.Hour
 )
+
+var paris = func() *time.Location {
+	if loc, err := time.LoadLocation("Europe/Paris"); err == nil {
+		return loc
+	}
+	return time.FixedZone("CET", 3600)
+}()
 
 // Category : une rubrique du menu (Entrées, Plats, Desserts…) et ses plats.
 type Category struct {
@@ -45,12 +53,13 @@ type Service struct {
 	menus    Menus
 	fetched  time.Time
 	sources  []func(ctx context.Context) (map[string][]Category, string, error)
+	now      func() time.Time
 	BaseCrou string
 	BaseAPI  string
 }
 
 func New() *Service {
-	s := &Service{client: &http.Client{Timeout: 15 * time.Second}, BaseAPI: croustillantURL, BaseCrou: crousURL}
+	s := &Service{client: &http.Client{Timeout: 15 * time.Second}, BaseAPI: croustillantURL, BaseCrou: crousURL, now: time.Now}
 	s.menus = Menus{Restaurant: "Resto U' Castres", Days: map[string][]Category{}}
 	s.sources = []func(context.Context) (map[string][]Category, string, error){s.fromCroustillant, s.fromCrous}
 	return s
@@ -182,11 +191,15 @@ func (s *Service) fromCrous(ctx context.Context) (map[string][]Category, string,
 	return days, "CROUS Toulouse", nil
 }
 
-// Get rend les menus connus, relus au plus toutes les 12 heures.
+// Get rend les menus connus. Relus au plus toutes les 12 heures quand le menu du jour est connu ;
+// sinon toutes les 30 minutes (le CROUS le publie le matin même : une lecture de la veille ne suffit
+// pas, c'était la cause des « menu non publié » du jour).
 func (s *Service) Get(ctx context.Context) Menus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if time.Since(s.fetched) >= ttl {
+	today := s.now().In(paris).Format("2006-01-02")
+	age := s.now().Sub(s.fetched)
+	if _, ok := s.menus.Days[today]; age >= ttl || (!ok && age >= retry) {
 		for _, src := range s.sources {
 			days, name, err := src(ctx)
 			if err != nil {
@@ -195,15 +208,12 @@ func (s *Service) Get(ctx context.Context) Menus {
 			for d, m := range days {
 				s.menus.Days[d] = m
 			}
-			s.menus.Source, s.menus.Updated = name, time.Now().UTC().Truncate(time.Second)
-			s.fetched = time.Now()
+			s.menus.Source, s.menus.Updated = name, s.now().UTC().Truncate(time.Second)
 			break
 		}
-		if s.fetched.IsZero() || time.Since(s.fetched) >= ttl {
-			// Aucune source : on réessaiera dans 30 minutes, en gardant ce qui est connu.
-			s.fetched = time.Now().Add(-ttl + 30*time.Minute)
-		}
-		limit := time.Now().Add(-keep).Format("2006-01-02")
+		// Réussite ou non, la prochaine lecture attend au moins 30 minutes (12 h si le jour est connu).
+		s.fetched = s.now()
+		limit := s.now().Add(-keep).Format("2006-01-02")
 		for d := range s.menus.Days {
 			if d < limit {
 				delete(s.menus.Days, d)

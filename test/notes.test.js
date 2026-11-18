@@ -276,3 +276,10 @@ test('notes : semestre en cours choisi par l’étudiant, examens de l’emploi 
   const course = G.course('A4-1-BDA-1');
   assert.ok(course.evals.some((x) => x.proposal && x.date === '2027-01-12'), 'visible dans la fiche du cours');
 });
+
+test('import : maquette par parcours (FIE4:ia)', () => {
+  const sem = { id: 'S7', label: 'Semestre 7', ues: [{ id: '7.1', name: 'IA', coef: 3, matieres: [{ name: 'ML', coef: 2, evals: [] }] }] };
+  const out = normalizeImport({ FIE4: { semesters: [sem] }, 'FIE4:ia': { semesters: [sem] } });
+  assert.deepEqual(Object.keys(out), ['FIE4', 'FIE4:ia']);
+  assert.throws(() => normalizeImport({ 'FIE4:IA': { semesters: [sem] } }), /parcours/);
+});

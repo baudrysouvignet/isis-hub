@@ -305,7 +305,7 @@ async function enterDashboard(promoChanged = true) {
   if (promoChanged || !schedule.started) {
     schedule.started = true;
     schedule.start(state.promo, state.choice);
-    notes.load(state.promo);
+    notes.load(state.promo, state.choice);
   }
   notes.refresh();
   if (state.signedIn) {
@@ -363,7 +363,7 @@ async function logout() {
   UD.disconnect({ wipeLocal: true });
   vault.forgetSync();
   resetMailPrefs();
-  notes?.load(state.promo);
+  notes?.load(state.promo, state.choice);
   clearCache();
   moodle.reset();
   mail.reset();
@@ -389,7 +389,7 @@ $$('[data-erase-data]').forEach((b) =>
     try {
       await UD.eraseEverywhere();
       vault.forgetSync();
-      notes?.load(state.promo);
+      notes?.load(state.promo, state.choice);
       schedule?.rerender();
       toast('Tes données sauvegardées ont été effacées.', 'check');
     } catch (err) {

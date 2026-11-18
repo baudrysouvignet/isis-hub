@@ -1152,3 +1152,53 @@ details[open] > .gr-sum .gr-chev { transform: rotate(90deg); }
 .nv-year-l .is-now .nv-year-b { border-color: var(--brand); }
 .nv-finish { display: grid; gap: 8px; justify-items: start; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .nv-finish-h { font: 500 12px/1.4 var(--font); color: var(--text-3); }
+
+/* Messagerie plein écran : outils (sélection, tout marquer comme lu) */
+.mail-tools { display: none; }
+.tile--mail.is-expanded .mail-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; flex: none; margin: -4px 0 8px; }
+.mail-filters[hidden] + .mail-tools { display: none !important; }
+.mail-tools .btn { height: 32px; }
+.mail-tools-n { font: 650 13px/1 var(--font); color: var(--text); padding: 0 6px; }
+.mail-tools .spacer { flex: 1; }
+.tile--mail.is-selecting .mail-tools { padding: 6px; border-radius: 12px; background: var(--brand-soft); }
+.mail-split .tile--mail.is-expanded.is-selecting .mail-tools .btn { padding: 0 8px; font-size: 12.5px; }
+.tile--mail.is-selecting .mail-row .avatar { position: relative; background: var(--surface); color: transparent; box-shadow: inset 0 0 0 1.5px var(--line-2); }
+.tile--mail.is-selecting .mail-row.is-picked { background: var(--brand-soft); }
+.tile--mail.is-selecting .mail-row.is-picked .avatar { background: var(--brand); box-shadow: none; }
+.tile--mail.is-selecting .mail-row.is-picked .avatar::after {
+  content: ""; position: absolute; left: 50%; top: 45%; width: 6px; height: 11px; margin: -6px 0 0 -3px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+
+/* Tuile Mails : en-tête toujours sur une ligne, quel que soit le nombre de mails */
+.tile--mail .tile-head { flex-wrap: nowrap; gap: 6px; min-width: 0; }
+.tile--mail .tile-title { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.tile--mail .tile-title h2 { flex: none; }
+.tile--mail .tile-title .chip.sync { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; }
+.tile--mail:not(.is-expanded) .tile-link .label-md { display: none; }
+.tile--mail .count { flex: none; }
+@container (max-width: 360px) { .tile--mail .tile-title .chip.sync { display: none; } }
+
+/* Menus (Affichage, compte) : jamais coupés, ni en hauteur ni en largeur */
+.menu { max-height: calc(100dvh - var(--head-h) - 20px); overflow-y: auto; overscroll-behavior: contain; max-width: calc(100vw - 24px); }
+@supports not (height: 100dvh) { .menu { max-height: calc(100vh - var(--head-h) - 20px); } }
+@media (max-width: 759.98px) {
+  .menu { position: fixed; top: calc(var(--head-h) + 8px); left: 12px; right: 12px; min-width: 0; }
+}
+
+/* Fiche d'un cours : mes notes de cours */
+.cs-memo-text { min-height: 104px; resize: vertical; font: 450 14px/1.5 var(--font); padding: 10px 12px; }
+.cs-memo-text:disabled { background: var(--sunken); }
+.cs-memo-foot { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; font: 500 12px/1.35 var(--font); color: var(--text-3); }
+.cs-memo-foot span:last-child { font-variant-numeric: tabular-nums; flex: none; }
+/* Administration : parcours sous leur classe */
+.gr-class { min-width: 0; }
+.gr-class b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.gr-class.is-track { margin-left: 14px; padding-left: 12px; border-left: 2px solid var(--line); border-radius: 0 12px 12px 0; }
+.gr-class.is-track { grid-template-areas: "k k" "s p"; }
+.gr-class.is-track b { white-space: normal; font-size: 13.5px; line-height: 1.25; }
+
+/* Messagerie : « Sélectionner » et « Tout marquer comme lu » dans l'en-tête, en plein écran seulement */
+.tile--mail:not(.is-expanded) .mail-head-tool { display: none; }
+.mail-head-tool[aria-pressed="true"] { background: var(--brand-soft); color: var(--brand); }
+.tile--mail.is-expanded .mail-tools[hidden] { display: none; }

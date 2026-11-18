@@ -69,14 +69,19 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
       return;
     }
     const y = Number(D.todayKey().slice(0, 4)) - (Number(D.todayKey().slice(5, 7)) < 8 ? 1 : 0); // année universitaire
-    N = createGrades(def, { saved: savedFor(promo), current: savedFor(promo)?.current, today: D.todayKey(), year: `${promo} · ${y}-${y + 1}` });
+    N = createGrades(def, { saved: savedFor(promo), current: savedFor(promo)?.current, today: D.todayKey(), year: `${promo.split(':')[0]} · ${y}-${y + 1}` });
     if (adeExams) N.setAdeExams(adeExams);
     if (!N.semById(semId)) semId = N.currentSem().id;
   }
 
-  async function load(newPromo) {
-    promo = newPromo;
+  /**
+   * Classe et options de l'étudiant → maquette : celle de son parcours (« FIE4:ia ») si elle
+   * existe, sinon celle de la classe. Les notes sont rangées sous cette même clé.
+   */
+  async function load(newPromo, choice = {}) {
     const book = await loadBook();
+    const trackKey = choice?.track ? `${newPromo}:${choice.track}` : null;
+    promo = trackKey && book?.[trackKey] ? trackKey : newPromo;
     const entry = book?.[promo] ?? null;
     waitMessage = entry?.disabled ? entry.message || '' : '';
     def = entry && !entry.disabled && entry.semesters?.length ? entry : null;

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 const apiSample = `{"success":true,"data":[{"code":1,"date":"17-11-2026","repas":[{"code":2,"type":"midi","categories":[
@@ -61,5 +62,54 @@ func TestNoSource(t *testing.T) {
 	s.BaseAPI, s.BaseCrou = down.URL, down.URL
 	if m := s.Get(context.Background()); len(m.Days) != 0 {
 		t.Fatal("sans source, aucun menu")
+	}
+}
+
+func TestTodayRefetchedUntilPublished(t *testing.T) {
+	served := `{"success":true,"data":[{"date":"17-11-2026","repas":[{"type":"midi","categories":[{"libelle":"Plats","ordre":1,"plats":[{"libelle":"Hier","ordre":1}]}]}]}]}`
+	calls := 0
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.Write([]byte(served)) }))
+	defer api.Close()
+	s := New()
+	s.BaseAPI = api.URL
+	clock := time.Date(2026, 11, 17, 18, 0, 0, 0, paris)
+	s.now = func() time.Time { return clock }
+	s.Get(context.Background()) // la veille au soir : menu du 17
+	clock = time.Date(2026, 11, 18, 7, 0, 0, 0, paris)
+	served = `{"success":true,"data":[{"date":"18-11-2026","repas":[{"type":"midi","categories":[{"libelle":"Plats","ordre":1,"plats":[{"libelle":"Lasagnes","ordre":1}]}]}]}]}`
+	m := s.Get(context.Background()) // 13 h plus tard mais pas de menu du 18 : relu
+	if calls != 2 || m.Days["2026-11-18"][0].Dishes[0] != "Lasagnes" {
+		t.Fatalf("menu du jour non relu : %d appels, %+v", calls, m.Days)
+	}
+	clock = clock.Add(10 * time.Minute)
+	s.Get(context.Background())
+	if calls != 2 {
+		t.Fatal("menu du jour connu : pas de nouvelle lecture avant 12 h")
+	}
+}
+
+func TestTodayMissingRetriedEvery30Minutes(t *testing.T) {
+	calls := 0
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Write([]byte(`{"success":true,"data":[]}`))
+	}))
+	defer api.Close()
+	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(404) }))
+	defer page.Close()
+	s := New()
+	s.BaseAPI, s.BaseCrou = api.URL, page.URL
+	clock := time.Date(2026, 11, 18, 8, 0, 0, 0, paris)
+	s.now = func() time.Time { return clock }
+	s.Get(context.Background())
+	clock = clock.Add(10 * time.Minute)
+	s.Get(context.Background())
+	if calls != 1 {
+		t.Fatalf("relu trop tôt : %d", calls)
+	}
+	clock = clock.Add(25 * time.Minute)
+	s.Get(context.Background())
+	if calls != 2 {
+		t.Fatalf("pas relu après 30 minutes : %d", calls)
 	}
 }

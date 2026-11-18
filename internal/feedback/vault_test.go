@@ -218,3 +218,20 @@ func TestGradesDisabledStaysPrivate(t *testing.T) {
 		t.Fatalf("brouillon lisible sans session : %d", rec.Code)
 	}
 }
+
+func TestGradesPerTrack(t *testing.T) {
+	dir := t.TempDir()
+	content, _ := OpenContent(dir, calendar.Data{})
+	if err := content.SetGrades("FIE4:ia", sampleGrades()); err != nil {
+		t.Fatalf("maquette de parcours refusée : %v", err)
+	}
+	for _, bad := range []string{"FIE4:", "FIE4:IA", "FIE4:../x", "fie4:ia", "FIE4:ia:x"} {
+		if err := content.SetGrades(bad, sampleGrades()); err == nil {
+			t.Fatalf("clé %q acceptée", bad)
+		}
+	}
+	again, err := OpenContent(dir, calendar.Data{})
+	if err != nil || len(again.Grades()["FIE4:ia"].Semesters) != 1 {
+		t.Fatalf("relecture : %v", err)
+	}
+}

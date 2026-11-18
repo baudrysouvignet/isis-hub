@@ -58,8 +58,9 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
 
   function setUnread(n) {
     unread = Math.max(0, n);
+    queueMicrotask(() => renderTools()); // « Tout marquer comme lu (n) »
     for (const b of badges()) {
-      b.textContent = String(unread);
+      b.textContent = unread > 99 ? '99+' : String(unread); // l'en-tête de la tuile reste sur une ligne
       b.setAttribute('aria-label', `${unread} non lus`);
       b.hidden = unread === 0;
     }
@@ -210,6 +211,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
     append(keep);
     $$('.mail-row.is-new', list).forEach((r) => r.classList.remove('is-new'));
     filter();
+    if (selecting()) paintPicks();
   }
 
   function endOfList() {
@@ -245,6 +247,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
     try {
       const batch = await withRules(await mail.getMails(ids.slice(mails.length, mails.length + PAGE), box));
       if (gen !== generation) return;
+      if (narrowedNow()) searchBudget -= batch.length;
       append(batch);
       if (mails.length > PAGE) live.textContent = `${batch.length} mails plus anciens chargés, ${mails.length} au total.`;
       if (mails.length >= ids.length) endOfList();
@@ -255,7 +258,8 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
     } finally {
       loading = false;
       // si la fin de liste est encore visible, on continue
-      if (gen === generation && list && mails.length < ids.length && more.getBoundingClientRect().top < list.getBoundingClientRect().bottom + 240) {
+      const room = list && more.getBoundingClientRect().top < list.getBoundingClientRect().bottom + 240;
+      if (gen === generation && list && mails.length < ids.length && room && (!narrowedNow() || searchBudget > 0)) {
         setTimeout(loadMore, 0);
       }
     }
@@ -263,6 +267,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
 
   async function load() {
     const gen = ++generation;
+    if (selecting()) setSelecting(false);
     list = null;
     chrome(false);
     renderFilters();
@@ -334,6 +339,13 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
   // --------------------------------------------------------- recherche et étiquette
 
   const norm = (t) => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  // Recherche : les mails plus anciens se chargent tout seuls jusqu'à MIN_RESULTS résultats
+  // (au plus SEARCH_BUDGET mails par recherche), puis au défilement, comme la liste normale.
+  const MIN_RESULTS = 20;
+  const SEARCH_BUDGET = 400;
+  let searchBudget = 0;
+  let lastQuery = '';
+  const narrowedNow = () => Boolean(searchInput.value.trim()) || Boolean(tagFilter);
   function filter() {
     if (!list) return;
     const q = norm(searchInput.value.trim());
@@ -348,23 +360,36 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
       if (ok) n++;
     }
     $$('.mail-sep', tile).forEach((x) => (x.hidden = narrowed));
-    if (more) more.hidden = narrowed;
+    const key = `${q}|${tagFilter ?? ''}`;
+    if (key !== lastQuery) {
+      lastQuery = key;
+      searchBudget = narrowed ? SEARCH_BUDGET : 0;
+    }
+    const left = ids.length - mails.length;
+    // La fin de liste reste visible pendant la recherche : défiler charge les mails plus anciens.
+    if (more) more.hidden = false;
+    if (narrowed && n < MIN_RESULTS && left > 0 && searchBudget > 0 && !loading) setTimeout(loadMore, 0);
     // La recherche montre tous les résultats ; une fois effacée, on revient à l'état choisi.
     tile.classList.toggle('is-more', narrowed || expandedMore || expanded());
     searchCount.textContent = narrowed ? `${n} résultat${n > 1 ? 's' : ''}` : '';
-    noResult.hidden = !narrowed || n > 0;
-    if (narrowed && n === 0) {
-      const left = ids.length - mails.length;
+    const searching = narrowed && left > 0 && searchBudget > 0 && n < MIN_RESULTS;
+    const exhausted = narrowed && left > 0 && searchBudget <= 0;
+    noResult.hidden = !narrowed || (n > 0 && !exhausted);
+    if (!noResult.hidden) {
       const what = q ? `« ${searchInput.value.trim()} »` : `l’étiquette « ${MP.tagById(tagFilter)?.name ?? ''} »`;
       noResult.replaceChildren(
-        `Aucun des ${mails.length} mails chargés ne correspond à ${what}.`,
-        left > 0 ? h('br') : '',
-        left > 0 ? h('button.linklike', { type: 'button', text: `Chercher aussi dans les ${Math.min(left, 100)} suivants`, on: { click: searchOlder } }) : '',
+        searching
+          ? h('span', {}, h('span.spinner'), ` Recherche de ${what} dans les mails plus anciens (${mails.length} sur ${ids.length})…`)
+          : n === 0
+            ? `Aucun des ${mails.length} mails chargés ne correspond à ${what}.`
+            : `${n} résultat${n > 1 ? 's' : ''} dans les ${mails.length} mails chargés.`,
+        exhausted ? h('br') : '',
+        exhausted ? h('button.linklike', { type: 'button', text: `Chercher aussi dans les ${Math.min(left, SEARCH_BUDGET)} suivants`, on: { click: searchOlder } }) : '',
       );
     }
   }
-  async function searchOlder() {
-    for (let i = 0; i < 5 && mails.length < ids.length; i++) await loadMore();
+  function searchOlder() {
+    searchBudget = SEARCH_BUDGET;
     filter();
   }
   searchInput.addEventListener('input', filter);
@@ -461,7 +486,6 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
     const av = $('[data-r="avatar"]', reader);
     av.textContent = initials(m.from.name || m.from.address || '?');
     av.className = `avatar ${avatarClass(m.from.address || m.from.name || '?')}`;
-    $('[data-reader-open]', reader).href = m.url;
     readerMode();
     renderReaderTags();
     stepButtons();
@@ -549,6 +573,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
 
   function collapseMail() {
     if (!expanded()) return;
+    if (selecting()) setSelecting(false); // la sélection n'existe qu'en plein écran
     if (!reader.hidden) {
       reader.hidden = true;
       reader.classList.toggle('is-docked', false);
@@ -711,7 +736,9 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
 
   tile.addEventListener('click', (e) => {
     const row = e.target.closest('[data-mail]');
-    if (row) open(Number(row.dataset.mail));
+    if (!row) return;
+    if (selecting()) togglePick(Number(row.dataset.mail), e.shiftKey);
+    else open(Number(row.dataset.mail));
   });
   $$('[data-reader-close]', reader).forEach((b) => b.addEventListener('click', close));
   $$('[data-reader-step]', reader).forEach((b) =>
@@ -748,9 +775,16 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
 
   const tagsDialog = $('dialog[data-tags-sheet]');
   const tagsSheet = modal(tagsDialog);
+  let tagTargets = [];
+  function openTags(targets) {
+    tagTargets = targets;
+    renderTagPick();
+    tagsSheet.open();
+  }
   function renderTagPick() {
-    const m = mails[current];
-    const on = new Set(m ? MP.tagsOf(m).map((t) => t.id) : []);
+    const targets = tagTargets.filter(Boolean);
+    // Coché si tous les mails visés ont l'étiquette.
+    const on = new Set(MP.tags().filter((t) => targets.length && targets.every((m) => MP.tagsOf(m).some((x) => x.id === t.id))).map((t) => t.id));
     const pick = $('[data-tag-pick]', tagsDialog);
     pick.replaceChildren(
       ...(MP.tags().length
@@ -761,7 +795,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
               h(
                 'label.check',
                 {},
-                h('input', { type: 'checkbox', checked: on.has(t.id), on: { change: (e) => m && MP.setTag(m, t.id, e.target.checked) } }),
+                h('input', { type: 'checkbox', checked: on.has(t.id), on: { change: (e) => targets.forEach((m) => MP.setTag(m, t.id, e.target.checked)) } }),
                 h('span.check-box', { attrs: { 'aria-hidden': 'true' } }),
                 h('span.check-text', {}, h('span', {}, h('i.mdot', { class: `mtag--${t.color}` }), t.name)),
               ),
@@ -770,22 +804,163 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
         : [h('li.cs-none', { text: 'Aucune étiquette pour l’instant : crée la première ci-dessous.' })]),
     );
   }
-  $('[data-mail-tag]', reader).addEventListener('click', () => {
-    renderTagPick();
-    tagsSheet.open();
-  });
+  $('[data-mail-tag]', reader).addEventListener('click', () => openTags([mails[current]]));
   $('[data-tag-quick]', tagsDialog).addEventListener('submit', (e) => {
     e.preventDefault();
     const input = $('input', e.currentTarget);
     try {
       const t = MP.addTag(input.value);
-      if (t && mails[current]) MP.setTag(mails[current], t.id, true);
+      if (t) tagTargets.filter(Boolean).forEach((m) => MP.setTag(m, t.id, true));
       input.value = '';
       renderTagPick();
     } catch (err) {
       toast(err.message, 'alert');
     }
   });
+
+
+  // --------------------------------------------- outils de la messagerie plein écran
+  // Une barre discrète sous les filtres : « Sélectionner » et « Tout marquer comme lu ». En mode
+  // sélection, un clic coche un mail (Maj + clic : une plage), et une barre d'actions groupées
+  // apparaît : lus, non lus, étiquettes, corbeille (ou restaurer / supprimer dans la corbeille).
+  const picked = new Set(); // indices dans `mails`
+  let anchor = -1;
+  const tools = h('div.mail-tools', { attrs: { 'aria-label': 'Outils de la messagerie' } });
+  filters.after(tools);
+  const selecting = () => tile.classList.contains('is-selecting');
+  const pickedMails = () => [...picked].sort((a, b) => a - b).map((i) => mails[i]).filter(Boolean);
+
+  // En-tête (plein écran) : « Sélectionner » et « Tout marquer comme lu », en icônes.
+  const selectBtn = $('[data-mail-select]', tile);
+  const readAllBtn = $('[data-mail-readall]', tile);
+  selectBtn.addEventListener('click', () => setSelecting(!selecting()));
+  readAllBtn.addEventListener('click', () => readAll());
+
+  function renderTools() {
+    selectBtn.setAttribute('aria-pressed', String(selecting()));
+    readAllBtn.hidden = !(box === 'inbox' && unread > 0) || selecting();
+    readAllBtn.title = `Tout marquer comme lu (${unread})`;
+    readAllBtn.setAttribute('aria-label', readAllBtn.title);
+    tools.hidden = !selecting();
+    if (!selecting()) {
+      tools.replaceChildren();
+      return;
+    }
+    const n = picked.size;
+    const act = (label, ic, run, cls = '') => h('button.btn.btn--sm', { type: 'button', class: cls, disabled: !n, on: { click: run } }, icon(ic, 'ic ic--sm'), label);
+    tools.replaceChildren(
+      h('span.mail-tools-n', { text: n ? `${n} sélectionné${n > 1 ? 's' : ''}` : 'Coche des mails' }),
+      h('button.btn.btn--sm.btn--ghost', { type: 'button', text: n && n === visibleIdx().length ? 'Tout décocher' : 'Tout cocher', on: { click: toggleAll } }),
+      h('span.spacer'),
+      ...(box === 'trash'
+        ? [act('Restaurer', 'restore', () => bulk('restore')), act('Supprimer', 'trash', () => bulk('destroy'), 'btn--danger-soft')]
+        : [
+            act('Lu', 'eye', () => bulk('read')),
+            act('Non lu', 'eyeOff', () => bulk('unread')),
+            act('Étiquettes', 'tag', () => openTags(pickedMails())),
+            act('Corbeille', 'trash', () => bulk('trash'), 'btn--danger-soft'),
+          ]),
+      h('button.icon-btn.icon-btn--sm', { type: 'button', attrs: { 'aria-label': 'Quitter la sélection' }, title: 'Quitter la sélection', on: { click: () => setSelecting(false) } }, icon('x', 'ic ic--sm')),
+    );
+  }
+  const visibleIdx = () => $$('[data-mail]', tile).filter((r) => !r.parentElement.hidden).map((r) => Number(r.dataset.mail));
+  function paintPicks() {
+    $$('[data-mail]', tile).forEach((r) => {
+      const on = picked.has(Number(r.dataset.mail));
+      r.classList.toggle('is-picked', on);
+      if (selecting()) r.setAttribute('aria-pressed', String(on));
+      else r.removeAttribute('aria-pressed');
+    });
+    renderTools();
+  }
+  function setSelecting(on) {
+    tile.classList.toggle('is-selecting', on);
+    picked.clear();
+    anchor = -1;
+    if (on && !reader.hidden && docked()) {
+      reader.hidden = true;
+      reader.classList.toggle('is-docked', false);
+      markActive(-1);
+    }
+    paintPicks();
+  }
+  function togglePick(i, range) {
+    if (range && anchor >= 0) {
+      const vis = visibleIdx();
+      const [a, b] = [vis.indexOf(anchor), vis.indexOf(i)].sort((x, y) => x - y);
+      vis.slice(a, b + 1).forEach((k) => picked.add(k));
+    } else if (picked.has(i)) picked.delete(i);
+    else picked.add(i);
+    anchor = i;
+    paintPicks();
+  }
+  function toggleAll() {
+    const vis = visibleIdx();
+    if (picked.size === vis.length) picked.clear();
+    else vis.forEach((i) => picked.add(i));
+    paintPicks();
+  }
+
+  async function readAll() {
+    if (!confirm(`Marquer les ${unread} mails non lus de ta boîte de réception comme lus ?`)) return;
+    try {
+      await mail.markAllRead('inbox');
+      mails.forEach((m) => (m.unread = false));
+      setUnread(0);
+      redraw();
+      toast('Tous les mails sont marqués comme lus.', 'check');
+    } catch (err) {
+      if (err instanceof NotSignedIn) return onSessionLost('mail');
+      toast(`Action impossible : ${err.message}`, 'alert');
+    }
+  }
+
+  async function bulk(kind) {
+    const list = pickedMails();
+    if (!list.length) return;
+    if (kind === 'destroy' && !confirm(`Supprimer définitivement ${list.length} mail${list.length > 1 ? 's' : ''} ? Ils ne pourront pas être récupérés.`)) return;
+    tools.classList.add('is-busy');
+    try {
+      if (kind === 'read' || kind === 'unread') {
+        await mail.setSeen(list, kind === 'read');
+        let delta = 0;
+        list.forEach((m) => {
+          if (m.unread === (kind === 'read')) delta += kind === 'read' ? -1 : 1;
+          m.unread = kind === 'unread';
+        });
+        if (box === 'inbox') setUnread(unread + delta);
+        redraw();
+        toast(`${list.length} mail${list.length > 1 ? 's' : ''} marqué${list.length > 1 ? 's' : ''} comme ${kind === 'read' ? 'lu' : 'non lu'}${list.length > 1 ? 's' : ''}.`, 'check');
+      } else {
+        if (kind === 'trash') await mail.moveTo(list, 'trash');
+        if (kind === 'restore') await mail.moveTo(list, 'inbox');
+        if (kind === 'destroy') await mail.destroy(list);
+        const gone = new Set(list.map((m) => m.id));
+        if (box === 'inbox') setUnread(unread - list.filter((m) => m.unread).length);
+        mails = mails.filter((m) => !gone.has(m.id));
+        ids = ids.filter((id) => !gone.has(id));
+        redraw();
+        toast(
+          kind === 'trash' ? `${list.length} mail${list.length > 1 ? 's' : ''} mis à la corbeille.` : kind === 'restore' ? `${list.length} mail${list.length > 1 ? 's' : ''} restauré${list.length > 1 ? 's' : ''}.` : `${list.length} mail${list.length > 1 ? 's' : ''} supprimé${list.length > 1 ? 's' : ''} définitivement.`,
+          'check',
+        );
+        if (!ids.length) load();
+      }
+      picked.clear();
+      paintPicks();
+    } catch (err) {
+      if (err instanceof NotSignedIn) return onSessionLost('mail');
+      toast(`Action impossible : ${err.message}`, 'alert');
+    } finally {
+      tools.classList.toggle('is-busy', false);
+    }
+  }
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && selecting() && !document.querySelector('dialog[open]')) {
+      e.stopPropagation();
+      setSelecting(false);
+    }
+  }, true);
 
   // Toute modification d'étiquettes ou de règles se voit tout de suite.
   MP.onMailPrefs(() => {

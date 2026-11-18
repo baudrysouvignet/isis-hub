@@ -77,11 +77,13 @@ func (g GradeClass) Public() GradeClass {
 	return GradeClass{Disabled: true, Message: msg, Rules: g.Rules, Semesters: []GradeSemester{}}
 }
 
-// GradeBook : classe (FIE4, FIA3…) → maquette de notes.
+// GradeBook : classe (FIE4, FIA3…) ou parcours d'une classe (FIE4:ia) → maquette de notes.
 type GradeBook map[string]GradeClass
 
 var (
 	classKeyRE = regexp.MustCompile(`^[A-Z]{2,5}[0-9]{1,2}$`)
+	// Maquette d'une classe, ou d'un parcours de la classe (FIE4 et FIE5) : « FIE4:ia ».
+	gradeKeyRE = regexp.MustCompile(`^[A-Z]{2,5}[0-9]{1,2}(?::[a-z0-9][a-z0-9-]{0,23})?$`)
 	semIDRE    = regexp.MustCompile(`^[A-Za-z0-9]{1,6}$`)
 	ueIDRE     = regexp.MustCompile(`^[A-Za-z0-9.\-]{1,8}$`)
 	gradeIDRE  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,47}$`)
@@ -195,7 +197,7 @@ func (c *ContentStore) loadGrades() error {
 		return fmt.Errorf("grades.json : %w", err)
 	}
 	for k, g := range book {
-		if !classKeyRE.MatchString(k) {
+		if !gradeKeyRE.MatchString(k) {
 			return fmt.Errorf("grades.json : classe %q invalide", k)
 		}
 		if err := g.Validate(); err != nil {
@@ -220,7 +222,7 @@ func (c *ContentStore) Grades() GradeBook {
 
 // SetGrades enregistre (ou retire, si g est nil) la maquette de notes d'une classe.
 func (c *ContentStore) SetGrades(class string, g *GradeClass) error {
-	if !classKeyRE.MatchString(class) {
+	if !gradeKeyRE.MatchString(class) {
 		return errors.New("classe invalide")
 	}
 	if g != nil {

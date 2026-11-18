@@ -6,7 +6,7 @@
 // La validation complète reste celle du serveur (internal/feedback/grades.go).
 // Aucune note d'étudiant n'est importée : seulement la structure.
 
-const CLASS_RE = /^[A-Z]{2,5}[0-9]{1,2}$/;
+const CLASS_RE = /^[A-Z]{2,5}[0-9]{1,2}(?::[a-z0-9][a-z0-9-]{0,23})?$/; // FIE4, ou FIE4:ia (parcours)
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,47}$/;
 const MONTHS = { 'janv.': 1, janv: 1, janvier: 1, 'févr.': 2, févr: 2, février: 2, mars: 3, 'avr.': 4, avr: 4, avril: 4, mai: 5, juin: 6, 'juil.': 7, juil: 7, juillet: 7, août: 8, 'sept.': 9, sept: 9, septembre: 9, 'oct.': 10, oct: 10, octobre: 10, 'nov.': 11, nov: 11, novembre: 11, 'déc.': 12, déc: 12, décembre: 12 };
 
@@ -85,7 +85,7 @@ export function normalizeImport(json, { currentClass } = {}) {
   const keys = Object.keys(json);
   if (!keys.length) throw new Error('fichier vide');
   const bad = keys.filter((k) => !CLASS_RE.test(k));
-  if (bad.length) throw new Error(`classes invalides : ${bad.slice(0, 3).join(', ')} (attendu ex. FIA4)`);
+  if (bad.length) throw new Error(`classes invalides : ${bad.slice(0, 3).join(', ')} (attendu ex. FIA4, ou FIE4:ia pour un parcours)`);
   if (keys.length > 30) throw new Error('30 classes au plus');
   return Object.fromEntries(keys.map((k) => [k, normalizeClass(json[k], k)]));
 }

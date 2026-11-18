@@ -310,6 +310,25 @@ export async function recentRecipients() {
   return list;
 }
 
+// -------------------------------------------------------------- actions groupées
+
+/** Marque plusieurs mails (d'un même dossier) comme lus ou non lus : drapeau \Seen posé ou retiré. */
+export async function setSeen(mails, seen) {
+  if (!mails.length) return;
+  const uid = mails[0].folder;
+  const body = { itemsId: mails.map((m) => m.id), mailboxItemFlag: SEEN };
+  // IMailboxItems : addFlag en PUT, deleteFlag en POST (API BlueMind 5).
+  if (seen) await api(`mail_items/${uid}/_addFlag`, { method: 'PUT', body });
+  else await api(`mail_items/${uid}/_deleteFlag`, { method: 'POST', body });
+}
+
+/** « Tout marquer comme lu » pour une boîte entière (IMailboxFolders.markFolderAsRead). */
+export async function markAllRead(box = 'inbox') {
+  await folder('INBOX');
+  const f = await folder(BOXES[box]);
+  await api(`${foldersPath()}/markAsRead/${f.id}`, { method: 'PUT' });
+}
+
 // -------------------------------------------------------------- annuaire
 
 const STUDENT_DOMAIN = /@etud\./i;

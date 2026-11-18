@@ -9,7 +9,8 @@
 import * as sync from '../net/sync.js';
 
 // profile : classe et options (groupe, langue, parcours), pour ne plus les redemander sur un autre appareil.
-export const SECTIONS = ['notes', 'evals', 'mail', 'profile'];
+// memos : notes personnelles sur les cours (fiche d'une séance).
+export const SECTIONS = ['notes', 'evals', 'mail', 'profile', 'memos'];
 
 let local = { sections: {} };
 let vault = null;

@@ -64,6 +64,12 @@ export function setupGradesAdmin({ api, getClasses }) {
   let semIdx = 0;
   const opened = new WeakSet(); // UE et matières dépliées
 
+  /** « FIE4:ia » → « FIE4 · Données de santé & IA » (nom du parcours dans la répartition). */
+  const labelOf = (k) => {
+    const [c, t] = String(k).split(':');
+    return t ? `${c} · ${getClasses()?.trackLabels?.[t] ?? t}` : c;
+  };
+  const hasTracks = (k) => Object.keys(getClasses()?.classes?.[String(k).split(':')[0]]?.tracks ?? {}).length > 0;
   const saved = () => JSON.stringify(book[cls] ?? null);
   const dirty = () => JSON.stringify(model) !== saved();
   function touch() {
@@ -78,7 +84,12 @@ export function setupGradesAdmin({ api, getClasses }) {
   // ------------------------------------------------------------ classes
 
   function renderList() {
-    const keys = new Set(Object.keys(getClasses()?.classes ?? {}));
+    // Une entrée par classe, plus une par parcours pour les classes à parcours (FIE4, FIE5).
+    const keys = new Set();
+    for (const [k, c] of Object.entries(getClasses()?.classes ?? {})) {
+      keys.add(k);
+      Object.keys(c.tracks ?? {}).forEach((t) => keys.add(`${k}:${t}`));
+    }
     Object.keys(book).forEach((k) => keys.add(k));
     list.replaceChildren(
       ...[...keys].sort().map((k) => {
@@ -87,10 +98,16 @@ export function setupGradesAdmin({ api, getClasses }) {
         const c = counts(g);
         return h(
           'button.gr-class',
-          { type: 'button', class: k === cls ? 'is-current' : '', attrs: { 'aria-pressed': String(k === cls) }, on: { click: () => choose(k) } },
-          h('b', { text: k }),
+          { type: 'button', class: [k === cls ? 'is-current' : '', k.includes(':') ? 'is-track' : ''].join(' '), attrs: { 'aria-pressed': String(k === cls) }, on: { click: () => choose(k) } },
+          h('b', { text: k.includes(':') ? labelOf(k).split(' · ').slice(1).join(' · ') : k }), // parcours : son nom seul, sous sa classe
           h('span.gr-pill', { class: `is-${st}`, text: k === cls && dirty() ? 'Modifiée' : STATE[st] }),
-          h('small', { text: g ? `${plural(c.ues, 'UE', 'UE')} · ${plural(c.mats, 'matière')}` : 'Aucune maquette' }),
+          h('small', {
+            text: g
+              ? `${plural(c.ues, 'UE', 'UE')} · ${plural(c.mats, 'matière')}`
+              : hasTracks(k) && !k.includes(':')
+                ? 'Commune aux parcours sans maquette'
+                : 'Aucune maquette',
+          }),
         );
       }),
     );
@@ -286,7 +303,20 @@ export function setupGradesAdmin({ api, getClasses }) {
     const head = h(
       'div.gr-head',
       {},
-      h('div', {}, h('h2', { text: cls }), h('p', { text: model ? `${plural(c.sems, 'semestre')} · ${plural(c.ues, 'UE', 'UE')} · ${plural(c.mats, 'matière')} · ${plural(c.evals, 'évaluation')}` : 'Aucune maquette pour cette classe.' })),
+      h(
+        'div',
+        {},
+        h('h2', { text: labelOf(cls) }),
+        h('p', {
+          text: model
+            ? `${plural(c.sems, 'semestre')} · ${plural(c.ues, 'UE', 'UE')} · ${plural(c.mats, 'matière')} · ${plural(c.evals, 'évaluation')}`
+            : cls.includes(':')
+              ? `Aucune maquette pour ce parcours : ses étudiants voient celle de ${cls.split(':')[0]} si elle existe.`
+              : hasTracks(cls)
+                ? 'Aucune maquette commune : chaque parcours peut avoir la sienne.'
+                : 'Aucune maquette pour cette classe.',
+        }),
+      ),
       h(
         'label.gr-toggle',
         { class: `is-${st}` },
@@ -308,7 +338,7 @@ export function setupGradesAdmin({ api, getClasses }) {
         h(
           'div.gr-wait',
           {},
-          h('div.gr-wait-edit', {}, h('span.gf-l', { text: 'Message affiché aux étudiants de ' + cls }), msg, h('small.gf-h', { text: 'Laisse vide pour le message par défaut. La maquette en cours de saisie reste invisible pour eux.' })),
+          h('div.gr-wait-edit', {}, h('span.gf-l', { text: 'Message affiché aux étudiants de ' + labelOf(cls) }), msg, h('small.gf-h', { text: 'Laisse vide pour le message par défaut. La maquette en cours de saisie reste invisible pour eux.' })),
           h('div.gr-wait-show', { attrs: { 'aria-hidden': 'true' } }, h('span.gf-l', { text: 'Aperçu de la tuile Notes' }), h('div.gr-wait-card', {}, icon('clock', 'ic ic--lg'), h('b', { text: 'Tes notes arrivent bientôt' }), preview)),
         ),
       );
@@ -437,7 +467,7 @@ export function setupGradesAdmin({ api, getClasses }) {
           'div.gr-start',
           {},
           icon('chart', 'ic ic--lg'),
-          h('h3', { text: `Pas encore de maquette de notes pour ${cls}` }),
+          h('h3', { text: `Pas encore de maquette de notes pour ${labelOf(cls)}` }),
           h('p', { text: 'Les étudiants voient pour l’instant le message d’attente. Commence la saisie (elle reste invisible tant que les notes sont désactivées), charge l’exemple, ou importe un JSON.' }),
           h(
             'div.gr-start-a',

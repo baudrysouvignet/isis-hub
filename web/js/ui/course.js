@@ -5,6 +5,8 @@ import * as D from '../core/dates.js';
 import * as moodle from '../portals/moodle.js';
 import { modal } from './layout.js';
 import { isEval, toggleEval } from '../core/evals.js';
+import { getMemo, setMemo, memoDate, MAX_CHARS } from '../core/memos.js';
+import * as UD from '../core/userdata.js';
 
 const TYPE_NAME = { CM: 'Cours magistral', TD: 'Travaux dirigés', TP: 'Travaux pratiques' };
 const AHEAD_WEEKS = 8;
@@ -59,30 +61,6 @@ export function createCourseSheet({ notes, schedule, matcher, isSignedIn, onWrit
     add.onclick = mine ? () => (sheet.close(), setTimeout(() => notes.add({ mat: mine.M.id }), 200)) : null;
   }
 
-  async function grades(found, t) {
-    const list = $('[data-cs-notes]', dialog);
-    if (!isSignedIn()) return list.replaceChildren(h('li.cs-none', { text: 'Connecte-toi pour voir tes notes Moodle.' }));
-    if (!found) return list.replaceChildren(h('li.cs-none', { text: 'Pas d’espace Moodle trouvé pour ce cours.' }));
-    list.replaceChildren(h('li.cs-none', {}, h('span.spinner'), ' Lecture du carnet de notes…'));
-    try {
-      const items = await moodle.grades(found.course.id);
-      if (t !== token) return;
-      if (!items.length) return list.replaceChildren(h('li.cs-none', { text: 'Aucune note publiée sur Moodle pour ce cours.' }));
-      list.replaceChildren(
-        ...items.map((g) =>
-          h(
-            'li',
-            {},
-            h('div', {}, h('b', { text: g.name }), h('span', { text: [g.range && `sur ${g.range}`, g.average && `moyenne ${g.average}`, g.percentage].filter(Boolean).join(' · ') })),
-            h('span.cs-grade', { text: g.grade }),
-          ),
-        ),
-        h('li', {}, h('a.sheet-foot-link', { href: moodle.gradesUrl(found.course.id), target: '_blank', rel: 'noopener' }, 'Carnet de notes complet', icon('ext', 'ic ic--xs'))),
-      );
-    } catch (err) {
-      if (t === token) list.replaceChildren(h('li.cs-none', { text: `Notes indisponibles : ${err.message}` }));
-    }
-  }
 
   function renderKicker(ev) {
     $('[data-cs-kicker]', dialog).replaceChildren(
@@ -92,6 +70,7 @@ export function createCourseSheet({ notes, schedule, matcher, isSignedIn, onWrit
     );
     const btn = $('[data-cs-eval]', dialog);
     btn.hidden = ev.exam || !isSignedIn(); // déjà un examen d'après ADE, ou pas connecté (repère sauvegardé)
+    btn.closest('.cs-eval').hidden = btn.hidden;
     btn.setAttribute('aria-pressed', String(isEval(ev)));
     $('span', btn).textContent = isEval(ev) ? 'Marquée comme examen · retirer' : 'Marquer comme examen';
   }
@@ -101,6 +80,43 @@ export function createCourseSheet({ notes, schedule, matcher, isSignedIn, onWrit
     toggleEval(current);
     renderKicker(current);
     onEvalChange?.();
+  });
+
+  // Mes notes de cours : enregistrées pendant la frappe (après une courte pause), en chiffré.
+  const memo = $('[data-cs-memo]', dialog);
+  const memoCount = $('[data-cs-memo-count]', dialog);
+  const memoHint = $('[data-cs-memo-hint]', dialog);
+  const memoState = $('[data-cs-memo-state]', dialog);
+  let memoTimer = 0;
+  let memoFor = null;
+  const memoReady = () => isSignedIn() && UD.isReady();
+  function renderMemo(ev) {
+    clearTimeout(memoTimer);
+    memoFor = ev;
+    const ok = memoReady();
+    memo.disabled = !ok;
+    memo.value = ok ? getMemo(ev) : '';
+    memo.placeholder = ok ? 'Ce qu’on a fait, ce qui reste à revoir, les consignes…' : 'Connecte-toi pour écrire tes notes sur ce cours.';
+    memoCount.textContent = `${memo.value.length} / ${MAX_CHARS}`;
+    const d = ok && memoDate(ev);
+    memoHint.textContent = d ? `Modifiée le ${D.dayShort(d)} · visible seulement par toi, sur tous tes appareils.` : 'Visible seulement par toi, sur tous tes appareils.';
+    memoState.textContent = 'privé, chiffré';
+  }
+  // Fiche fermée pendant la frappe : rien n'est perdu.
+  dialog.addEventListener('close', () => {
+    clearTimeout(memoTimer);
+    if (memoFor && memoReady() && memo.value !== getMemo(memoFor)) setMemo(memoFor, memo.value);
+  });
+  memo.addEventListener('input', () => {
+    memoCount.textContent = `${memo.value.length} / ${MAX_CHARS}`;
+    memoState.textContent = 'enregistrement…';
+    clearTimeout(memoTimer);
+    const ev = memoFor;
+    memoTimer = setTimeout(() => {
+      if (!ev || !memoReady()) return;
+      setMemo(ev, memo.value);
+      memoState.textContent = 'enregistré';
+    }, 600);
   });
 
   async function open(ev) {
@@ -129,7 +145,7 @@ export function createCourseSheet({ notes, schedule, matcher, isSignedIn, onWrit
     const notes = ev.notes.filter((n) => !/^\s*$/.test(n));
     sheet.open();
     myNotes(ev);
-    grades(found, t);
+    renderMemo(ev);
 
     const monday = D.mondayOf(ev.day);
     const today = D.todayKey();
