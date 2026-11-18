@@ -123,7 +123,11 @@ code servi. D'où les moyens de vérification ci-dessous.
   Moyennes par matière, UE, semestre et année, rattrapages repérés (UE sous 10, matière sous 7,
   seuils réglables), « À surveiller » avec la note nécessaire, **mode simulation** (rien n'est
   enregistré) et **Viser une moyenne**. La fiche d'un cours montre les notes de la matière liée
-  par son code ADE.
+  par son code ADE. **Examens de l'emploi du temps** : pour une matière dont le code ADE est saisi,
+  les séances marquées examen (par ADE ou par l'étudiant) datent les évaluations « Examen » sans
+  date et, en plus, apparaissent comme propositions de contrôles (« Examen · EDT »). **Semestre en
+  cours** choisi par chaque étudiant (« Terminer le S7 », réversible), sauvegardé pour tous ses
+  appareils : plus de dates de semestre.
 - **Sauvegarde anonyme et chiffrée** des données créées dans le Hub (notes, séances marquées
   examen, étiquettes et règles de mails) : retrouvées sur tous les appareils. À la connexion, la
   page tire du mot de passe (PBKDF2-SHA-256, 600 000 tours) un identifiant, une preuve et une clé

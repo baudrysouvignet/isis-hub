@@ -1,9 +1,10 @@
 // Exemple de maquette de notes (format accepté par « Importer un JSON »). Une classe :
 //   rules      seuils : moyenne minimale d'une UE, note éliminatoire d'une matière
-//   semesters  1 à 4 semestres : id (court), label, start / end (AAAA-MM-JJ)
+//   semesters  1 à 4 semestres : id (court), label. Chaque étudiant passe au suivant avec
+//              « Terminer le semestre » : aucune date de semestre n'est nécessaire.
 //     ues        id (« 7.1 »), name, coef
 //       matieres   name, coef, code (code ADE, facultatif : lien avec l'emploi du temps)
-//         evals      label, coef, date (AAAA-MM-JJ, « 14/01/2027 » ou « 14 janv. », facultative)
+//         evals      label, coef, date (facultative : sinon prise dans l'emploi du temps par le code)
 // Les « id » des matières et des évaluations sont facultatifs : ils sont créés à l'import.
 // Plusieurs classes d'un coup : { "FIA4": { …comme ci-dessous… }, "FIE5": { … } }.
 
@@ -13,8 +14,6 @@ export const EXAMPLE = {
     {
       id: 'S7',
       label: 'Semestre 7',
-      start: '2026-09-01',
-      end: '2027-01-31',
       ues: [
         {
           id: '7.1',
@@ -56,8 +55,6 @@ export const EXAMPLE = {
     {
       id: 'S8',
       label: 'Semestre 8',
-      start: '2027-02-01',
-      end: '2027-06-30',
       ues: [
         {
           id: '8.1',

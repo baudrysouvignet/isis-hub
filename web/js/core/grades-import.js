@@ -27,8 +27,11 @@ export function isoDate(v, sem) {
   m = /(\d{1,2})\s+([a-zéû.]+)/i.exec(s);
   const mo = m && MONTHS[m[2].toLowerCase()];
   if (!mo) return '';
-  const y0 = Number((sem?.start ?? '').slice(0, 4)) || new Date().getFullYear();
-  const startMonth = Number((sem?.start ?? '').slice(5, 7)) || 9;
+  // Année universitaire : de la date de début du semestre si elle existe, sinon l'année en cours
+  // (août → juillet) ; les mois avant le début appartiennent à l'année civile suivante.
+  const now = new Date();
+  const y0 = Number((sem?.start ?? '').slice(0, 4)) || now.getFullYear() - (now.getMonth() + 1 < 8 ? 1 : 0);
+  const startMonth = Number((sem?.start ?? '').slice(5, 7)) || 8;
   const year = mo < startMonth ? y0 + 1 : y0;
   return `${year}-${String(mo).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
 }
@@ -49,7 +52,6 @@ function normalizeClass(raw, label) {
     semesters: raw.semesters.slice(0, 4).map((S, si) => {
       const id = /^[A-Za-z0-9]{1,6}$/.test(S?.id ?? '') ? S.id : `S${si + 1}`;
       const sem = { id, label: text(S?.label, 40) || `Semestre ${id.replace(/\D/g, '') || si + 1}`, start: isoDate(S?.start), end: isoDate(S?.end) };
-      if (!sem.start || !sem.end) throw new Error(`${label}, ${sem.label} : dates « start » et « end » (AAAA-MM-JJ) obligatoires`);
       sem.ues = (S.ues ?? []).map((U, ui) => ({
         id: /^[A-Za-z0-9.\-]{1,8}$/.test(String(U?.id ?? '')) ? String(U.id) : `${id.replace(/\D/g, '') || si + 1}.${ui + 1}`,
         name: text(U?.name, 120),

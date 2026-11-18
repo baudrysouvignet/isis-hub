@@ -43,11 +43,11 @@ export function createCourseSheet({ notes, schedule, matcher, isSignedIn, onWrit
     const fmt = (v) => String(Math.round(v * 100) / 100).replace('.', ',');
     const items = mine
       ? mine.evals.length
-        ? mine.evals.map(({ e, v }) =>
+        ? mine.evals.map(({ e, v, date, proposal }) =>
             h(
               'li',
               { class: v === null || v === undefined ? 'is-planned' : '' },
-              h('div', {}, h('b', { text: e.label }), h('span', { text: `coef ${fmt(e.coef)}${e.date ? ` · ${e.date.split('-').reverse().slice(0, 2).join('/')}` : ''}` })),
+              h('div', {}, h('b', { text: e.label }), h('span', { text: `${proposal ? 'emploi du temps' : `coef ${fmt(e.coef)}`}${date ? ` · ${date.split('-').reverse().slice(0, 2).join('/')}` : ''}` })),
               h('span.cs-grade', { text: v === null || v === undefined ? 'à venir' : fmt(v) }),
             ),
           )
@@ -91,7 +91,7 @@ export function createCourseSheet({ notes, schedule, matcher, isSignedIn, onWrit
       ev.exam || isEval(ev) ? h('span.exam', {}, icon('alert', 'ic ic--xs'), 'Examen') : '',
     );
     const btn = $('[data-cs-eval]', dialog);
-    btn.hidden = ev.exam; // déjà un examen d'après ADE
+    btn.hidden = ev.exam || !isSignedIn(); // déjà un examen d'après ADE, ou pas connecté (repère sauvegardé)
     btn.setAttribute('aria-pressed', String(isEval(ev)));
     $('span', btn).textContent = isEval(ev) ? 'Marquée comme examen · retirer' : 'Marquer comme examen';
   }

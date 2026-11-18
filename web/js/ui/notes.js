@@ -37,7 +37,7 @@ function loadBook(force = false) {
   return bookPromise;
 }
 
-export function createNotes({ app, beforeOpen, isSignedIn }) {
+export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin, onRetry, getExams }) {
   const nTile = $('[data-notes-tile]');
   const nView = $('[data-notes-view]');
   const bento = $('[data-bento]');
@@ -59,7 +59,7 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
   const savedFor = (p) => UD.get('notes')?.[p] ?? null;
   function save() {
     const all = { ...(UD.get('notes') ?? {}) };
-    all[promo] = N.dump();
+    all[promo] = { ...N.dump(), current: N.currentSem().id };
     UD.set('notes', all);
     listeners.forEach((fn) => fn());
   }
@@ -68,8 +68,9 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
       N = null;
       return;
     }
-    const years = def.semesters.flatMap((s) => [s.start?.slice(0, 4), s.end?.slice(0, 4)]).filter(Boolean).sort();
-    N = createGrades(def, { saved: savedFor(promo), today: D.todayKey(), year: `${promo} · ${years[0]}-${years.at(-1)}` });
+    const y = Number(D.todayKey().slice(0, 4)) - (Number(D.todayKey().slice(5, 7)) < 8 ? 1 : 0); // année universitaire
+    N = createGrades(def, { saved: savedFor(promo), current: savedFor(promo)?.current, today: D.todayKey(), year: `${promo} · ${y}-${y + 1}` });
+    if (adeExams) N.setAdeExams(adeExams);
     if (!N.semById(semId)) semId = N.currentSem().id;
   }
 
@@ -81,8 +82,29 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
     def = entry && !entry.disabled && entry.semesters?.length ? entry : null;
     if (!def && viewOpen) closeView();
     semId = null;
+    adeExams = null;
     build();
     renderAll();
+    loadAdeExams();
+  }
+
+  /** Examens de l'emploi du temps (ADE ou marqués par l'étudiant), par code de matière. */
+  let adeExams = null;
+  let adeToken = 0;
+  async function loadAdeExams() {
+    if (!def || !getExams) return;
+    const t = ++adeToken;
+    const codes = new Set(def.semesters.flatMap((S) => S.ues.flatMap((U) => U.matieres.map((M) => (M.code || '').toUpperCase()))).filter(Boolean));
+    if (!codes.size) return;
+    try {
+      const found = await getExams(codes);
+      if (t !== adeToken || !N) return;
+      adeExams = found;
+      N.setAdeExams(found);
+      renderAll();
+    } catch {
+      // emploi du temps indisponible : les dates de la maquette restent seules
+    }
   }
   UD.onUserData((touched) => {
     if (!touched.includes('notes') || !def) return;
@@ -91,7 +113,42 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
     if (wasSim) N.simOn = true;
     renderAll();
   });
-  UD.onSyncStatus(renderSync);
+  UD.onSyncStatus(() => {
+    renderSync();
+    renderAll();
+  });
+
+  /**
+   * Les notes vivent dans la sauvegarde du serveur : il faut être connecté et que cette sauvegarde
+   * ait été lue, pour que chaque appareil montre (et modifie) la même chose.
+   */
+  function access() {
+    if (!isSignedIn()) return 'out';
+    if (!UD.isConnected()) return UD.syncStatus() === 'syncing' ? 'loading' : 'nosync';
+    if (!UD.isReady()) return UD.syncStatus() === 'error' ? 'error' : 'loading';
+    return 'ok';
+  }
+  const GATE = {
+    out: ['lock', 'Connecte-toi pour suivre tes notes', 'Elles sont sauvegardées sur le serveur, chiffrées : tu les retrouves sur tous tes appareils, et personne d’autre ne peut les lire.', 'Se connecter'],
+    nosync: ['lock', 'Reconnecte-toi une fois', 'Ta session date d’avant la sauvegarde des notes : reconnecte-toi avec ton mot de passe pour la créer et retrouver tes notes partout.', 'Me reconnecter'],
+    loading: ['cloud', 'Récupération de tes notes…', 'Lecture de ta sauvegarde chiffrée sur le serveur.', ''],
+    error: ['alert', 'Sauvegarde injoignable', 'Tes notes n’ont pas pu être lues sur le serveur. Vérifie ta connexion puis réessaie.', 'Réessayer'],
+  };
+  function renderGate(kind) {
+    const [ic, title, text, action] = GATE[kind];
+    $('[data-nt-sem]', nTile).hidden = true;
+    $('[data-open-notes]', nTile).hidden = true;
+    tileBody.replaceChildren(
+      h(
+        'div.empty.nt-empty',
+        { class: kind === 'loading' ? 'is-loading' : '' },
+        h('span.empty-ic', {}, kind === 'loading' ? h('span.spinner') : icon(ic, 'ic ic--lg')),
+        h('h3', { text: title }),
+        h('p', { text }),
+        action ? h('button.btn.btn--sm.btn--primary', { type: 'button', text: action, on: { click: () => (kind === 'error' ? onRetry?.() : onLogin?.()) } }) : null,
+      ),
+    );
+  }
   function renderSync() {
     const st = UD.syncStatus();
     syncChip.hidden = !N;
@@ -145,6 +202,8 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
   }
 
   function renderTile() {
+    const a = access();
+    if (a !== 'ok') return renderGate(a);
     if (!N) return renderEmptyTile();
     const S = N.currentSem();
     const wasSim = N.simOn;
@@ -195,7 +254,7 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
     const foot = el('div', 'nt-foot');
     const nx = N.nextEval(S);
     const next = el('p', `nt-next${nx && N.isSoon(nx) ? ' is-soon' : ''}`);
-    if (nx) next.append(el('span', 'nt-k', 'Prochaine'), el('span', 'nt-next-t', `${nx.label} · ${nameOf(nx)}`), el('b', '', shortDate(nx.date)));
+    if (nx) next.append(el('span', 'nt-k', 'Prochaine'), el('span', 'nt-next-t', `${nx.label} · ${nameOf(nx)}`), el('b', '', shortDate(N.dateOf(nx))));
     else next.append(el('span', 'nt-k', 'Aucune évaluation à venir'));
     const add = el('button', 'btn btn--sm nt-add');
     add.type = 'button';
@@ -228,8 +287,13 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
       const b = el('button', 'ng is-planned');
       b.type = 'button';
       b.dataset.slot = e.id;
-      b.setAttribute('aria-label', `Saisir la note : ${e.label}, ${nameOf(e)}${e.date ? `, prévu le ${shortDate(e.date)}` : ''}`);
-      b.append(el('span', 'ng-l', e.label), el('span', 'ng-d', shortDate(e.date) || 'à venir'), icon('plus', 'ic ic--xs'));
+      const d = N.dateOf(e);
+      b.setAttribute('aria-label', `Saisir la note : ${e.label}, ${nameOf(e)}${d ? `, prévu le ${shortDate(d)}` : ''}${!e.date && d ? ' (date de l’emploi du temps)' : ''}`);
+      b.append(el('span', 'ng-l', e.label), el('span', 'ng-d', shortDate(d) || 'à venir'), icon('plus', 'ic ic--xs'));
+      if (!e.date && d) {
+        b.classList.add('is-ade');
+        b.title = 'Date trouvée dans ton emploi du temps (examen)';
+      }
       if (N.isDue(e)) b.classList.add('is-due');
       return b;
     }
@@ -282,6 +346,17 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
         mh.append(nm, av);
         const evs = el('div', 'nv-evals');
         N.evalsOf(M).forEach((e) => evs.append(evalChip(e)));
+        if (!N.simOn) {
+          N.proposalsOf(M).forEach((p) => {
+            const b = el('button', 'ng is-planned is-ade is-proposal');
+            b.type = 'button';
+            b.dataset.adeProp = p.id;
+            b.title = 'Examen prévu dans ton emploi du temps : ajoute la note quand tu l’as';
+            b.setAttribute('aria-label', `Examen du ${shortDate(p.date)} dans l’emploi du temps, ${M.name} : saisir la note`);
+            b.append(el('span', 'ng-l', 'Examen'), el('span', 'ng-d', shortDate(p.date)), el('span', 'ng-edt', 'EDT'), icon('plus', 'ic ic--xs'));
+            evs.append(b);
+          });
+        }
         const add = el('button', 'ng-add');
         add.type = 'button';
         add.dataset.addMat = M.id;
@@ -366,8 +441,10 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
     const yr = el('section', 'nv-card nv-year');
     yr.append(el('h3', '', N.year));
     const rows = el('ul', 'nv-year-l');
+    const curIdx = N.semIndex(N.currentSem());
     ys.rows.forEach(({ S: s2, st: st2 }) => {
-      const li = el('li', `is-${st2.kind}${s2.id === S.id ? ' is-cur' : ''}`);
+      const i = N.semIndex(s2);
+      const li = el('li', `is-${st2.kind}${s2.id === S.id ? ' is-cur' : ''}${i === curIdx ? ' is-now' : ''}`);
       const sb = el('button', 'nv-year-b');
       sb.type = 'button';
       sb.dataset.sem = s2.id;
@@ -375,12 +452,40 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
         el('span', '', s2.label),
         el('span', 'nv-year-p', s2.period),
         el('b', '', f2(st2.a)),
-        pill(st2.kind, st2.kind === 'none' ? 'À venir' : st2.kind === 'fail' ? 'Rattrapage' : st2.kind === 'done' ? 'Validé' : 'En cours'),
+        i > curIdx
+          ? pill('none', 'À venir')
+          : st2.kind === 'fail'
+            ? pill('fail', 'Rattrapage')
+            : i < curIdx
+              ? pill(st2.kind === 'none' ? 'none' : 'done', st2.kind === 'none' ? 'Terminé' : 'Validé')
+              : pill(st2.kind === 'done' ? 'done' : 'ok', st2.kind === 'done' ? 'Validé' : 'En cours'),
       );
       li.append(sb);
       rows.append(li);
     });
     yr.append(rows);
+    // Passer au semestre suivant : décidé par l'étudiant, plus aucune date automatique.
+    const cur = N.currentSem();
+    const next = N.G.semesters[curIdx + 1];
+    const prevSem = N.G.semesters[curIdx - 1];
+    if (next || prevSem) {
+      const box = el('div', 'nv-finish');
+      if (next) {
+        const fb = el('button', 'btn btn--sm btn--primary');
+        fb.type = 'button';
+        fb.dataset.semFinish = '';
+        fb.append(icon('check', 'ic ic--sm'), `Terminer le ${cur.short}`);
+        box.append(fb, el('span', 'nv-finish-h', `Le ${next.short} deviendra ton semestre en cours, sur tous tes appareils.`));
+      }
+      if (prevSem) {
+        const bb = el('button', 'btn btn--sm btn--ghost');
+        bb.type = 'button';
+        bb.dataset.semBack = '';
+        bb.textContent = `Revenir au ${prevSem.short}`;
+        box.append(bb);
+      }
+      yr.append(box);
+    }
     const notStarted = ys.rows.filter((r) => r.st.kind === 'none').map((r) => r.S.short);
     const yv = el('p', `nv-year-v is-${ys.anyFail ? 'fail' : ys.allDone ? 'done' : 'ok'}`);
     yv.append(
@@ -462,13 +567,14 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
   }
   const renderAll = () => {
     renderTile();
-    if (viewOpen) renderView();
+    if (viewOpen && access() !== 'ok') closeView();
+    else if (viewOpen) renderView();
   };
 
   // ------------------------------------------------------------ ouvrir / fermer
 
   function openView(animate = true) {
-    if (!N || viewOpen) return;
+    if (!N || viewOpen || access() !== 'ok') return;
     closeMenus();
     beforeOpen?.();
     viewOpen = true;
@@ -564,21 +670,33 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
   }
   function fillSlots() {
     const M = N.MAT[selM.value];
-    const free = N.evalsOf(M).filter((e) => !N.has(N.val(e)) && !e.extra);
+    const free = [...N.evalsOf(M).filter((e) => !N.has(N.val(e)) && !e.extra), ...(N.simOn ? [] : N.proposalsOf(M))];
     slots.replaceChildren(
       ...free.map((e) => {
-        const b = el('button', 'nchip');
+        const b = el('button', `nchip${e.proposal ? ' is-ade' : ''}`);
         b.type = 'button';
         b.dataset.slotPick = e.id;
         b.setAttribute('aria-pressed', String(slot === e.id));
-        b.append(el('span', '', e.label), el('span', 'nchip-m', `×${fN(e.coef)}${e.date ? ` · ${shortDate(e.date)}` : ''}`));
+        const d = N.dateOf(e);
+        b.append(el('span', '', e.label), el('span', 'nchip-m', `${e.proposal ? 'emploi du temps' : `×${fN(e.coef)}`}${d ? ` · ${shortDate(d)}` : ''}`));
         return b;
       }),
     );
     slots.hidden = !free.length || Boolean(editId);
   }
+  const proposalById = (id) => (id?.startsWith('ade:') ? N.proposalsOf(N.MAT[id.split(':')[1]] ?? { id: '' }).find((p) => p.id === id) : null);
   function pickSlot(id) {
     slot = id;
+    const prop = proposalById(id);
+    if (prop) {
+      // Examen de l'emploi du temps : devient une évaluation (coefficient à choisir)
+      label.value = prop.label;
+      setCoef(1);
+      $$('[data-slot-pick]', slots).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.slotPick === id)));
+      $$('[data-coef]', nadd).forEach((b) => (b.disabled = false));
+      nadd.classList.remove('is-slot');
+      return preview();
+    }
     const e = id && N.EV[id];
     if (e) {
       label.value = e.label;
@@ -613,7 +731,7 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
     if (editId) {
       prevVal = store[editId];
       store[editId] = v;
-    } else if (slot) {
+    } else if (slot && !proposalById(slot)) {
       prevVal = store[slot];
       store[slot] = v;
     } else {
@@ -651,7 +769,7 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
     nadd.classList.toggle('is-sim', N.simOn);
   };
   function openAdd(o = {}) {
-    if (!N) return;
+    if (!N || access() !== 'ok') return;
     if (o.semId) semId = o.semId;
     fillMats();
     fillSim();
@@ -752,9 +870,10 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
         e.label = label.value.trim().slice(0, 40) || e.label;
         e.coef = coef;
       }
-    } else if (slot) target[slot] = v;
+    } else if (slot && !proposalById(slot)) target[slot] = v;
     else {
-      const e = N.addEval({ id: `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, mat: M.id, label: label.value.trim() || 'Note', coef, date: D.todayKey() }, N.simOn);
+      const prop = proposalById(slot);
+      const e = N.addEval({ id: `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, mat: M.id, label: label.value.trim() || 'Note', coef, date: prop?.date ?? D.todayKey() }, N.simOn);
       target[e.id] = v;
     }
     if (!N.simOn) save();
@@ -828,7 +947,7 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
       const ul = el('ul', 'ngoal-rem');
       n.rem.slice(0, 6).forEach((e) => {
         const li = el('li');
-        li.append(el('b', '', e.label), el('span', '', `${n.sc.kind === 'M' ? '' : `${nameOf(e)} · `}coef ${fN(e.coef)}${e.date ? ` · ${shortDate(e.date)}` : ''}`));
+        li.append(el('b', '', e.label), el('span', '', `${n.sc.kind === 'M' ? '' : `${nameOf(e)} · `}coef ${fN(e.coef)}${N.dateOf(e) ? ` · ${shortDate(N.dateOf(e))}` : ''}`));
         ul.append(li);
       });
       if (n.rem.length > 6) ul.append(el('li', 'ngoal-more', `et ${n.rem.length - 6} autres`));
@@ -861,6 +980,25 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
     setTimeout(() => scopeSel.focus(), 60);
   }
 
+  /** « Terminer le semestre » (+1) ou revenir au précédent (−1) : enregistré pour tous ses appareils. */
+  function moveSemester(step) {
+    const sems = N.G.semesters;
+    const i = N.semIndex(N.currentSem());
+    const target = sems[i + step];
+    if (!target) return;
+    const msg =
+      step > 0
+        ? `Terminer le ${sems[i].label} ? Le ${target.label} deviendra ton semestre en cours (tuile Notes et cette vue). Tu pourras revenir en arrière.`
+        : `Revenir au ${target.label} comme semestre en cours ?`;
+    if (!confirm(msg)) return;
+    N.setCurrent(target.id);
+    semId = target.id;
+    save();
+    renderAll();
+    if (motionOK()) restartClass(nView, 'nv-anim');
+    toast(step > 0 ? `${sems[i].short} terminé : ${target.label} en cours` : `${target.label} de nouveau en cours`, 'check');
+  }
+
   // ------------------------------------------------------------ événements
 
   document.addEventListener('click', (e) => {
@@ -873,6 +1011,10 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
     if (slotB) return openAdd({ slot: slotB.dataset.slot });
     const ed = t.closest('[data-eval-edit]');
     if (ed) return openAdd({ editId: ed.dataset.evalEdit });
+    const ap = t.closest('[data-ade-prop]');
+    if (ap) return openAdd({ mat: ap.dataset.adeProp.split(':')[1], slot: ap.dataset.adeProp });
+    if (t.closest('[data-sem-finish]')) return moveSemester(1);
+    if (t.closest('[data-sem-back]')) return moveSemester(-1);
     const am = t.closest('[data-add-mat]');
     if (am) return openAdd({ mat: am.dataset.addMat });
     const sc = t.closest('[data-sim-scenario]');
@@ -924,7 +1066,11 @@ export function createNotes({ app, beforeOpen, isSignedIn }) {
     course: (code) => N?.course(code) ?? null,
     add: (o) => openAdd(o),
     onChange: (fn) => listeners.add(fn),
-    hasBook: () => Boolean(N),
+    hasBook: () => Boolean(N) && access() === 'ok',
+    /** Connexion, déconnexion, sauvegarde lue : la tuile se remet à jour. */
+    refresh: () => renderAll(),
+    /** Un examen marqué ou retiré dans l'emploi du temps : dates et propositions relues. */
+    refreshExams: () => loadAdeExams(),
     reload: () => loadBook(true).then(() => load(promo)),
   };
 }

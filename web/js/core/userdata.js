@@ -8,7 +8,8 @@
 
 import * as sync from '../net/sync.js';
 
-export const SECTIONS = ['notes', 'evals', 'mail'];
+// profile : classe et options (groupe, langue, parcours), pour ne plus les redemander sur un autre appareil.
+export const SECTIONS = ['notes', 'evals', 'mail', 'profile'];
 
 let local = { sections: {} };
 let vault = null;
@@ -17,6 +18,7 @@ let remoteV = 0;
 let pushTimer = null;
 let pushing = null;
 let status = 'off'; // 'off' | 'syncing' | 'ok' | 'error'
+let pulled = false; // la sauvegarde du serveur a été lue au moins une fois depuis la connexion
 const listeners = new Set();
 const statusListeners = new Set();
 
@@ -133,6 +135,7 @@ export async function connect(secret, previous = null) {
     }
     remoteV = remote?.v ?? 0;
     const touched = merge(sanitizeLocal(remote?.value));
+    pulled = true;
     persist();
     if (touched.length) listeners.forEach((fn) => fn(touched));
     if (!remote || needsPush(sanitizeLocal(remote.value)) || previous) await pushNow();
@@ -164,6 +167,7 @@ export function disconnect({ wipeLocal = true } = {}) {
   clearTimeout(pushTimer);
   cred = null;
   remoteV = 0;
+  pulled = false;
   setStatus('off');
   if (wipeLocal) {
     local = { sections: {} };
@@ -179,5 +183,7 @@ export async function eraseEverywhere() {
 }
 
 export const isConnected = () => Boolean(cred);
+/** Sauvegarde branchée ET lue : les données affichées sont celles du serveur. */
+export const isReady = () => Boolean(cred) && pulled;
 /** Identifiant anonyme de la sauvegarde (affiché dans Transparence). */
 export const syncId = () => cred?.id ?? null;

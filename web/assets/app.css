@@ -958,7 +958,7 @@ button.ng:active { transform: scale(.97); }
 /* Lecteur : plus de bouton « Retour » à gauche, la sortie est à droite */
 .reader-bar > .spacer:first-child { flex: 1; }
 .mail-split .tile--mail.is-expanded .mail-pane-x { display: inline-flex; position: absolute; top: 14px; right: 16px; }
-.reader.is-docked .fs-x { display: inline-flex; }
+.reader.is-docked .fs-x[data-reader-close].btn { display: inline-flex; } /* la sortie reste visible en lecture côte à côte */
 /* Glisser des fichiers dans un message */
 .composer.is-dropping .cmp-form { outline: 2px dashed var(--brand); outline-offset: -8px; border-radius: 16px; background: var(--brand-soft); }
 .cmp-drop { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; pointer-events: none; font: 650 15px/1.4 var(--font); color: var(--brand); }
@@ -1046,7 +1046,7 @@ button.ng:active { transform: scale(.97); }
 
 .gr-sem { display: grid; gap: 14px; padding: 16px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface-2); }
 .gr-row { display: grid; gap: 12px; align-items: start; }
-.gr-row--sem { grid-template-columns: minmax(0, 1.4fr) 90px minmax(0, 1fr) minmax(0, 1fr) auto; }
+.gr-row--sem { grid-template-columns: minmax(0, 1fr) 110px auto; max-width: 560px; }
 .gr-row--ue { grid-template-columns: 110px minmax(0, 1fr) 110px; }
 .gr-row--m { grid-template-columns: minmax(0, 1fr) 90px minmax(0, .7fr); }
 .gr-sem-del { margin-top: 20px; }
@@ -1139,9 +1139,16 @@ details[open] > .gr-sum .gr-chev { transform: rotate(90deg); }
 .gr-panel, .gr-layout, .gr-editor, .gr-sem, .gr-ue, .gr-m { min-width: 0; max-width: 100%; }
 @media (max-width: 759.98px) { .gr-sem { padding: 12px; } .gr-ue-body { padding: 4px 12px 12px; } .gr-m-body { padding: 10px; } }
 @media (max-width: 759.98px) {
-  .gr-row--sem { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .gr-row--sem > :first-child { grid-column: 1 / -1; }
-  .gr-row--sem > :nth-child(2) { order: 3; }
-  .gr-row--sem > .gr-sem-del { order: 4; margin-top: 18px; justify-self: start; }
+  .gr-row--sem { grid-template-columns: minmax(0, 1fr) 90px; }
+  .gr-row--sem > .gr-sem-del { grid-column: 1 / -1; margin-top: 0; justify-self: start; }
 }
 .gr-panel { grid-template-columns: minmax(0, 1fr); } .gr-panel > * { min-width: 0; }
+
+/* Notes : examens de l'emploi du temps (dates et propositions), passage au semestre suivant */
+.ng.is-ade .ng-d { color: var(--brand); font-weight: 650; }
+.ng.is-proposal { border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+.ng-edt { height: 16px; padding: 0 5px; border-radius: 4px; display: inline-grid; place-items: center; background: var(--brand-soft); color: var(--brand); font: 750 9.5px/1 var(--font); letter-spacing: .04em; }
+.nchip.is-ade { border-color: color-mix(in srgb, var(--brand) 50%, transparent); }
+.nv-year-l .is-now .nv-year-b { border-color: var(--brand); }
+.nv-finish { display: grid; gap: 8px; justify-items: start; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.nv-finish-h { font: 500 12px/1.4 var(--font); color: var(--text-3); }

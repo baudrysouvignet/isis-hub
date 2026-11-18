@@ -196,7 +196,8 @@ test('import : une classe, plusieurs classes, format de la démo', () => {
 test('import : erreurs claires', () => {
   assert.throws(() => normalizeImport([]), /objet JSON/);
   assert.throws(() => normalizeImport({ 'fia4 ': {} }), /classes invalides/);
-  assert.throws(() => normalizeImport({ semesters: [{ label: 'S7', ues: [] }] }, { currentClass: 'FIA4' }), /start/);
+  // Dates de semestre facultatives : le semestre en cours est choisi par l'étudiant.
+  assert.doesNotThrow(() => normalizeImport({ semesters: [{ label: 'S7', ues: [] }] }, { currentClass: 'FIA4' }));
   assert.throws(() => normalizeImport({ FIA4: { ues: [] } }), /semesters/);
   // Identifiants en double : le second est renommé.
   const d = normalizeImport({ semesters: [{ start: '2026-09-01', end: '2027-01-31', ues: [{ name: 'U', coef: 1, matieres: [{ id: 'x', name: 'A', coef: 1, evals: [] }, { id: 'x', name: 'B', coef: 1, evals: [] }] }] }] }, { currentClass: 'FIA4' });
@@ -216,4 +217,62 @@ test('import : le JSON d’exemple de l’administration est valide et utilisabl
   const N = createGrades(FIA4, { today: '2026-11-16' });
   assert.equal(N.currentSem().id, 'S7');
   assert.equal(N.semState(N.currentSem()).kind, 'none');
+});
+
+test('sauvegarde : la classe suit l’étudiant, les notes attendent la lecture du serveur', async () => {
+  const server = new Map();
+  globalThis.fetch = async (_url, init) => {
+    const { op, id, auth, v, data } = JSON.parse(init.body);
+    const rec = server.get(id);
+    const json = (status, body) => ({ status, json: async () => body });
+    if (op === 'read') return rec ? json(200, { v: rec.v, data: rec.data }) : json(404, {});
+    if (op === 'write') {
+      if ((rec?.v ?? 0) !== v) return json(409, { v: rec.v, data: rec.data });
+      server.set(id, { auth, v: v + 1, data });
+      return json(200, { v: v + 1 });
+    }
+    return { status: 204, json: async () => null };
+  };
+  const secret = await sync.deriveSecret('lmartin', 'secret', 1000);
+  const vault = { loadUserData: async () => null, saveUserData: () => {} };
+
+  // Appareil 1 : classe choisie une fois connecté.
+  UD.disconnect();
+  await UD.initUserData(vault);
+  assert.equal(UD.isReady(), false, 'pas de notes avant la lecture du serveur');
+  await UD.connect(secret);
+  assert.equal(UD.isReady(), true);
+  UD.set('profile', { promo: 'FIE4', choice: { track: 'ia', group: '1' } });
+  await new Promise((r) => setTimeout(r, 1700)); // envoi groupé
+
+  // Navigation privée : rien sur l'appareil, la classe revient du serveur.
+  UD.disconnect();
+  await UD.initUserData(vault);
+  assert.equal(UD.get('profile'), null);
+  await UD.connect(secret);
+  assert.deepEqual(UD.get('profile'), { promo: 'FIE4', choice: { track: 'ia', group: '1' } });
+});
+
+test('notes : semestre en cours choisi par l’étudiant, examens de l’emploi du temps reliés par code', () => {
+  const N = createGrades(DEF, { saved: { values: VALUES }, today: '2026-11-16' });
+  assert.equal(N.currentSem().id, 'S7', 'par défaut : le premier semestre');
+  assert.equal(N.setCurrent('S8').id, 'S8', '« Terminer le semestre »');
+  assert.equal(N.setCurrent('S99').id, 'S8', 'semestre inconnu ignoré');
+  const again = createGrades(DEF, { saved: { values: VALUES }, current: 'S8', today: '2026-11-16' });
+  assert.equal(again.currentSem().id, 'S8', 'repris de la sauvegarde');
+
+  // BDA (code A4-1-BDA-1 ajouté ici) : « Examen » sans date + deux examens dans ADE.
+  const def = structuredClone(DEF);
+  def.semesters[0].ues[0].matieres[1].code = 'A4-1-BDA-1';
+  def.semesters[0].ues[0].matieres[1].evals[2].date = '';
+  const G = createGrades(def, { saved: { values: VALUES }, today: '2026-11-16' });
+  G.setAdeExams({ 'A4-1-BDA-1': ['2027-01-12', '2026-12-03'], 'A4-1-ISI-2': ['2027-01-14'] });
+  assert.equal(G.dateOf(G.EV.b3), '2026-12-03', 'la première date d’examen va à l’évaluation « Examen » sans date');
+  assert.deepEqual(G.proposalsOf(G.MAT.bda).map((p) => p.date), ['2027-01-12'], 'l’examen en plus devient une proposition');
+  assert.equal(G.proposalsOf(G.MAT.interop).length, 0, 'date déjà prévue dans la maquette : pas de doublon');
+  assert.equal(G.dateOf(G.EV.i3), '2027-01-14');
+  const next = G.nextEval(G.currentSem());
+  assert.equal(next.id, 'g1', 'la prochaine évaluation tient compte des deux sources');
+  const course = G.course('A4-1-BDA-1');
+  assert.ok(course.evals.some((x) => x.proposal && x.date === '2027-01-12'), 'visible dans la fiche du cours');
 });

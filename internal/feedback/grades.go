@@ -40,10 +40,10 @@ type GradeUE struct {
 }
 
 type GradeSemester struct {
-	ID    string    `json:"id"`    // ex. « S7 »
-	Label string    `json:"label"` // ex. « Semestre 7 »
-	Start string    `json:"start"` // AAAA-MM-JJ
-	End   string    `json:"end"`   // AAAA-MM-JJ
+	ID    string    `json:"id"`              // ex. « S7 »
+	Label string    `json:"label"`           // ex. « Semestre 7 »
+	Start string    `json:"start,omitempty"` // AAAA-MM-JJ, facultatif (affichage de la période)
+	End   string    `json:"end,omitempty"`   // AAAA-MM-JJ, facultatif
 	UEs   []GradeUE `json:"ues"`
 }
 
@@ -125,7 +125,8 @@ func (g *GradeClass) Validate() error {
 		if err := unique("s", s.ID); err != nil {
 			return err
 		}
-		if !validDate(s.Start) || !validDate(s.End) || s.End < s.Start {
+		// Dates facultatives : le semestre en cours n'en dépend plus (« Terminer le semestre »).
+		if (s.Start != "" && !validDate(s.Start)) || (s.End != "" && !validDate(s.End)) || (s.Start != "" && s.End != "" && s.End < s.Start) {
 			return fmt.Errorf("%s : dates de début et de fin invalides", s.Label)
 		}
 		if !g.Disabled && len(s.UEs) == 0 {

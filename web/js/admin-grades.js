@@ -37,7 +37,7 @@ function bound(obj, key, onChange, { label, placeholder = '', type = 'text', max
 }
 const field = (label, control, hint) => h('label.gf', {}, h('span.gf-l', { text: label }), control, hint ? h('small.gf-h', { text: hint }) : '');
 
-const blankSemester = (n) => ({ id: `S${n}`, label: `Semestre ${n}`, start: '', end: '', ues: [] });
+const blankSemester = (n) => ({ id: `S${n}`, label: `Semestre ${n}`, ues: [] });
 const blankEval = (label = '') => ({ id: rid('e'), label, coef: 1, date: '' });
 const blankSubject = () => ({ id: rid('m'), name: '', coef: 1, code: '', evals: [blankEval('Examen')] });
 const blankUE = (sem) => {
@@ -381,8 +381,6 @@ export function setupGradesAdmin({ api, getClasses }) {
           {},
           field('Nom', bound(S, 'label', refreshTab, { placeholder: 'Semestre 7', max: 40 })),
           field('Court', bound(S, 'id', refreshTab, { placeholder: 'S7', max: 6, cls: 'gr-num' }), 'Sur la tuile.'),
-          field('Début', bound(S, 'start', touch, { type: 'date', label: 'Début du semestre' })),
-          field('Fin', bound(S, 'end', touch, { type: 'date', label: 'Fin du semestre' })),
           model.semesters.length > 1
             ? h('button.btn.btn--sm.btn--ghost.gr-danger.gr-sem-del', {
                 type: 'button',

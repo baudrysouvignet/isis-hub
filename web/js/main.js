@@ -27,6 +27,7 @@ import { countVisit } from './core/stats.js';
 import { watchUpdates } from './core/update.js';
 import { initMailPrefs, resetMailPrefs } from './core/mailprefs.js';
 import * as UD from './core/userdata.js';
+import { isEval } from './core/evals.js';
 import { deriveSecret } from './net/sync.js';
 import { createNotes } from './ui/notes.js';
 import { setupFeedback } from './ui/feedback.js';
@@ -61,14 +62,18 @@ initCache(state.signedIn ? await vault.loadCache() : {}, (entries) => vault.save
 // Données personnelles (notes, examens marqués, règles de mails) : chiffrées sur l'appareil, puis
 // synchronisées dans la sauvegarde anonyme dès qu'un secret de connexion est connu. Les anciens
 // emplacements (avant la sauvegarde) sont repris une fois puis effacés.
-await UD.initUserData(vault, { evals: prefs.get('evals'), mail: await vault.loadMailPrefs() });
+await UD.initUserData(vault, {
+  evals: prefs.get('evals'),
+  mail: await vault.loadMailPrefs(),
+  profile: state.signedIn && state.promo ? { promo: state.promo, choice: state.choice } : null,
+});
 prefs.set('evals', null);
 vault.forgetMailPrefs();
 initMailPrefs();
 vault.loadSync().then((bits) => bits && UD.connect(bits).catch(() => {}));
 document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && UD.refresh());
 
-/** Après une connexion par mot de passe : secret de la sauvegarde anonyme (calcul de ~1 s, en fond). */
+/** Après une connexion par mot de passe : secret de la sauvegarde anonyme, puis lecture du serveur. */
 async function startSync(username, password) {
   try {
     const previous = await vault.loadSync();
@@ -77,9 +82,25 @@ async function startSync(username, password) {
     const same = previous && previous.every((b, i) => b === bits[i]);
     await UD.connect(bits, same ? null : previous);
   } catch {
-    // sauvegarde indisponible : les données restent sur l'appareil, nouvel essai à la prochaine connexion
+    // sauvegarde injoignable : la tuile Notes le dit et propose de réessayer
   }
 }
+
+/**
+ * Profil sauvegardé (classe, groupe, langue, parcours) : appliqué à la connexion, et quand un autre
+ * appareil le change. Rend true si la classe affichée a changé.
+ */
+function applyProfile() {
+  const p = UD.get('profile');
+  if (!state.signedIn || !p || !classOf(p.promo) || !isComplete(p.promo, p.choice ?? {})) return false;
+  const changed = p.promo !== state.promo || JSON.stringify(p.choice ?? {}) !== JSON.stringify(state.choice);
+  state.promo = p.promo;
+  state.choice = p.choice ?? {};
+  prefs.set('promo', state.promo);
+  prefs.set('choice', state.choice);
+  return changed;
+}
+const saveProfile = () => state.signedIn && state.promo && UD.set('profile', { promo: state.promo, choice: state.choice });
 
 // Le moteur TLS (1,4 Mo) se charge dès maintenant, pendant que l'écran s'affiche.
 ready().catch(() => {});
@@ -102,15 +123,19 @@ const login = createLogin({
     vault.choose(remember);
     await casLogin(jar, username, password);
     await vault.save(jar.toJSON());
-    startSync(username, password);
     state.signedIn = true;
     state.username = username;
+    // Sauvegarde du serveur lue avant d'entrer : classe et notes suivent l'étudiant d'un appareil à l'autre.
+    login.step('Récupération de tes données…');
+    await Promise.race([startSync(username, password), new Promise((r) => setTimeout(r, 15_000))]);
+    const changed = applyProfile();
+    if (!changed && state.promo) saveProfile(); // première connexion avec cette version : la classe part sur le serveur
     if (wantsAdmin) return openAdmin();
     if (!state.promo) {
       const user = await loadUser().catch(() => null);
       promo.show({ mode: 'first', current: guessPromo(), choice: state.choice, firstName: firstName(user?.name) });
       show('promo');
-    } else enterDashboard();
+    } else enterDashboard(changed || !dashboardReady);
   },
   onSkip() {
     if (state.promo) enterDashboard();
@@ -129,6 +154,7 @@ const promo = createPromo({
     state.choice = choice;
     prefs.set('promo', chosen);
     prefs.set('choice', choice);
+    saveProfile(); // connecté : la classe est sauvegardée pour tous ses appareils
     enterDashboard(changed);
   },
 });
@@ -208,6 +234,22 @@ function setupDashboard() {
   });
   notes = createNotes({
     app,
+    isSignedIn: () => state.signedIn,
+    onLogin: openLogin,
+    onRetry: () => vault.loadSync().then((bits) => bits && UD.connect(bits)).catch(() => {}),
+    async getExams(codes) {
+      // Année universitaire en cours (août → juillet) : les blocs ADE déjà lus sont réutilisés.
+      const today = D.todayKey();
+      const y = Number(today.slice(0, 4)) - (Number(today.slice(5, 7)) < 8 ? 1 : 0);
+      const events = await schedule.between(`${y}-08-25`, `${y + 1}-07-31`);
+      const out = {};
+      for (const ev of events) {
+        const code = (ev.code || '').toUpperCase();
+        if (!code || !codes.has(code) || !(ev.exam || isEval(ev))) continue;
+        (out[code] ??= []).push(ev.day);
+      }
+      return out;
+    },
     beforeOpen: () => {
       mails.close();
       if (schedule.isExpanded()) schedule.collapse();
@@ -220,7 +262,10 @@ function setupDashboard() {
     isSignedIn: () => state.signedIn,
     promo: () => state.promo,
     onWrite: ({ name, subject }) => composer.open({ subject, body: 'Bonjour,\n\n', focusRecipient: name }),
-    onEvalChange: () => schedule.rerender(),
+    onEvalChange: () => {
+      schedule.rerender();
+      notes.refreshExams();
+    },
   });
   const crousSheet = createCrousSheet();
   // Menus du Resto U' : dès qu'ils sont connus, les blocs du midi indiquent s'il y a un menu.
@@ -262,6 +307,7 @@ async function enterDashboard(promoChanged = true) {
     schedule.start(state.promo, state.choice);
     notes.load(state.promo);
   }
+  notes.refresh();
   if (state.signedIn) {
     loadUser()
       .then(renderHeader)
@@ -298,6 +344,7 @@ function sessionLost() {
   renderHeader();
   mails.showSignedOut(true);
   courses.showSignedOut(true);
+  notes?.refresh(); // les notes demandent d'être connecté
   toast('Ta session universitaire a expiré : reconnecte-toi pour retrouver mails et Moodle.');
   setTimeout(() => (lostOnce = false), 2000);
 }
@@ -328,6 +375,7 @@ async function logout() {
   renderHeader();
   mails.showSignedOut(false);
   courses.showSignedOut(false);
+  notes?.refresh();
   show('login');
 }
 
@@ -369,6 +417,13 @@ document.addEventListener('keydown', (e) => {
   if (mails?.isOpen()) return mails.close();
   if (notes?.isOpen()) return notes.close();
   if (schedule?.isExpanded()) schedule.collapse();
+});
+
+// Classe changée sur un autre appareil (ou retrouvée dans la sauvegarde) : appliquée ici aussi.
+UD.onUserData((touched) => {
+  if (!touched.includes('profile') || !applyProfile()) return;
+  renderHeader();
+  if (state.screen === 'dash') enterDashboard(true);
 });
 
 // Nouvelle version publiée : rechargée au retour sur l'onglet si rien n'est en cours, sinon proposée.

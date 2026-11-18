@@ -123,6 +123,10 @@ export function createLogin({ onSubmit, onSkip, onTransparency }) {
   renderTyped();
 
   return {
+    /** Étape affichée sur le bouton pendant la connexion (ex. « Récupération de tes données… »). */
+    step: (text) => {
+      if (submit.disabled) label.textContent = text;
+    },
     show(message) {
       scramble(true);
       if (message) showError(message);

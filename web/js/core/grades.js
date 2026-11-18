@@ -39,7 +39,7 @@ export const cleanGrade = (v) => (typeof v === 'number' && Number.isFinite(v) &&
  * Carnet de notes d'une classe. `def` : maquette publiée par l'administration ;
  * `saved` : { values: { idÉval: note }, extra: [{ id, mat, label, coef, date, value }] }.
  */
-export function createGrades(def, { saved = null, today = new Date().toISOString().slice(0, 10), year = '' } = {}) {
+export function createGrades(def, { saved = null, current = null, today = new Date().toISOString().slice(0, 10), year = '' } = {}) {
   const G = structuredClone(def);
   const RULE_UE = G.rules?.ue ?? 10;
   const RULE_M = G.rules?.matiere ?? 7;
@@ -142,14 +142,43 @@ export function createGrades(def, { saved = null, today = new Date().toISOString
   const allEvals = (S) => S.ues.flatMap((U) => U.matieres.flatMap((M) => evalsOf(M)));
   const remaining = (S) => allEvals(S).filter((e) => !has(val(e)));
 
-  /** Semestre en cours d'après les dates ; sinon le prochain ; sinon le dernier. */
-  function currentSem() {
-    return (
-      G.semesters.find((S) => S.start <= today && today <= S.end) ??
-      G.semesters.find((S) => S.start > today) ??
-      G.semesters[G.semesters.length - 1]
-    );
+  /**
+   * Semestre en cours : choisi par l'étudiant (« Terminer le semestre » passe au suivant), le
+   * premier par défaut. Plus aucune détection par les dates.
+   */
+  let currentId = semById(current)?.id ?? G.semesters[0].id;
+  const currentSem = () => semById(currentId);
+  function setCurrent(id) {
+    if (semById(id)) currentId = id;
+    return currentSem();
   }
+  const semIndex = (S) => G.semesters.indexOf(S);
+
+  // ------------------------------------------------- examens de l'emploi du temps (ADE)
+  // Pour chaque matière liée à un code ADE, les séances marquées examen (par ADE ou par
+  // l'étudiant) donnent leur date aux évaluations prévues sans date, et les examens en plus
+  // deviennent des propositions de contrôles.
+  let proposals = {}; // idMatière → [{ id, date, label, mat, proposal: true }]
+  function setAdeExams(byCode) {
+    proposals = {};
+    for (const e of Object.values(EV)) delete e.adeDate;
+    for (const M of Object.values(MAT)) {
+      const days = [...new Set(byCode[(M.code || '').toUpperCase()] ?? [])].sort();
+      if (!days.length) continue;
+      const known = new Set(M.evals.map((e) => e.date).filter(Boolean));
+      const free = days.filter((d) => !known.has(d));
+      // Seules les évaluations de type examen prennent une date d'examen (pas « TD 1 », « Projet »…).
+      const undated = M.evals.filter((e) => !e.date && !e.sim && /exam|partiel|contr[ôo]le|\bds\b|écrit|final|évaluation/i.test(e.label));
+      undated.forEach((e) => {
+        const d = free.shift();
+        if (d) e.adeDate = d;
+      });
+      proposals[M.id] = free.map((d) => ({ id: `ade:${M.id}:${d}`, date: d, label: 'Examen', mat: M.id, proposal: true, coef: 1 }));
+    }
+  }
+  /** Date d'une évaluation : celle de la maquette, sinon celle de l'emploi du temps. */
+  const dateOf = (e) => e?.date || e?.adeDate || '';
+  const proposalsOf = (M) => (proposals[M.id] ?? []).filter((p) => !M.evals.some((e) => dateOf(e) === p.date));
 
   /** Part du semestre déjà notée, pondérée par les coefficients. */
   function progress(S) {
@@ -258,24 +287,25 @@ export function createGrades(def, { saved = null, today = new Date().toISOString
     return allEvals(S)
       .filter((e) => has(real[e.id]) && !e.sim)
       .map((e, i) => ({ e, i }))
-      .sort((a, b) => (b.e.date || '').localeCompare(a.e.date || '') || b.i - a.i)
+      .sort((a, b) => dateOf(b.e).localeCompare(dateOf(a.e)) || b.i - a.i)
       .slice(0, n)
       .map(({ e }) => e);
   }
-  /** Prochaine évaluation sans note, à partir d'aujourd'hui. */
+  /** Prochaine évaluation sans note (prévue ou proposée par l'emploi du temps), à partir d'aujourd'hui. */
   function nextEval(S) {
-    return allEvals(S)
-      .filter((e) => !has(real[e.id]) && e.date && e.date >= today)
-      .sort((a, b) => a.date.localeCompare(b.date))[0];
+    const props = S.ues.flatMap((U) => U.matieres.flatMap(proposalsOf));
+    return [...allEvals(S).filter((e) => !has(real[e.id])), ...props]
+      .filter((e) => dateOf(e) && dateOf(e) >= today)
+      .sort((a, b) => dateOf(a).localeCompare(dateOf(b)))[0];
   }
-  const isSoon = (e) => Boolean(e?.date) && e.date <= addDays(today, 7);
-  const isDue = (e) => Boolean(e?.date) && e.date <= today && e.date >= addDays(today, -7);
+  const isSoon = (e) => Boolean(dateOf(e)) && dateOf(e) <= addDays(today, 7);
+  const isDue = (e) => Boolean(dateOf(e)) && dateOf(e) <= today && dateOf(e) >= addDays(today, -7);
 
   /** Notes d'une matière liée à un code ADE (fiche d'un cours). */
   function course(code) {
     const M = Object.values(MAT).find((m) => m.code && code && m.code.toUpperCase() === String(code).toUpperCase());
     if (!M) return null;
-    return { M, U: UE_OF[M.id], avg: avgM(M, (e) => real[e.id]), evals: M.evals.filter((e) => !e.sim).map((e) => ({ e, v: real[e.id] })) };
+    return { M, U: UE_OF[M.id], avg: avgM(M, (e) => real[e.id]), evals: [...M.evals.filter((e) => !e.sim).map((e) => ({ e, v: real[e.id], date: dateOf(e) })), ...proposalsOf(M).map((p) => ({ e: p, v: null, date: p.date, proposal: true }))] };
   }
 
   /** Bilan de l'année : semestres pondérés par la somme des coefficients d'UE. */
@@ -342,6 +372,11 @@ export function createGrades(def, { saved = null, today = new Date().toISOString
     allEvals,
     remaining,
     currentSem,
+    setCurrent,
+    semIndex,
+    setAdeExams,
+    dateOf,
+    proposalsOf,
     progress,
     semState,
     needFor,
