@@ -1,6 +1,6 @@
 // Menu du midi du Resto U' de Castres (bloc 12 h 30 – 13 h 30 de l'emploi du temps).
-// Le serveur d'ISIS Hub lit le menu public (Croustillant, sinon le site du CROUS) et le garde
-// 12 heures : la page ne contacte aucun site tiers et n'envoie rien de personnel.
+// Le serveur d'ISIS Hub lit le menu public (Croustillant, sinon le site du CROUS) au plus toutes
+// les 15 minutes : la page ne contacte aucun site tiers et n'envoie rien de personnel.
 
 import { $, h } from '../core/dom.js';
 import * as D from '../core/dates.js';
@@ -13,11 +13,11 @@ let known = null; // dernier résultat reçu : { days: { « AAAA-MM-JJ » : [...
 /** Menu publié pour ce jour ? true / false, ou null tant que la réponse n'est pas arrivée. */
 export const hasMenu = (day) => (known ? Boolean(known.days?.[day]?.length) : null);
 
-/** Charge les menus (au plus toutes les 30 minutes) ; rend la promesse de la réponse. */
-export function menus() {
-  if (!pending || Date.now() - loadedAt > 30 * 60_000) {
+/** Charge les menus (relus si la copie a plus de 15 minutes, ou si `force`) ; rend la promesse. */
+export function menus(force = false) {
+  if (!pending || force || Date.now() - loadedAt > 15 * 60_000) {
     loadedAt = Date.now();
-    pending = fetch('api/crous', { credentials: 'omit' })
+    pending = fetch('api/crous', { credentials: 'omit', cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null)
       .then((m) => {

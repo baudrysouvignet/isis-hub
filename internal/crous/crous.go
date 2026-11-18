@@ -1,6 +1,6 @@
 // Package crous fournit le menu du midi du Resto U' de Castres, lu sur des sources publiques :
 // l'API Croustillant, et à défaut la page du CROUS Toulouse. Aucune donnée personnelle n'est en jeu.
-// Les menus sont gardés 12 heures en mémoire ; ceux déjà vus restent connus 3 semaines.
+// Les menus sont relus au plus toutes les 15 minutes ; ceux déjà vus restent connus 3 semaines.
 package crous
 
 import (
@@ -21,8 +21,8 @@ import (
 const (
 	croustillantURL = "https://api.croustillant.menu/v1/restaurants/117/menu"
 	crousURL        = "https://www.crous-toulouse.fr/restaurant/resto-u-castres/"
-	ttl             = 12 * time.Hour
-	retry           = 30 * time.Minute // menu du jour pas encore connu : on relit toutes les 30 minutes
+	ttl             = 15 * time.Minute // le CROUS change parfois le menu dans la matinée : relu souvent
+	retry           = 15 * time.Minute // menu du jour pas encore connu
 	keep            = 21 * 24 * time.Hour
 )
 
@@ -191,9 +191,8 @@ func (s *Service) fromCrous(ctx context.Context) (map[string][]Category, string,
 	return days, "CROUS Toulouse", nil
 }
 
-// Get rend les menus connus. Relus au plus toutes les 12 heures quand le menu du jour est connu ;
-// sinon toutes les 30 minutes (le CROUS le publie le matin même : une lecture de la veille ne suffit
-// pas, c'était la cause des « menu non publié » du jour).
+// Get rend les menus connus, relus au plus toutes les 15 minutes : le CROUS publie le menu le matin
+// même et le corrige parfois. Au plus une lecture des sources publiques par quart d'heure.
 func (s *Service) Get(ctx context.Context) Menus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -211,7 +210,7 @@ func (s *Service) Get(ctx context.Context) Menus {
 			s.menus.Source, s.menus.Updated = name, s.now().UTC().Truncate(time.Second)
 			break
 		}
-		// Réussite ou non, la prochaine lecture attend au moins 30 minutes (12 h si le jour est connu).
+		// Réussite ou non, la prochaine lecture attend au moins 15 minutes.
 		s.fetched = s.now()
 		limit := s.now().Add(-keep).Format("2006-01-02")
 		for d := range s.menus.Days {
@@ -234,6 +233,6 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=1800")
+	w.Header().Set("Cache-Control", "no-cache")
 	json.NewEncoder(w).Encode(s.Get(r.Context()))
 }

@@ -84,11 +84,16 @@ func TestTodayRefetchedUntilPublished(t *testing.T) {
 	clock = clock.Add(10 * time.Minute)
 	s.Get(context.Background())
 	if calls != 2 {
-		t.Fatal("menu du jour connu : pas de nouvelle lecture avant 12 h")
+		t.Fatal("pas de nouvelle lecture avant 15 minutes")
+	}
+	clock = clock.Add(6 * time.Minute)
+	s.Get(context.Background())
+	if calls != 3 {
+		t.Fatalf("relu après 15 minutes même quand le menu est connu : %d", calls)
 	}
 }
 
-func TestTodayMissingRetriedEvery30Minutes(t *testing.T) {
+func TestRetriedEvery15Minutes(t *testing.T) {
 	calls := 0
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
@@ -107,9 +112,9 @@ func TestTodayMissingRetriedEvery30Minutes(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("relu trop tôt : %d", calls)
 	}
-	clock = clock.Add(25 * time.Minute)
+	clock = clock.Add(6 * time.Minute)
 	s.Get(context.Background())
 	if calls != 2 {
-		t.Fatalf("pas relu après 30 minutes : %d", calls)
+		t.Fatalf("pas relu après 15 minutes : %d", calls)
 	}
 }

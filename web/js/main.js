@@ -270,6 +270,15 @@ function setupDashboard() {
   const crousSheet = createCrousSheet();
   // Menus du Resto U' : dès qu'ils sont connus, les blocs du midi indiquent s'il y a un menu.
   crousMenus().then((m) => m && schedule.rerender());
+  // Page restée ouverte : menus relus toutes les 15 minutes, et au retour sur l'onglet (5 min au moins).
+  let lastCrous = Date.now();
+  const refreshCrous = () => {
+    if (document.visibilityState !== 'visible') return;
+    lastCrous = Date.now();
+    crousMenus(true).then((m) => m && schedule.rerender());
+  };
+  setInterval(refreshCrous, 15 * 60_000);
+  document.addEventListener('visibilitychange', () => Date.now() - lastCrous > 5 * 60_000 && refreshCrous());
   setupMailRules({ onRuleAdded: () => mails.applyRulesNow() });
   install = setupInstall();
   $$('[data-compose]').forEach((b) => b.addEventListener('click', () => composer.open()));
