@@ -98,7 +98,7 @@ func New(cfg Config) *Service {
 		cfg: cfg, origins: map[string]bool{}, sessions: map[string]adminSession{},
 		submit: newLimiter(5, 10*time.Minute), reads: newLimiter(60, time.Minute),
 		loginIP: newLimiter(5, 15*time.Minute), loginAll: newLimiter(30, 15*time.Minute),
-		pings: newLimiter(30, time.Hour), vaultReads: newLimiter(120, 10*time.Minute), vaultWrites: newLimiter(240, 10*time.Minute),
+		pings: newLimiter(600, time.Hour), vaultReads: newLimiter(120, 10*time.Minute), vaultWrites: newLimiter(240, 10*time.Minute),
 	}
 	for _, o := range cfg.AllowedOrigins {
 		s.origins[strings.TrimRight(o, "/")] = true

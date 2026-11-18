@@ -330,7 +330,7 @@ async function enterDashboard(promoChanged = true) {
   show('dash');
   requestAnimationFrame(() => bento.syncDock()); // onglet du bas : la tuile en haut de l'écran
   setTimeout(() => bento.syncDock(), 300);
-  countVisit();
+  countVisit({ signedIn: state.signedIn, promo: state.promo });
   if (promoChanged || !schedule.started) {
     schedule.started = true;
     schedule.start(state.promo, state.choice);

@@ -161,10 +161,17 @@ code servi. D'où les moyens de vérification ci-dessous.
   par étudiant et par version ; « Voir tout le journal » ouvre le **journal des versions** détaillé,
   aussi dans le menu du compte. Le contenu est dans `web/js/core/changelog.js` : ajouter une entrée
   en tête à chaque version (`short` : 1 à 3 points pour la pop-up, `details` : tout).
-- **Fréquentation anonyme** (onglet *Fréquentation* de l'administration) : appareils distincts par
-  jour, moyenne par jour de la semaine, ouvertures au total. La page envoie seulement « première
-  ouverture du jour : oui / non » ; le serveur ne garde que deux nombres par jour (`stats.json`),
-  ni identifiant ni adresse IP.
+- **Fréquentation anonyme, une fois par compte et par jour** (onglet *Fréquentation* de
+  l'administration : courbe par jour, période 7 / 30 / 90 jours ou tout, mesure, filtre par classe,
+  jours de la semaine, répartitions par classe, appareil et application / navigateur). La page
+  envoie « première ouverture du jour sur cet appareil : oui / non », la classe (sans groupe ni
+  parcours), téléphone / tablette / ordinateur, application installée ou navigateur et, pour un
+  étudiant connecté, un **jeton du jour** : HMAC du jour avec une clé tirée (HKDF) de sa sauvegarde
+  chiffrée, que le serveur ne connaît pas. Même compte → même jeton toute la journée sur tous ses
+  appareils, donc compté une fois ; d'un jour à l'autre, aucun lien ; impossible d'en déduire la
+  personne ou sa sauvegarde. Le serveur ne garde que des compteurs par jour, jamais croisés entre
+  eux (`stats.json`), et oublie les jetons au changement de jour. Ni identifiant ni adresse IP.
+  Comptage par compte depuis le 18 novembre 2026 ; avant, seulement les appareils et ouvertures.
 - **Plein écran** de l'emploi du temps : toujours en vue semaine, sans le choix Jours / Semaine.
 
 ### Administration

@@ -350,23 +350,189 @@ function bars(box, rows) {
   );
 }
 
-async function loadStats() {
-  const st = await api('stats');
-  const days = st.days ?? [];
-  const counted = days.filter((d) => d.unique > 0);
-  const avg = st.totalDays ? days.slice(-Math.min(st.totalDays, days.length)).reduce((n, d) => n + d.unique, 0) / Math.min(st.totalDays, days.length) : 0;
-  $('[data-st="today"]').textContent = nf.format(st.today?.unique ?? 0);
-  $('[data-st="avg"]').textContent = counted.length ? nf.format(avg) : '–';
-  $('[data-st="total"]').textContent = nf.format(st.total ?? 0);
-  bars($('[data-st-week]'), (st.weekdays ?? []).map((v, i) => ({ value: v, label: WEEK[i], title: `Moyenne du ${WEEK[i].toLowerCase()}.` })));
-  bars(
-    $('[data-st-days]'),
-    days.slice(-30).map((d) => {
-      const date = new Date(`${d.date}T12:00:00Z`);
-      return { value: d.unique, label: String(date.getUTCDate()), title: shortFmt.format(date) };
-    }),
+// Filtres et graphiques faits ici, à partir des compteurs par jour (api/admin/stats).
+const METRICS = {
+  visitors: { unit: 'visiteurs distincts', get: (d) => (d.accounts ?? 0) + (d.guests ?? 0) },
+  accounts: { unit: 'comptes connectés', get: (d) => d.accounts ?? 0 },
+  guests: { unit: 'visiteurs sans connexion', get: (d) => d.guests ?? 0 },
+  unique: { unit: 'appareils distincts', get: (d) => d.unique ?? 0 },
+  visits: { unit: 'ouvertures', get: (d) => d.visits ?? 0 },
+};
+const DEVICES = { phone: 'Téléphone', tablet: 'Tablette', desktop: 'Ordinateur' };
+const APP_MODES = { app: 'Application installée', browser: 'Navigateur' };
+const dayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+const atNoon = (iso) => new Date(`${iso}T12:00:00Z`);
+const SVG = 'http://www.w3.org/2000/svg';
+const svg = (tag, attrs = {}, ...kids) => {
+  const el = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+  el.append(...kids.filter(Boolean));
+  return el;
+};
+const st = { data: null, period: '30', metric: 'visitors', cls: '' };
+
+function hbars(box, entries, labels = {}) {
+  const total = entries.reduce((n, [, v]) => n + v, 0);
+  if (!total) return box.replaceChildren(h('p.hint', { text: 'Pas encore de données sur la période.' }));
+  const max = Math.max(...entries.map(([, v]) => v));
+  box.replaceChildren(
+    ...entries
+      .sort((x, y) => y[1] - x[1])
+      .map(([k, v]) => {
+        const bar = h('i', { attrs: { 'aria-hidden': 'true' } });
+        bar.style.setProperty('--v', String(v / max));
+        return h(
+          'div.st-hbar',
+          { title: `${labels[k] ?? k} : ${nf.format(v)}` },
+          h('span', { text: labels[k] ?? k }),
+          h('span.st-track', {}, bar),
+          h('b', { text: `${nf.format(v)} · ${Math.round((v / total) * 100)} %` }),
+        );
+      }),
   );
 }
+
+/** Pas de graduation lisible (1, 2, 5, 10…) pour 4 lignes environ. */
+function niceStep(max) {
+  const raw = max / 4;
+  const p = 10 ** Math.floor(Math.log10(raw));
+  const m = raw / p;
+  return Math.max(1, (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p);
+}
+
+function lineChart(box, rows, unit, markDate) {
+  const W = 720;
+  const H = 220;
+  const L = 34;
+  const R = 10;
+  const T = 12;
+  const B = 26;
+  // r.v === null : pas encore compté ce jour-là (trou, pas zéro). r.ref : appareils distincts, en fond.
+  const max = Math.max(1, ...rows.map((r) => Math.max(r.v ?? 0, r.ref ?? 0)));
+  const step = niceStep(max);
+  const top = Math.ceil(max / step) * step;
+  const x = (i) => L + (rows.length > 1 ? (i * (W - L - R)) / (rows.length - 1) : (W - L - R) / 2);
+  const y = (v) => T + (H - T - B) * (1 - v / top);
+  const grid = [];
+  for (let v = 0; v <= top + 1e-9; v += step) {
+    grid.push(svg('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), class: 'st-grid-line' }));
+    grid.push(svg('text', { x: L - 6, y: y(v) + 4, class: 'st-axis', 'text-anchor': 'end' }, nf.format(v)));
+  }
+  const shown = rows.map((r, i) => [r, i]).filter(([r]) => r.v !== null);
+  const pts = shown.map(([r, i]) => `${x(i).toFixed(1)},${y(r.v).toFixed(1)}`);
+  const area = shown.length ? `M${x(shown[0][1]).toFixed(1)},${y(0)} L${pts.join(' L')} L${x(shown.at(-1)[1]).toFixed(1)},${y(0)} Z` : '';
+  const ref = rows.some((r) => r.ref !== undefined) ? rows.map((r, i) => `${x(i).toFixed(1)},${y(r.ref ?? 0).toFixed(1)}`).join(' ') : '';
+  const every = Math.ceil(rows.length / 8);
+  const labels = rows
+    .map((r, i) => (i % every === 0 || i === rows.length - 1 ? svg('text', { x: x(i), y: H - 6, class: 'st-axis', 'text-anchor': 'middle' }, String(atNoon(r.date).getUTCDate())) : null))
+    .filter(Boolean);
+  const mark = markDate ? rows.findIndex((r) => r.date === markDate) : -1;
+  const tip = (r) =>
+    svg('title', {}, `${dayFmt.format(atNoon(r.date))} : ${r.v === null ? 'pas encore compté' : `${nf.format(r.v)} ${unit}`}${r.ref !== undefined ? ` · ${nf.format(r.ref)} appareils distincts` : ''}`);
+  const dots = shown.length > 60 ? [] : shown.map(([r, i]) => svg('circle', { cx: x(i), cy: y(r.v), r: 3, class: 'st-dot' }));
+  // Une zone de survol par jour : la valeur se lit à la souris comme au doigt.
+  const slot = (W - L - R) / Math.max(1, rows.length - 1);
+  const hits = rows.map((r, i) => svg('rect', { x: x(i) - slot / 2, y: T, width: Math.max(2, slot), height: H - T - B, class: 'st-hit' }, tip(r)));
+  box.replaceChildren(
+    svg(
+      'svg',
+      { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `${unit} par jour` },
+      ...grid,
+      mark > 0 ? svg('line', { x1: x(mark), x2: x(mark), y1: T, y2: H - B, class: 'st-mark' }) : null,
+      ref ? svg('polyline', { points: ref, class: 'st-ref' }) : null,
+      area ? svg('path', { d: area, class: 'st-area' }) : null,
+      pts.length ? svg('polyline', { points: pts.join(' '), class: 'st-line' }) : null,
+      ...dots,
+      ...labels,
+      ...hits,
+    ),
+  );
+}
+
+function renderStats() {
+  const all = st.data?.days ?? [];
+  const today = all.at(-1)?.date;
+  const since = st.data?.accountsSince ?? '';
+  const firstUsed = Math.max(0, all.findIndex((d) => d.visits > 0 || d.unique > 0));
+  let days = st.period === 'all' ? all.slice(firstUsed) : all.slice(-Number(st.period));
+  if (days.length < 2) days = all.slice(-7);
+  const metric = METRICS[st.metric];
+  const get = st.cls ? (d) => d.classes?.[st.cls] ?? 0 : metric.get;
+  const unit = st.cls ? `visiteurs de ${st.cls}` : metric.unit;
+  const rows = days.map((d) => ({ date: d.date, v: get(d) }));
+  // Mesures par compte, classe ou appareil : rien avant le premier jour compté ainsi.
+  const byAccount = Boolean(st.cls) || ['visitors', 'accounts', 'guests'].includes(st.metric);
+  const counted = byAccount ? rows.filter((r) => r.date >= since) : rows;
+  const sum = counted.reduce((n, r) => n + r.v, 0);
+  const peak = counted.reduce((m, r) => (r.v > m.v ? r : m), { v: 0, date: '' });
+  $('[data-st="today"]').textContent = nf.format(rows.at(-1)?.v ?? 0);
+  $('[data-st-unit]').textContent = unit;
+  $('[data-st="avg"]').textContent = counted.length ? nf.format(sum / counted.length) : '–';
+  $('[data-st-range]').textContent = counted.length ? `sur ${counted.length} jour${counted.length > 1 ? 's' : ''}` : 'pas encore de données';
+  $('[data-st="peak"]').textContent = peak.date ? nf.format(peak.v) : '–';
+  $('[data-st="peakday"]').textContent = peak.date ? dayFmt.format(atNoon(peak.date)) : '';
+  $('[data-st="total"]').textContent = nf.format(days.reduce((n, d) => n + (d.visits ?? 0), 0));
+  $('[data-st-chart-title]').textContent = `${unit[0].toUpperCase()}${unit.slice(1)}, par jour`;
+  const before = byAccount && rows[0]?.date < since;
+  // Avant le comptage par compte : un trou (pas un zéro), avec les appareils distincts en fond.
+  const drawn = byAccount
+    ? rows.map((r, i) => ({ ...r, v: r.date >= since ? r.v : null, ref: st.cls ? undefined : days[i].unique ?? 0 }))
+    : rows;
+  lineChart($('[data-st-chart]'), drawn, unit, before ? since : '');
+  const note = $('[data-st-note]');
+  note.hidden = !byAccount;
+  note.textContent = before
+    ? `Comptage par compte, classe et appareil depuis le ${dayFmt.format(atNoon(since))} (trait pointillé) : avant, seuls les appareils et les ouvertures étaient comptés.${st.cls ? '' : ' En gris : appareils distincts, pour comparer.'}`
+    : st.cls ? '' : 'En gris : appareils distincts, pour comparer.';
+  note.hidden = !note.textContent;
+  // Jours de la semaine : moyenne de la mesure sur les jours comptés de la période.
+  const wsum = Array(7).fill(0);
+  const wn = Array(7).fill(0);
+  for (const r of counted) {
+    const wd = (atNoon(r.date).getUTCDay() + 6) % 7;
+    wsum[wd] += r.v;
+    wn[wd] += 1;
+  }
+  bars($('[data-st-week]'), WEEK.map((label, i) => ({ value: wn[i] ? wsum[i] / wn[i] : 0, label, title: `Moyenne du ${label.toLowerCase()}.` })));
+  const add = (key) => {
+    const out = {};
+    for (const d of days) for (const [k, v] of Object.entries(d[key] ?? {})) out[k] = (out[k] ?? 0) + v;
+    return Object.entries(out);
+  };
+  hbars($('[data-st-classes]'), st.cls ? add('classes').filter(([k]) => k === st.cls) : add('classes'));
+  hbars($('[data-st-devices]'), add('devices'), DEVICES);
+  hbars($('[data-st-modes]'), add('modes'), APP_MODES);
+  $('[data-st-since]').textContent =
+    `Répartitions : visiteurs distincts de chaque jour, additionnés sur la période${st.cls ? ' ; appareils et modes restent toutes classes confondues (jamais croisés avec la classe)' : ''}. Dernier jour : ${today ? dayFmt.format(atNoon(today)) : '–'}.`;
+  $('[data-st-metric]').disabled = Boolean(st.cls);
+}
+
+async function loadStats() {
+  st.data = await api('stats');
+  const found = new Set();
+  for (const d of st.data.days ?? []) Object.keys(d.classes ?? {}).forEach((k) => found.add(k));
+  Object.keys(classes?.classes ?? {}).forEach((k) => found.add(k));
+  const sel = $('[data-st-class]');
+  sel.replaceChildren(h('option', { value: '', text: 'Toutes les classes' }), ...[...found].sort().map((k) => h('option', { value: k, text: k })));
+  sel.value = st.cls;
+  renderStats();
+}
+
+$$('[data-st-period] [data-p]').forEach((b) =>
+  b.addEventListener('click', () => {
+    st.period = b.dataset.p;
+    $$('[data-st-period] [data-p]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    renderStats();
+  }),
+);
+$('[data-st-metric]').addEventListener('change', (e) => {
+  st.metric = e.target.value;
+  renderStats();
+});
+$('[data-st-class]').addEventListener('change', (e) => {
+  st.cls = e.target.value;
+  renderStats();
+});
 
 const gradesAdmin = setupGradesAdmin({ api, getClasses: () => classes });
 

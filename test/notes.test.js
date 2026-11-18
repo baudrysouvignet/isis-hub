@@ -283,3 +283,17 @@ test('import : maquette par parcours (FIE4:ia)', () => {
   assert.deepEqual(Object.keys(out), ['FIE4', 'FIE4:ia']);
   assert.throws(() => normalizeImport({ 'FIE4:IA': { semesters: [sem] } }), /parcours/);
 });
+
+test('fréquentation : jeton du jour stable pour un compte, différent d’un jour ou d’un compte à l’autre', async () => {
+  const a = await sync.deriveSecret('etudiant', 'mot-de-passe', 1000);
+  const b = await sync.deriveSecret('autre', 'mot-de-passe', 1000);
+  const ka = await sync.visitKey(a);
+  const kb = await sync.visitKey(b);
+  const t1 = await sync.visitToken(ka, '2026-11-18');
+  assert.match(t1, /^[A-Za-z0-9_-]{22}$/);
+  assert.equal(await sync.visitToken(await sync.visitKey(a), '2026-11-18'), t1);
+  assert.notEqual(await sync.visitToken(ka, '2026-11-19'), t1);
+  assert.notEqual(await sync.visitToken(kb, '2026-11-18'), t1);
+  const cred = await sync.credentials(a);
+  assert.ok(!t1.includes(cred.id.slice(0, 22)) && t1 !== cred.auth.slice(0, 22));
+});

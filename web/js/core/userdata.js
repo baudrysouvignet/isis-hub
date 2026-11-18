@@ -16,6 +16,7 @@ export const SECTIONS = ['notes', 'evals', 'mail', 'profile', 'memos', 'seen'];
 let local = { sections: {} };
 let vault = null;
 let cred = null;
+let visitKey = null; // jetons de fréquentation (net/sync.js)
 let remoteV = 0;
 let pushTimer = null;
 let pushing = null;
@@ -121,6 +122,7 @@ async function pushNow() {
 /** Branche la sauvegarde avec le secret de l'appareil ; `previous` : ancien secret (mot de passe changé). */
 export async function connect(secret, previous = null) {
   cred = await sync.credentials(secret);
+  visitKey = await sync.visitKey(secret).catch(() => null);
   setStatus('syncing');
   try {
     let remote = await sync.pull(cred);
@@ -168,6 +170,7 @@ export async function refresh() {
 export function disconnect({ wipeLocal = true } = {}) {
   clearTimeout(pushTimer);
   cred = null;
+  visitKey = null;
   remoteV = 0;
   pulled = false;
   setStatus('off');
@@ -189,3 +192,6 @@ export const isConnected = () => Boolean(cred);
 export const isReady = () => Boolean(cred) && pulled;
 /** Identifiant anonyme de la sauvegarde (affiché dans Transparence). */
 export const syncId = () => cred?.id ?? null;
+
+/** Jeton de fréquentation du jour (compte connecté seulement), sinon null. */
+export const visitToken = async (day) => (cred && visitKey ? sync.visitToken(visitKey, day).catch(() => null) : null);

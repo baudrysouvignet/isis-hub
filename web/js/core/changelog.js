@@ -1,6 +1,7 @@
 // Journal des versions. La plus récente en premier.
 //   short : 1 à 3 points, ce qui change pour toi (pop-up « Nouveautés », une fois par version)
 //   details : le détail complet (page « Journal des versions » du compte)
+//   admin : ce qui change dans l'administration (journal seulement)
 // Les petits correctifs ne vont que dans le détail.
 
 export const CHANGELOG = [
@@ -16,6 +17,11 @@ export const CHANGELOG = [
       'Pop-up « Nouveautés » à la première visite après une mise à jour : une fois par étudiant et par version, quel que soit l’appareil.',
       'Journal des versions complet, depuis le menu du compte.',
       'Visite guidée et tutoriel d’installation proposés une seule fois par étudiant : le « déjà vu » est gardé dans ta sauvegarde chiffrée et anonyme, plus seulement dans le navigateur.',
+    ],
+    admin: [
+      'Fréquentation comptée une fois par compte et par jour (plus par appareil), sans identifiant : jeton du jour illisible et oublié le lendemain.',
+      'Nouvelles données anonymes à partir du 18 novembre 2026 : comptes par classe, type d’appareil (téléphone, tablette, ordinateur), application installée ou navigateur, visiteurs sans connexion.',
+      'Onglet Fréquentation refait : courbes par jour, période (7, 30, 90 jours, tout), filtre par classe, répartitions en barres.',
     ],
   },
   {
@@ -47,6 +53,10 @@ export const CHANGELOG = [
       'Maquettes de notes par parcours (FIE4 et FIE5).',
       'Correctif : menu du CROUS du jour relu tant qu’il n’est pas publié.',
     ],
+    admin: [
+      'Maquettes de notes par parcours (FIE4 et FIE5, ex. « FIE4:ia ») : chaque parcours peut avoir la sienne, la maquette de la classe sert à défaut.',
+      'Liste des classes avec leurs parcours, et messages adaptés (« commune aux parcours », « aucune maquette pour ce parcours »).',
+    ],
   },
   {
     version: '1.0.2',
@@ -63,6 +73,9 @@ export const CHANGELOG = [
       '« Terminer le semestre » par étudiant, sans dates de semestre imposées.',
       'Correctif : bouton « Fermer » visible dans la lecture de mail côte à côte.',
     ],
+    admin: [
+      'Éditeur de maquettes : dates de semestre retirées (facultatives dans le JSON), le semestre en cours est choisi par chaque étudiant.',
+    ],
   },
   {
     version: '1.0.1',
@@ -72,6 +85,11 @@ export const CHANGELOG = [
     details: [
       'Notes activables par classe, avec un message d’attente tant que la maquette est en brouillon (gardée privée).',
       'Administration : JSON d’exemple à télécharger, nouvel éditeur de maquettes (classes et état, UE et matières dépliables, barre d’enregistrement).',
+    ],
+    admin: [
+      'Notes activables ou désactivables par classe, avec un message d’attente personnalisé ; une maquette en brouillon reste privée.',
+      'Nouvel éditeur de maquettes : classes et état, UE et matières dépliables, barre d’enregistrement.',
+      'JSON d’exemple à télécharger ou à charger directement dans l’éditeur.',
     ],
   },
   {
@@ -91,6 +109,10 @@ export const CHANGELOG = [
       'Sortie « Fermer » unifiée sur toutes les fenêtres.',
       'Transparence en trois catégories : ce que fait la page, ce qui est gardé, contrôles en direct.',
     ],
+    admin: [
+      'Onglet Notes : maquette par classe (semestres, UE, matières, coefficients, évaluations, codes ADE) et import JSON vérifié par le serveur.',
+      'Sauvegarde anonyme des étudiants côté serveur (/api/vault) : uniquement des données chiffrées sous un identifiant qui ne dit rien.',
+    ],
   },
   {
     version: '0.0.2',
@@ -103,6 +125,9 @@ export const CHANGELOG = [
       'Tutoriel pour installer ISIS Hub comme une application (iPhone, Android, ordinateur).',
       'Statistiques d’usage anonymes (compteurs, sans identifiant) pour l’administration.',
     ],
+    admin: [
+      'Onglet Fréquentation : appareils distincts par jour, moyenne par jour de la semaine, ouvertures au total.',
+    ],
   },
   {
     version: '0.0.1',
@@ -114,6 +139,10 @@ export const CHANGELOG = [
       'Connexion à l’ENT par un relais aveugle : il ne voit que du chiffré.',
       'Écran Transparence et visite guidée.',
       'Avis et suggestions envoyés depuis la page.',
+    ],
+    admin: [
+      'Page d’administration réservée aux identifiants autorisés, ouverte par le CAS de l’université (ticket vérifié par le serveur).',
+      'Retours « Une idée ? » des étudiants, répartition des emplois du temps par classe, raccourcis publiés sur la page.',
     ],
   },
 ];
@@ -131,8 +160,8 @@ export function cmpVersion(a, b) {
   return 0;
 }
 
-// Première pop-up (personne n'a encore de « déjà vu ») : la 1.0.4 et la 1.0.5 ensemble.
-const FIRST_SHOWN = '1.0.4';
+// Première pop-up (personne n'a encore de « déjà vu ») : de la 1.0.3 à la 1.0.5 ensemble.
+const FIRST_SHOWN = '1.0.3';
 
 /** Versions à présenter dans la pop-up, de la plus récente à la plus ancienne. */
 export function unseen(lastSeen) {

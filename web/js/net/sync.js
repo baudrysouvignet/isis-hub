@@ -40,6 +40,27 @@ export async function credentials(secret) {
   return { id, auth, key };
 }
 
+/**
+ * Clé des jetons de fréquentation (HKDF du secret, séparée des trois autres usages) : le jeton du
+ * jour = HMAC(clé, jour), tronqué à 16 octets. Même compte → même jeton toute la journée sur tous
+ * ses appareils ; d'un jour à l'autre, rien ne relie deux jetons ; le serveur ne peut le recalculer.
+ */
+export async function visitKey(secret) {
+  const base = await crypto.subtle.importKey('raw', new Uint8Array(secret), 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: enc.encode('isis-hub/visit/v1') },
+    base,
+    { name: 'HMAC', hash: 'SHA-256', length: 256 },
+    false,
+    ['sign'],
+  );
+}
+
+export async function visitToken(key, day) {
+  const mac = await crypto.subtle.sign('HMAC', key, enc.encode(`isis-hub/visit/v1:${day}`));
+  return b64url(new Uint8Array(mac).slice(0, 16));
+}
+
 /** Chiffre un objet : IV aléatoire + AES-GCM, lié à l'identifiant de l'enregistrement. */
 export async function seal(cred, value) {
   const iv = crypto.getRandomValues(new Uint8Array(12));

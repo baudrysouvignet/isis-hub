@@ -20,10 +20,16 @@ test('journal : comparaison de versions', () => {
   assert.equal(cmpVersion('1.0', '1.0.0'), 0);
 });
 
-test('pop-up : première fois 1.0.4 et 1.0.5 ensemble, puis seulement les versions non vues', () => {
-  assert.deepEqual(unseen(null).map((e) => e.version).slice(-2), ['1.0.5', '1.0.4']);
-  assert.ok(unseen(null).every((e) => cmpVersion(e.version, '1.0.4') >= 0));
+test('pop-up : première fois de la 1.0.3 à la 1.0.5, puis seulement les versions non vues', () => {
+  assert.deepEqual(unseen(null).map((e) => e.version).slice(-3), ['1.0.5', '1.0.4', '1.0.3']);
+  assert.ok(unseen(null).every((e) => cmpVersion(e.version, '1.0.3') >= 0));
   assert.deepEqual(unseen(LATEST), []);
   assert.deepEqual(unseen('1.0.4').map((e) => e.version), CHANGELOG.filter((e) => cmpVersion(e.version, '1.0.4') > 0).map((e) => e.version));
   assert.deepEqual(unseen('n’importe quoi').map((e) => e.version), unseen(null).map((e) => e.version));
+});
+
+test('journal : les évolutions de l’administration sont listées à part', () => {
+  for (const v of ['0.0.1', '0.0.2', '1.0.0', '1.0.1', '1.0.2', '1.0.3', '1.0.5']) {
+    assert.ok(CHANGELOG.find((e) => e.version === v).admin?.length, v);
+  }
 });
