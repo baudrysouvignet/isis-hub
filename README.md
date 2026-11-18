@@ -312,3 +312,11 @@ les ressources : ouvrir ADE, déplier *Trainees > ISIS >
 ISIS-FIA-ANNEE1-2-3* et lire l'identifiant des lignes dans l'inspecteur
 (`id="Direct Planning Tree_3612"` → `3612`).
 # isis-hub
+
+## Licence
+
+Code publié **en consultation seulement**, pour la transparence : tu peux le lire, le télécharger
+et l'exécuter chez toi pour vérifier ce qu'il fait. Toute réutilisation, modification,
+redistribution, mise en ligne ou utilisation commerciale est interdite sans accord écrit de
+l'auteur. Détails dans [LICENSE](LICENSE). Les composants tiers (libcurl.js, golang.org/x/text,
+police Inter) gardent leur propre licence.
