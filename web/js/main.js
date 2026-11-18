@@ -23,6 +23,8 @@ import { createCourseSheet } from './ui/course.js';
 import { createCrousSheet, menus as crousMenus } from './ui/crous.js';
 import { setupMailRules } from './ui/mailrules.js';
 import { setupInstall } from './ui/install.js';
+import { setupChangelog } from './ui/changelog.js';
+import { seen, whenKnown, adoptLocal, forgetLocal } from './core/seen.js';
 import { countVisit } from './core/stats.js';
 import { watchUpdates } from './core/update.js';
 import { initMailPrefs, resetMailPrefs } from './core/mailprefs.js';
@@ -205,6 +207,7 @@ let courseSheet;
 let notes;
 let dashboardReady = false;
 let install;
+let changelog;
 let bento;
 
 function setupDashboard() {
@@ -281,6 +284,7 @@ function setupDashboard() {
   document.addEventListener('visibilitychange', () => Date.now() - lastCrous > 5 * 60_000 && refreshCrous());
   setupMailRules({ onRuleAdded: () => mails.applyRulesNow() });
   install = setupInstall();
+  changelog = setupChangelog();
   $$('[data-compose]').forEach((b) => b.addEventListener('click', () => composer.open()));
   courses = createMoodle({ matcher, schedule, onSessionLost: sessionLost, onLogin: openLogin });
   setupMenus();
@@ -304,6 +308,22 @@ function setupDashboard() {
   setInterval(renderHeader, 60_000);
 }
 
+// Premiers pas, une fois par connexion : visite guidée et installation (une seule fois par
+// étudiant, tous appareils confondus), sinon « Quoi de neuf ? » après une mise à jour. On attend
+// d'avoir lu la sauvegarde : un nouvel appareil ne doit pas tout reproposer.
+let welcomed = false;
+async function welcome() {
+  if (welcomed) return;
+  welcomed = true;
+  await whenKnown(true);
+  if (!state.signedIn || state.screen !== 'dash') return void (welcomed = false);
+  adoptLocal();
+  const newcomer = !seen('tour');
+  if (newcomer) setTimeout(() => !document.querySelector('dialog[open]') && state.screen === 'dash' && startTour(app), 600);
+  changelog.maybeShow({ newcomer });
+  install.maybeOffer(); // après la visite guidée : installer l'application sur le téléphone
+}
+
 async function enterDashboard(promoChanged = true) {
   setupDashboard();
   renderHeader();
@@ -323,8 +343,7 @@ async function enterDashboard(promoChanged = true) {
       .catch(() => {});
     mails.load();
     courses.load();
-    if (!prefs.get('tourDone')) setTimeout(() => !document.querySelector('dialog[open]') && state.screen === 'dash' && startTour(app), 1200);
-    install.maybeOffer(); // après la visite guidée : installer l'application sur le téléphone
+    welcome();
   } else {
     mails.showSignedOut(false);
     courses.showSignedOut(false);
@@ -371,6 +390,8 @@ async function logout() {
   // et le secret de la sauvegarde ; la sauvegarde chiffrée reste, retrouvée à la prochaine connexion.
   UD.disconnect({ wipeLocal: true });
   vault.forgetSync();
+  forgetLocal();
+  welcomed = false;
   resetMailPrefs();
   notes?.load(state.promo, state.choice);
   clearCache();

@@ -3,7 +3,7 @@
 // icône qui ouvre ISIS Hub en plein écran.
 
 import { $, $$ } from '../core/dom.js';
-import { prefs } from '../core/store.js';
+import { seen, markSeen } from '../core/seen.js';
 import { modal } from './layout.js';
 import { tourActive } from './tour.js';
 
@@ -29,7 +29,7 @@ export function setupInstall() {
   }
   tabs.forEach((t) => t.addEventListener('click', () => select(t.dataset.installTab)));
 
-  const sheet = modal(dialog, { onClose: () => prefs.set('installSeen', true) });
+  const sheet = modal(dialog, { onClose: () => markSeen('install') });
   const open = () => {
     select(guessOS());
     now.hidden = !deferred;
@@ -43,7 +43,7 @@ export function setupInstall() {
   });
   addEventListener('appinstalled', () => {
     deferred = null;
-    prefs.set('installSeen', true);
+    markSeen('install');
     sheet.close();
   });
   now.addEventListener('click', async () => {
@@ -59,11 +59,11 @@ export function setupInstall() {
     open,
     /** Après la première connexion : une seule fois, jamais dans l'application déjà installée. */
     maybeOffer() {
-      if (standalone() || prefs.get('installSeen')) return;
+      if (standalone() || seen('install')) return;
       const wait = setInterval(() => {
         if (tourActive() || document.querySelector('dialog[open]')) return;
         clearInterval(wait);
-        if (!prefs.get('installSeen')) open();
+        if (!seen('install')) open();
       }, 1500);
     },
   };

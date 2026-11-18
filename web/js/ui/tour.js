@@ -1,7 +1,7 @@
 // Visite guidée : à la première visite du tableau de bord, puis « Revoir la visite » dans le compte.
 
 import { $$, h, restartClass, motionOK } from '../core/dom.js';
-import { prefs } from '../core/store.js';
+import { markSeen } from '../core/seen.js';
 
 const STEPS = [
   { k: 'Bienvenue', t: 'Découvre ISIS Hub en 1 minute', p: 'Une visite rapide de ce que tu peux faire. Tu pourras la revoir à tout moment depuis ton compte.', go: 'Commencer' },
@@ -21,7 +21,7 @@ let tour = null;
 
 function end() {
   if (!tour) return;
-  prefs.set('tourDone', true);
+  markSeen('tour');
   const t = tour;
   tour = null;
   window.removeEventListener('resize', t.reflow);

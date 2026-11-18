@@ -100,7 +100,8 @@ code servi. D'où les moyens de vérification ci-dessous.
   « Évaluation »** depuis sa fiche : repère personnel, gardé sur l'appareil seulement.
 - **Resto U' de Castres** : bloc 12 h 30 – 13 h 30 chaque jour de cours ; un clic affiche le menu du
   midi (ou « Menu non publié »). Le serveur lit le menu **public** (API Croustillant, à défaut la page
-  du CROUS Toulouse) au plus toutes les 12 heures (`/api/crous`) : la page ne contacte aucun tiers.
+  du CROUS Toulouse) au plus toutes les 15 minutes (`/api/crous`, sans cache) : la page ne contacte
+  aucun tiers, et une page restée ouverte relit le menu toutes les 15 minutes.
 - **Mails** : boîte de réception chargée au fil du défilement, lus et non lus, recherche (expéditeur,
   objet, aperçu), 5 mails sur téléphone puis « Afficher plus », état « mis à jour il y a… » cliquable.
   Un clic ouvre le mail en plein écran **et le marque comme lu dans la messagerie** (`\Seen`).
@@ -117,7 +118,7 @@ code servi. D'où les moyens de vérification ci-dessous.
   messagerie de l'étudiant : pièces déposées, message créé dans la boîte d'envoi, expédition demandée
   puis vérifiée (le message doit avoir quitté la boîte d'envoi).
 - **Fiche cours** au clic sur une séance : salle, horaire, enseignant (bouton « Écrire »), séances de
-  la semaine et des 8 suivantes, examens d'après ADE, notes du carnet Moodle.
+  la semaine et des 8 suivantes, examens d'après ADE, notes personnelles sur le cours (chiffrées, sauvegardées).
 - **Notes** (tuile et vue « Mes notes », maquette v7) : l'étudiant saisit ses notes dans la maquette
   de sa classe (UE, matières, coefficients, évaluations prévues, publiés dans l'administration).
   Moyennes par matière, UE, semestre et année, rattrapages repérés (UE sous 10, matière sous 7,
@@ -129,7 +130,7 @@ code servi. D'où les moyens de vérification ci-dessous.
   cours** choisi par chaque étudiant (« Terminer le S7 », réversible), sauvegardé pour tous ses
   appareils : plus de dates de semestre.
 - **Sauvegarde anonyme et chiffrée** des données créées dans le Hub (notes, séances marquées
-  examen, étiquettes et règles de mails) : retrouvées sur tous les appareils. À la connexion, la
+  examen, étiquettes et règles de mails, notes de cours, « déjà vu ») : retrouvées sur tous les appareils. À la connexion, la
   page tire du mot de passe (PBKDF2-SHA-256, 600 000 tours) un identifiant, une preuve et une clé
   AES-GCM ; le serveur (`/api/vault`) ne reçoit que l'identifiant, l'empreinte de la preuve et des
   octets chiffrés : il ne peut ni lire les données ni savoir à qui elles sont. Transparence détaille
@@ -153,6 +154,13 @@ code servi. D'où les moyens de vérification ci-dessous.
   `no-cache` : ne pas activer « Cache Assets » dans Nginx Proxy Manager.
 - **Installer l'application** : tutoriel iPhone / Android / ordinateur proposé une fois après la
   première connexion (et depuis le menu du compte).
+- **Une seule fois par étudiant** : visite guidée et tutoriel d'installation ne sont proposés
+  qu'une fois, sur tous ses appareils. Le « déjà vu » est une rubrique de la sauvegarde anonyme et
+  chiffrée (rien de lisible côté serveur) ; l'appareil l'oublie à la déconnexion.
+- **Quoi de neuf ?** : après une mise à jour, une pop-up courte (les points principaux), une fois
+  par étudiant et par version ; « Voir tout le journal » ouvre le **journal des versions** détaillé,
+  aussi dans le menu du compte. Le contenu est dans `web/js/core/changelog.js` : ajouter une entrée
+  en tête à chaque version (`short` : 1 à 3 points pour la pop-up, `details` : tout).
 - **Fréquentation anonyme** (onglet *Fréquentation* de l'administration) : appareils distincts par
   jour, moyenne par jour de la semaine, ouvertures au total. La page envoie seulement « première
   ouverture du jour : oui / non » ; le serveur ne garde que deux nombres par jour (`stats.json`),
@@ -288,7 +296,7 @@ internal/site/      fichiers intégrés, en-têtes de sécurité, empreintes
 internal/feedback/  retours « Une idée ? », raccourcis, répartition des classes, maquettes de notes,
                     sauvegarde anonyme (vault.go), fréquentation, administration (CAS)
 internal/calendar/  calendriers filtrés par groupe, langue, parcours (abonnement des agendas)
-internal/crous/     menu du midi du Resto U' de Castres (Croustillant, secours CROUS), cache 12 h
+internal/crous/     menu du midi du Resto U' de Castres (Croustillant, secours CROUS), relu toutes les 15 min
 web/data/           classes.json : ressources ADE et règles de filtrage, lues par la page et le serveur
 web/                la page (servie telle quelle)
   js/net/           moteur TLS, cookies et redirections, coffre de session chiffré

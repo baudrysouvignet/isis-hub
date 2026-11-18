@@ -10,7 +10,8 @@ import * as sync from '../net/sync.js';
 
 // profile : classe et options (groupe, langue, parcours), pour ne plus les redemander sur un autre appareil.
 // memos : notes personnelles sur les cours (fiche d'une séance).
-export const SECTIONS = ['notes', 'evals', 'mail', 'profile', 'memos'];
+// seen : déjà vu (visite guidée, installation, dernière version présentée), une fois par étudiant.
+export const SECTIONS = ['notes', 'evals', 'mail', 'profile', 'memos', 'seen'];
 
 let local = { sections: {} };
 let vault = null;

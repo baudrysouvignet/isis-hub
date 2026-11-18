@@ -3,7 +3,7 @@
 // Le stockage peut être indisponible (navigation privée stricte) : l'appli marche alors sans.
 
 const PREFIX = 'hub.';
-export const PREF_KEYS = ['promo', 'choice', 'view', 'tourDone', 'edtView', 'feedback', 'evals', 'installSeen', 'seenDay'];
+export const PREF_KEYS = ['promo', 'choice', 'view', 'tourDone', 'edtView', 'feedback', 'evals', 'installSeen', 'seenDay', 'changelogSeen'];
 
 function storage() {
   try {
