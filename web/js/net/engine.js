@@ -42,6 +42,12 @@ async function load() {
   const Base = libcurl.wisp.WispWebSocket;
   // Chaque connexion TCP est un flux Wisp ; on compte ce qui passe, rien de plus.
   libcurl.transport = class CountedStream extends Base {
+    // libcurl oublie la connexion au relais par son adresse : le « close » tardif d'une connexion
+    // déjà remplacée (resetRelay) effacerait la nouvelle. On n'oublie que la sienne.
+    on_conn_close() {
+      const all = libcurl.wisp.wisp_connections;
+      if (all[this.real_url] === this.connection) delete all[this.real_url];
+    }
     constructor(url, protocols) {
       const target = url.slice(url.lastIndexOf('/') + 1);
       const host = target.split(':')[0];
@@ -69,31 +75,125 @@ export const ready = () =>
     throw error;
   }));
 
+// ------------------------------------------------- connexion au relais (WebSocket)
+//
+// libcurl réutilise sa connexion au relais tant qu'il n'a pas reçu son « close ». Or une
+// application installée (iOS, Android) mise en arrière-plan est suspendue : le relais coupe le
+// WebSocket resté muet, et au retour le système livre ce « close » APRÈS les premières requêtes,
+// qui partent sur une connexion morte (tuile Mails en rouge, « Réessayer » qui marche ensuite).
+// On repère donc les situations où la connexion a pu mourir et on la remplace avant d'envoyer.
+
+const STALE_AFTER_MS = 30_000; // arrière-plan plus long : la connexion est peut-être morte
+const IDLE_CLOSE_MS = 3 * 60_000; // connexion inutilisée : rendue au relais (places par adresse)
+let stale = false;
+let hiddenAt = 0;
+let lastUse = Date.now();
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') hiddenAt = Date.now();
+    else if (hiddenAt && Date.now() - hiddenAt > STALE_AFTER_MS) stale = true;
+  });
+  document.addEventListener('resume', () => (stale = true)); // Chrome Android : page dégelée
+  addEventListener('online', () => (stale = true));
+  addEventListener('pageshow', (event) => event.persisted && (stale = true)); // retour du cache
+  setInterval(() => {
+    if (active === 0 && Date.now() - lastUse > IDLE_CLOSE_MS) resetRelay();
+  }, 60_000);
+}
+
+const relay = () => libcurl?.wisp?.wisp_connections?.[RELAY_URL] ?? null;
+
+/** Abandonne la connexion au relais : ses flux sont fermés, la prochaine requête en ouvre une neuve. */
+export function resetRelay() {
+  const all = libcurl?.wisp?.wisp_connections;
+  const conn = all?.[RELAY_URL];
+  stale = false;
+  if (!conn) return;
+  delete all[RELAY_URL];
+  try {
+    conn.on_ws_close(); // ferme les flux : curl ne réutilisera pas ces connexions
+  } catch {}
+  try {
+    conn.ws?.close();
+  } catch {}
+}
+
+/** Remplace la connexion si elle a pu mourir (retour au premier plan, réseau revenu, socket fermé). */
+function checkRelay() {
+  const conn = relay();
+  if (stale || (conn?.ws && conn.ws.readyState > 1)) resetRelay();
+}
+
+// Codes d'erreur de curl après lesquels une nouvelle tentative est sûre :
+//   7 (connexion impossible), 35 (poignée de main TLS) : la requête n'est jamais partie ;
+//   52, 55, 56 (connexion coupée) et délai dépassé : seulement si la requête peut être rejouée.
+const NOT_SENT = new Set([7, 35]);
+const CUT = new Set([52, 55, 56]);
+
+/** Erreur de transport : passagère, on peut réessayer plus tard (voir ui/mails.js). */
+export class PortalUnreachable extends Error {
+  constructor(reason, code) {
+    super(`Portail injoignable (${reason})`);
+    this.name = 'PortalUnreachable';
+    this.transient = true;
+    this.code = code;
+  }
+}
+
+function timeoutSignal() {
+  if (AbortSignal.timeout) return AbortSignal.timeout(TIMEOUT_MS);
+  const ctl = new AbortController(); // iOS < 16 : pas d'AbortSignal.timeout
+  setTimeout(() => ctl.abort(new DOMException('délai dépassé', 'TimeoutError')), TIMEOUT_MS);
+  return ctl.signal;
+}
+
 let active = 0;
 const queue = [];
 
-/** Une requête HTTPS, sans cookie ni redirection automatiques. */
-async function raw(url, init) {
-  const session = await ready();
-  if (active >= MAX_PARALLEL) await new Promise((resolve) => queue.push(resolve));
-  active++;
+async function once(session, url, init) {
+  const signal = timeoutSignal();
   try {
-    const res = await session.fetch(url, {
-      method: init.method,
-      headers: init.headers,
-      body: init.body,
-      redirect: 'manual',
-      signal: AbortSignal.timeout?.(TIMEOUT_MS),
-    });
+    const res = await session.fetch(url, { method: init.method, headers: init.headers, body: init.body, redirect: 'manual', signal });
     const headers = res.raw_headers ?? [...res.headers];
     const named = (name) => headers.filter(([key]) => key.toLowerCase() === name).map(([, value]) => value);
     const body = new Uint8Array(await res.arrayBuffer());
     return { status: res.status, location: named('location')[0], setCookies: named('set-cookie'), body };
   } catch (error) {
-    const reason = error?.name === 'TimeoutError' ? 'délai dépassé' : (error?.message ?? String(error));
-    throw new Error(`Portail injoignable (${reason})`);
+    if (signal.aborted) throw new PortalUnreachable('délai dépassé', 'timeout');
+    const message = error?.message ?? String(error);
+    throw new PortalUnreachable(message, Number(/error code (\d+)/i.exec(message)?.[1]) || null);
+  }
+}
+
+/**
+ * Une requête HTTPS, sans cookie ni redirection automatiques. Une seule nouvelle tentative, sur une
+ * connexion neuve, si la première a échoué faute de connexion (et pour une lecture, si elle a été
+ * coupée en route) : jamais de boucle, et jamais un envoi de mail rejoué.
+ */
+async function raw(url, init) {
+  let session;
+  try {
+    session = await ready();
+  } catch (error) {
+    throw new PortalUnreachable(`moteur indisponible : ${error?.message ?? error}`, 'engine');
+  }
+  if (active >= MAX_PARALLEL) await new Promise((resolve) => queue.push(resolve));
+  active++;
+  lastUse = Date.now();
+  try {
+    checkRelay();
+    try {
+      return await once(session, url, init);
+    } catch (error) {
+      const replay = NOT_SENT.has(error.code) || (init.idempotent && (CUT.has(error.code) || error.code === 'timeout'));
+      if (!replay) throw error;
+      resetRelay();
+      return await once(session, url, init);
+    }
   } finally {
     active--;
+    lastUse = Date.now();
     queue.shift()?.();
   }
 }

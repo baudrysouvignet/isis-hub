@@ -129,7 +129,9 @@ export function createClient({ raw, jar, allowedHosts, maxRedirects = 15 }) {
         throw new Error(`Destination refusée : ${target.host}`);
       }
       const cookie = jar.header(target);
-      const res = await raw(target.href, { method, body, headers: cookie ? { ...headers, Cookie: cookie } : headers });
+      // idempotent : la requête peut être rejouée sans effet de bord (lecture), voir engine.js.
+      const idempotent = method === 'GET' || method === 'HEAD' || Boolean(init.idempotent);
+      const res = await raw(target.href, { method, body, idempotent, headers: cookie ? { ...headers, Cookie: cookie } : headers });
       jar.store(target, res.setCookies);
 
       // redirect: 'manual' : on rend la redirection elle-même (ticket CAS, à ne pas suivre).

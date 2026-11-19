@@ -251,3 +251,16 @@ test('dates : semaines ISO et heure de Paris', () => {
   assert.deepEqual(D.paris(new Date('2026-12-01T23:30:00Z')), { key: '2026-12-02', minutes: 30 }, 'changement de jour');
   assert.equal(D.weekRange('2026-11-30'), '30 nov. – 4 déc. 2026');
 });
+
+test('rejouable ou non : lectures oui, envois non (sauf lecture déclarée), redirection en GET oui', async () => {
+  const { raw, calls } = fakeRaw({
+    'https://moodle.univ-jfc.fr/a': { status: 200, body: 'ok' },
+    'https://moodle.univ-jfc.fr/post': { status: 302, location: 'https://moodle.univ-jfc.fr/a' },
+  });
+  const http = createClient({ raw, jar: new CookieJar(), allowedHosts: ALLOWED });
+  await http('https://moodle.univ-jfc.fr/a');
+  await http('https://moodle.univ-jfc.fr/a', { method: 'POST', body: '{}' });
+  await http('https://moodle.univ-jfc.fr/a', { method: 'POST', body: '{}', idempotent: true });
+  await http('https://moodle.univ-jfc.fr/post', { method: 'POST', body: 'x' });
+  assert.deepEqual(calls.map((c) => c.idempotent), [true, false, true, false, true]);
+});
