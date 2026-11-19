@@ -411,6 +411,9 @@ const trace = (step, detail) => sendTrace.push({ t: Math.round(performance.now()
 
 const oneLine = (s) => s.replace(/[\r\n]+/g, ' ').trim();
 
+// Identifiant de message : un seul mot, sans espace ni retour à la ligne (chevrons facultatifs).
+const MSG_ID = /^<?([^<>\s]{1,250})>?$/;
+
 /**
  * Envoie un message par la messagerie de l'étudiant :
  * pièces déposées sur le serveur, message créé dans la boîte d'envoi, puis expédition demandée.
@@ -455,6 +458,18 @@ export async function send({ to, cc = [], subject, text, files = [], inReplyTo =
     { name: 'X-Bm-Draft-Identity', values: ['default'] },
     { name: 'X-Bm-Draft-Refresh-Date', values: [String(Date.now())] },
   ];
+  // Message-ID et References viennent du mail reçu, donc de son expéditeur : seuls des
+  // identifiants bien formés passent (jamais de retour à la ligne, qui ajouterait un en-tête).
+  const msgId = (x) => {
+    const m = typeof x === 'string' ? MSG_ID.exec(x.trim()) : null;
+    return m ? `<${m[1]}>` : null;
+  };
+  inReplyTo = msgId(inReplyTo);
+  references = (Array.isArray(references) ? references : [])
+    .flatMap((r) => String(r).split(/\s+/))
+    .map(msgId)
+    .filter(Boolean)
+    .slice(-20);
   if (inReplyTo) {
     headers.push({ name: 'In-Reply-To', values: [inReplyTo] });
     headers.push({ name: 'References', values: [[...references, inReplyTo].join(' ')] });
