@@ -2,8 +2,10 @@
 
 Emploi du temps ADE (FIE1 à FIE5, FIA3 à FIA5), mails et cours Moodle d'ISIS sur une seule page, sur ordinateur comme sur
 téléphone. Tout est lu **en direct sur les portails de l'université**, et le serveur ne peut rien lire
-de ce qui transite par lui. La seule donnée conservée par le serveur : les retours que les étudiants
-choisissent d'envoyer depuis « Une idée ? ».
+de ce qui transite par lui. Le serveur conserve seulement : les retours que les étudiants
+choisissent d'envoyer depuis « Une idée ? » (seule donnée qui peut être reliée à quelqu'un, et
+seulement sans « Envoyer anonymement »), une sauvegarde chiffrée et anonyme de ce qu'ils créent dans
+le Hub, et des compteurs de fréquentation anonymes.
 
 ```bash
 DOMAIN=hub.exemple.fr docker compose up -d --build

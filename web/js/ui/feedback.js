@@ -1,6 +1,7 @@
 // « Une idée ? » : propositions et bugs envoyés à l'équipe ISIS Hub.
-// C'est la seule chose que le serveur conserve. Pas de compte : à l'envoi, le serveur rend un
-// jeton secret, gardé sur cet appareil, qui permet de retrouver ses propositions et leurs réponses.
+// Seule donnée du serveur qui peut être reliée à quelqu'un (si « Envoyer anonymement » n'est pas
+// coché). Pas de compte : à l'envoi, le serveur rend un jeton secret, gardé par la page (dans la
+// sauvegarde chiffrée si l'étudiant est connecté), qui permet de retrouver ses propositions.
 
 import { $, $$, h, icon, restartClass, motionOK, EASE } from '../core/dom.js';
 import { prefs } from '../core/store.js';

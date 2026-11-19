@@ -3,8 +3,10 @@
 //
 // La clé AES-GCM 256 bits est créée par le navigateur avec `extractable: false` et rangée dans
 // IndexedDB : aucun script, pas même celui de cette page, ne peut en lire la valeur ; il peut
-// seulement demander au navigateur de chiffrer ou déchiffrer avec. Une copie du stockage (sauvegarde,
-// extension de navigateur qui lit localStorage, accès au disque) ne donne que des octets illisibles.
+// seulement demander au navigateur de chiffrer ou déchiffrer avec. Une copie de localStorage ou de
+// sessionStorage seule (sauvegarde, outil qui ne lit que ce stockage) ne donne que des octets
+// illisibles. Limite : la clé reste dans le profil du navigateur ; un logiciel ou une extension qui
+// accède à tout le profil (IndexedDB compris) ou à la page elle-même peut aussi déchiffrer.
 //
 // Par défaut tout est dans sessionStorage (effacé à la fermeture de l'onglet) ; avec « Rester
 // connecté », dans localStorage. Le mot de passe, lui, n'est jamais stocké nulle part.

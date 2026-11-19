@@ -1,12 +1,15 @@
 // Package feedback gère les retours envoyés depuis « Une idée ? » et leur administration.
 //
-// C'est la SEULE donnée que le serveur conserve. Principes :
+// Avec la sauvegarde chiffrée et anonyme (vault.go) et les compteurs de fréquentation (stats.go),
+// c'est ce que le serveur conserve ; c'est la seule donnée qui peut être reliée à quelqu'un, et
+// seulement si l'étudiant ne coche pas « Envoyer anonymement ». Principes :
 //   - l'étudiant choisit d'envoyer, et peut le faire anonymement ;
 //   - aucune adresse IP n'est enregistrée (elle sert seulement, en mémoire, à limiter le débit) ;
 //   - « Mes propositions » fonctionne sans compte : à l'envoi, la page reçoit un jeton secret qu'elle
 //     garde sur l'appareil ; le serveur n'en conserve que l'empreinte SHA-256 ;
-//   - l'administration est protégée par un mot de passe dont seule l'empreinte PBKDF2 est
-//     configurée (variable ADMIN_PASSWORD_HASH), une session courte, et des protections CSRF.
+//   - l'administration est réservée aux identifiants de ADMIN_USERS, prouvés par un ticket du CAS
+//     de l'université vérifié par le serveur (cas.go), avec une session courte et des protections
+//     CSRF (en-tête X-Hub-Admin, origine vérifiée, cookie SameSite=Strict).
 package feedback
 
 import (
