@@ -161,3 +161,36 @@ func TestFIE5ProjectSessionsKept(t *testing.T) {
 		t.Error("un cours du parcours Management ne doit pas apparaître en IA")
 	}
 }
+
+// ADE en panne sans rien en cache : pas relancé à chaque requête (2 min) ; trop de requêtes
+// d'un même visiteur : 429. Calendrier construit une fois puis servi tel quel.
+func TestFeedFailureBackoffAndLimit(t *testing.T) {
+	calls := 0
+	ade := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.Error(w, "panne", http.StatusInternalServerError)
+	}))
+	defer ade.Close()
+	s := New(loadData(t))
+	s.ADEBase = ade.URL
+	get := func() int {
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, httptest.NewRequest("GET", "/calendar/fie4/ia/1.ics", nil))
+		return rec.Code
+	}
+	for i := 0; i < 5; i++ {
+		if code := get(); code != http.StatusBadGateway {
+			t.Fatalf("ADE en panne : 502 attendu, reçu %d", code)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("ADE relancé %d fois en quelques ms, attendu 1", calls)
+	}
+	codes := map[int]int{}
+	for i := 0; i < 400; i++ {
+		codes[get()]++
+	}
+	if codes[http.StatusTooManyRequests] == 0 {
+		t.Fatalf("limite par visiteur attendue, reçu %v", codes)
+	}
+}

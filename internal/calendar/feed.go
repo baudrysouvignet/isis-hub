@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"isishub/internal/visitor"
 )
 
 // ------------------------------------------------------------ fabrication du fichier .ics
@@ -202,22 +204,44 @@ func Build(text string, c Class, v Variant) (string, int, error) {
 
 const refresh = 15 * time.Minute
 
+var errUnreadable = errors.New("calendrier ADE illisible")
+
+// retryAfterFailure : ADE injoignable et rien en cache : on ne le relance pas à chaque requête.
+const retryAfterFailure = 2 * time.Minute
+
 type source struct {
-	mu      sync.Mutex
-	text    string
-	fetched time.Time
+	mu       sync.Mutex
+	text     string
+	fetched  time.Time
+	failedAt time.Time
+	failErr  error
+	version  int              // change à chaque nouvel export lu
+	built    map[string]built // calendrier par variante, pour la version en cours
+}
+
+// built : calendrier déjà construit, servi tel quel (et 304) tant que l'export ne change pas.
+type built struct {
+	ics  string
+	etag string
 }
 
 type Service struct {
-	mu      sync.RWMutex
-	data    Data
-	client  *http.Client
-	sources map[string]*source
-	ADEBase string // https://adecampus.univ-jfc.fr (remplaçable pour les tests)
+	mu         sync.RWMutex
+	data       Data
+	client     *http.Client
+	sources    map[string]*source
+	ADEBase    string // https://adecampus.univ-jfc.fr (remplaçable pour les tests)
+	TrustProxy bool   // adresse du visiteur lue dans X-Forwarded-For (derrière le frontal)
+	limit      *visitor.Limiter
 }
 
 func New(data Data) *Service {
-	s := &Service{client: &http.Client{Timeout: 25 * time.Second}, ADEBase: "https://adecampus.univ-jfc.fr"}
+	s := &Service{
+		client:  &http.Client{Timeout: 25 * time.Second},
+		ADEBase: "https://adecampus.univ-jfc.fr",
+		// Large : les agendas (Google, Apple) relisent les abonnements depuis peu d'adresses.
+		limit: visitor.NewLimiter(300, time.Minute),
+	}
 	s.SetData(data)
 	return s
 }
@@ -247,16 +271,18 @@ func (s *Service) adeURL(c Class) string {
 }
 
 // text rend l'export ADE de la classe, relu au plus toutes les 15 minutes ; si ADE ne répond pas,
-// la dernière version obtenue est servie.
-func (s *Service) text(ctx context.Context, promo string, c Class) (string, error) {
-	s.mu.RLock()
-	src := s.sources[promo]
-	s.mu.RUnlock()
-	src.mu.Lock()
-	defer src.mu.Unlock()
+// la dernière version obtenue est servie. La lecture ne dépend pas de la requête du visiteur
+// (qui peut s'interrompre) ; après un échec sans rien en cache, ADE n'est pas relancé avant 2 min.
+// Appelé avec src.mu verrouillé.
+func (s *Service) text(src *source, c Class) (string, error) {
 	if src.text != "" && time.Since(src.fetched) < refresh {
 		return src.text, nil
 	}
+	if src.text == "" && src.failErr != nil && time.Since(src.failedAt) < retryAfterFailure {
+		return "", src.failErr
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.adeURL(c), nil)
 	req.Header.Set("User-Agent", "ISIS-Hub")
 	res, err := s.client.Do(req)
@@ -268,14 +294,30 @@ func (s *Service) text(ctx context.Context, promo string, c Class) (string, erro
 			err = fmt.Errorf("ADE a répondu HTTP %d", res.StatusCode)
 		}
 		if err == nil {
-			src.text, src.fetched = string(body), time.Now()
+			if string(body) != src.text {
+				src.version++
+				src.built = nil
+			}
+			src.text, src.fetched, src.failErr = string(body), time.Now(), nil
 			return src.text, nil
 		}
 	}
+	src.failedAt, src.failErr = time.Now(), err
 	if src.text != "" {
+		src.fetched = time.Now().Add(-refresh + retryAfterFailure) // export gardé, nouvel essai dans 2 min
 		return src.text, nil
 	}
 	return "", err
+}
+
+func (s *Service) clientKey(r *http.Request) string {
+	if s.TrustProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			return visitor.Key(strings.TrimSpace(parts[len(parts)-1]))
+		}
+	}
+	return visitor.Key(r.RemoteAddr)
 }
 
 // ServeHTTP répond à /calendar/<classe>/<choix>.ics (mêmes URL que le projet de référence).
@@ -310,18 +352,41 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	text, err := s.text(r.Context(), promo, c)
+	if !s.limit.Allow(s.clientKey(r)) {
+		http.Error(w, "trop de requêtes, réessaie dans une minute", http.StatusTooManyRequests)
+		return
+	}
+	s.mu.RLock()
+	src := s.sources[promo]
+	s.mu.RUnlock()
+	// Calendrier construit une fois par variante et par export ADE, puis servi tel quel : une
+	// rafale de requêtes ne relance ni ADE ni la construction (expressions régulières, empreinte).
+	src.mu.Lock()
+	text, err := s.text(src, c)
+	cached, hit := src.built[variant.Key]
+	if err == nil && !hit {
+		var ics string
+		if ics, _, err = Build(text, c, *variant); err == nil {
+			sum := sha256.Sum256([]byte(ics))
+			cached = built{ics: ics, etag: `"` + hex.EncodeToString(sum[:16]) + `"`}
+			if src.built == nil {
+				src.built = map[string]built{}
+			}
+			src.built[variant.Key] = cached
+		} else {
+			err = errUnreadable
+		}
+	}
+	src.mu.Unlock()
+	if errors.Is(err, errUnreadable) {
+		http.Error(w, "calendrier ADE illisible", http.StatusBadGateway)
+		return
+	}
 	if err != nil {
 		http.Error(w, "ADE est injoignable pour l'instant, réessaie plus tard.", http.StatusBadGateway)
 		return
 	}
-	ics, _, err := Build(text, c, *variant)
-	if err != nil {
-		http.Error(w, "calendrier ADE illisible", http.StatusBadGateway)
-		return
-	}
-	sum := sha256.Sum256([]byte(ics))
-	etag := `"` + hex.EncodeToString(sum[:16]) + `"`
+	ics, etag := cached.ics, cached.etag
 	h := w.Header()
 	h.Set("Content-Type", "text/calendar; charset=utf-8")
 	h.Set("Cache-Control", "public, max-age=900")

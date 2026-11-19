@@ -154,6 +154,7 @@ func serve() error {
 	}
 	// Calendriers filtrés par groupe, langue et parcours (abonnement des agendas).
 	calendars := calendar.New(content.Classes())
+	calendars.TrustProxy = os.Getenv("TRUST_PROXY") == "1"
 	content.OnChange = calendars.SetData
 
 	var admins []string
