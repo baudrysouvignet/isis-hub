@@ -266,8 +266,11 @@ go run ./cmd/isis-hub verify https://hub.exemple.fr/
 ```
 
 Variables : `PUBLIC_ORIGIN` (origine publique, seule page autorisée à utiliser le relais et l'API),
-`ADMIN_USERS`, `TRUST_PROXY=1` derrière un proxy, `MAX_CONNS_PER_IP` (8), `MAX_CONNS` (2000),
-`MAX_STREAMS` (64 connexions par visiteur). `CAS_URL` ne sert qu'aux tests (faux CAS).
+`ADMIN_USERS`, `VAULT_PEPPER` (secret du coffre anonyme, **obligatoire en production** : généré une
+fois avec `openssl rand -base64 48`, jamais changé, jamais dans le dossier de données ; les
+sauvegardes existantes sont converties à leur première utilisation), `VAULT_MAX_BYTES` (volume total
+des sauvegardes, 2 Gio), `TRUST_PROXY=1` derrière un proxy, `MAX_CONNS_PER_IP` (96 : tout un campus
+peut sortir par une adresse), `MAX_CONNS` (2000), `MAX_STREAMS` (16 connexions par WebSocket). `CAS_URL` ne sert qu'aux tests (faux CAS).
 
 Toutes les connexions arrivent à l'université depuis l'adresse IP du serveur, et un formulaire de
 mot de passe hors du domaine universitaire ressemble à de l'hameçonnage : **prévenir la DSI avant

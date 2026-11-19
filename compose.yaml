@@ -15,6 +15,7 @@ services:
       TRUST_PROXY: "1"
       # Identifiants universitaires administrateurs (vérifiés par le CAS) ; vide = pas d'administration.
       ADMIN_USERS: "${ADMIN_USERS:-}"
+      VAULT_PEPPER: "${VAULT_PEPPER:-}"
     volumes:
       - hub_data:/data # les retours des étudiants, seule donnée conservée
     expose:

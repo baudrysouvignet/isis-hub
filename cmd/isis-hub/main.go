@@ -140,9 +140,13 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("contenu : %w", err)
 	}
-	vaultStore, err := feedback.OpenVaultStore(env("DATA_DIR", "data"))
+	// VAULT_PEPPER : secret du serveur, gardé hors du dossier de données (voir feedback/vault.go).
+	vaultStore, err := feedback.OpenVaultStore(env("DATA_DIR", "data"), os.Getenv("VAULT_PEPPER"))
 	if err != nil {
 		return fmt.Errorf("coffre : %w", err)
+	}
+	if n := envInt("VAULT_MAX_BYTES", 0); n > 0 {
+		vaultStore.MaxBytes = int64(n)
 	}
 	stats, err := feedback.OpenStats(env("DATA_DIR", "data"))
 	if err != nil {

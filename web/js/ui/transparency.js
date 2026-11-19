@@ -114,7 +114,8 @@ export function setupTransparency({ sessionPlace, syncId = () => null, onErase }
     const id = syncId();
     const idEl = $('[data-keep-id]', dialog);
     idEl.hidden = !id;
-    if (id) idEl.replaceChildren('Ta sauvegarde, vue du serveur : ', h('code', { text: `${id.slice(0, 10)}…${id.slice(-6)}` }), ' — rien d’autre.');
+    // L'identifiant n'est plus affiché : tiré du mot de passe, il pourrait servir à en tester.
+    if (id) idEl.textContent = 'Ta sauvegarde est rangée sous un identifiant anonyme et chiffré : ni ton nom, ni ton identifiant universitaire, ni ton mot de passe n’y figurent.';
     const place = sessionPlace();
     $('[data-fact-session]', dialog).textContent =
       place === 'device'
