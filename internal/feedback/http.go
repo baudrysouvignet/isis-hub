@@ -72,7 +72,7 @@ func New(cfg Config) *Service {
 	s := &Service{
 		cfg: cfg, origins: map[string]bool{}, sessions: map[string]adminSession{},
 		submit: newLimiter(5, 10*time.Minute), reads: newLimiter(60, time.Minute),
-		loginIP: newLimiter(5, 15*time.Minute), loginAll: newLimiter(30, 15*time.Minute),
+		loginIP: newLimiter(5, 15*time.Minute), loginAll: newLimiter(200, 15*time.Minute),
 		pings: newLimiter(600, time.Hour), vaultReads: newLimiter(120, 10*time.Minute), vaultWrites: newLimiter(240, 10*time.Minute), vaultCreates: newLimiter(200, 24*time.Hour),
 	}
 	for _, o := range cfg.AllowedOrigins {
@@ -256,12 +256,18 @@ func (s *Service) handleAdmin(w http.ResponseWriter, r *http.Request, action str
 		if !s.readJSON(w, r, 1<<10, &in) {
 			return
 		}
-		if !s.loginIP.allow(s.clientIP(r)) || !s.loginAll.allow("*") {
+		if !s.loginIP.allow(s.clientIP(r)) {
 			fail(w, http.StatusTooManyRequests, "trop d’essais, réessaie dans 15 minutes")
 			return
 		}
 		if !ticketRE.MatchString(in.Ticket) || s.cfg.CASValidate == nil {
 			fail(w, http.StatusBadRequest, "ticket invalide")
+			return
+		}
+		// Limite globale (protège le CAS) : comptée seulement pour un ticket bien formé, et assez
+		// large pour que quelques adresses ne bloquent pas la connexion de l'administrateur.
+		if !s.loginAll.allow("*") {
+			fail(w, http.StatusTooManyRequests, "trop d’essais, réessaie dans 15 minutes")
 			return
 		}
 		user, err := s.cfg.CASValidate(r.Context(), in.Ticket)
