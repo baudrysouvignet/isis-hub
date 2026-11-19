@@ -39,6 +39,12 @@ command -v docker >/dev/null || { echo "Docker est nécessaire." >&2; exit 1; }
 if command -v go >/dev/null; then
   echo "▸ Tests du serveur (Go)"
   go test ./...
+  # Failles connues de Go et des dépendances (outil officiel, s'il est installé :
+  # go install golang.org/x/vuln/cmd/govulncheck@latest).
+  if command -v govulncheck >/dev/null; then
+    echo "▸ Failles connues (govulncheck)"
+    govulncheck ./...
+  fi
 fi
 if command -v node >/dev/null; then
   echo "▸ Tests de la page (Node)"

@@ -2,7 +2,9 @@
 # Les tests du serveur tournent pendant la construction : une image ne sort que s'ils passent.
 
 # Construction sur la machine qui construit (tests natifs), compilation croisée vers la cible.
-FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS build
+# Go maintenu (correctifs de sécurité), image épinglée par empreinte : la même à chaque construction.
+# Mise à jour : docker buildx imagetools inspect golang:1.27-alpine (nouvelle empreinte).
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
 ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
