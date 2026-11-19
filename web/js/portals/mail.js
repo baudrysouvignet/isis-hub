@@ -29,19 +29,30 @@ async function readSessionInfos() {
   }
 }
 
-export async function connect() {
-  let infos = await readSessionInfos();
-  if (infos === undefined) infos = await readSessionInfos();
-  if (!infos) throw new NotSignedIn('messagerie');
-  session = infos;
-  return { email: infos.defaultEmail ?? '', name: infos.formatedName ?? '', login: infos.login ?? '' };
+// Une seule ouverture de session à la fois : deux requêtes refusées en même temps ne relancent pas
+// deux fois le SSO (ce qui pouvait finir en fausse « Session expirée »).
+let connecting = null;
+export function connect() {
+  connecting ??= (async () => {
+    let infos = await readSessionInfos();
+    if (infos === undefined) infos = await readSessionInfos();
+    if (!infos) throw new NotSignedIn('messagerie');
+    session = infos;
+    return { email: infos.defaultEmail ?? '', name: infos.formatedName ?? '', login: infos.login ?? '' };
+  })().finally(() => (connecting = null));
+  return connecting;
 }
+
+// Appels de lecture (même en POST) : rejouables sans effet de bord si la connexion est coupée.
+const READS = /(?:\/_sorted|\/_count|\/_mgetById|\/_all|\/_search|\/part\/)/;
 
 async function api(path, { method, body, bytes, raw = false } = {}, retry = true) {
   if (!session) await connect();
   const json = body !== undefined;
+  const verb = method ?? (json || bytes ? 'POST' : 'GET');
   const res = await http(`${HOSTS.mail}/api/${path}`, {
-    method: method ?? (json || bytes ? 'POST' : 'GET'),
+    method: verb,
+    idempotent: verb === 'GET' || READS.test(path),
     headers: {
       'X-BM-ApiKey': session.sid,
       ...(json && { 'Content-Type': 'application/json' }),
@@ -49,7 +60,11 @@ async function api(path, { method, body, bytes, raw = false } = {}, retry = true
     },
     body: bytes ?? (json ? JSON.stringify(body) : undefined),
   });
-  if (res.status === 401 || res.status === 403) {
+  // Session BlueMind expirée sans 401 : la requête a été renvoyée vers le SSO, qui répond par une
+  // page HTML. Même traitement qu'un 401 (nouvelle session, puis une seule nouvelle tentative).
+  const elsewhere = new URL(res.url).origin !== HOSTS.mail;
+  const html = !raw && res.ok && /^\s*</.test((await res.text()).slice(0, 64));
+  if (res.status === 401 || res.status === 403 || elsewhere || html) {
     session = null;
     if (retry) return api(path, { method, body, bytes, raw }, false);
     throw new NotSignedIn('messagerie');
