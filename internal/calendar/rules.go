@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/text/cases"
@@ -56,6 +57,12 @@ var (
 )
 
 // Validate vérifie une répartition avant de l'accepter (elle vient de la page d'administration).
+// hasControl : caractère de contrôle (retour à la ligne…). Les libellés vont dans les flux ICS
+// (« X-WR-CALNAME: ») : un retour à la ligne y ajouterait des lignes à tous les abonnements.
+func hasControl(s string) bool {
+	return strings.IndexFunc(s, unicode.IsControl) >= 0
+}
+
 func (d Data) Validate() error {
 	if d.ProjectID < 1 || d.ProjectID > 9999 {
 		return errors.New("numéro de projet ADE invalide")
@@ -67,7 +74,7 @@ func (d Data) Validate() error {
 		return errors.New("entre 1 et 30 classes")
 	}
 	for k, v := range d.TrackLabels {
-		if !trackKeyRE.MatchString(k) || strings.TrimSpace(v) == "" || utf8.RuneCountInString(v) > 40 {
+		if !trackKeyRE.MatchString(k) || strings.TrimSpace(v) == "" || utf8.RuneCountInString(v) > 40 || hasControl(v) {
 			return fmt.Errorf("nom de parcours invalide : %q", k)
 		}
 	}
@@ -75,7 +82,7 @@ func (d Data) Validate() error {
 		if !classKeyRE.MatchString(key) {
 			return fmt.Errorf("nom de classe invalide : %q (ex. FIE4)", key)
 		}
-		if strings.TrimSpace(c.Label) == "" || utf8.RuneCountInString(c.Label) > 60 {
+		if strings.TrimSpace(c.Label) == "" || utf8.RuneCountInString(c.Label) > 60 || hasControl(c.Label) {
 			return fmt.Errorf("%s : description obligatoire (60 caractères au plus)", key)
 		}
 		if len(c.Resources) == 0 || len(c.Resources) > 10 {

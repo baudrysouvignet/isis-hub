@@ -194,3 +194,24 @@ func TestFeedFailureBackoffAndLimit(t *testing.T) {
 		t.Fatalf("limite par visiteur attendue, reçu %v", codes)
 	}
 }
+
+// Libellés : un retour à la ligne ajouterait des lignes à tous les flux abonnés.
+func TestLabelsWithoutControlCharacters(t *testing.T) {
+	d := loadData(t)
+	c := d.Classes["FIE1"]
+	c.Label = "1re année\r\nBEGIN:VEVENT"
+	d.Classes["FIE1"] = c
+	if d.Validate() == nil {
+		t.Fatal("libellé de classe avec retour à la ligne accepté")
+	}
+	d = loadData(t)
+	d.TrackLabels["ia"] = "IA\nX-PIRATE:1"
+	if d.Validate() == nil {
+		t.Fatal("libellé de parcours avec retour à la ligne accepté")
+	}
+	v := Variant{Key: "1", Name: "ISIS\r\nBEGIN:VEVENT", Choice: Choice{Group: 1}}
+	ics, _, err := Build(fixture(t, "fie1"), loadData(t).Classes["FIE1"], v)
+	if err != nil || strings.Contains(ics, "X-WR-CALNAME:ISIS\r\nBEGIN") {
+		t.Fatalf("nom de calendrier sur plusieurs lignes : %v", err)
+	}
+}

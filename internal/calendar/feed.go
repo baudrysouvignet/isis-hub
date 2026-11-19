@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"isishub/internal/visitor"
 )
@@ -188,7 +189,14 @@ func Build(text string, c Class, v Variant) (string, int, error) {
 	base = replaceFirst(ttlLine, base)
 	base = strings.TrimRightFunc(endCal.ReplaceAllString(base, ""), isSpace)
 
-	lines := []string{base, "METHOD:PUBLISH", "X-WR-CALNAME:" + v.Name, "X-PUBLISHED-TTL:PT15M"}
+	// Nom sans caractère de contrôle : une seule ligne, quoi qu'ait saisi l'administration.
+	name := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, v.Name)
+	lines := []string{base, "METHOD:PUBLISH", "X-WR-CALNAME:" + name, "X-PUBLISHED-TTL:PT15M"}
 	count := 0
 	for _, ev := range events {
 		if Keep(c, v.Choice, ev.summary, ev.description) {
