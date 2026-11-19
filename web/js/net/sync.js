@@ -101,7 +101,9 @@ export async function pull(cred) {
 export async function push(cred, v, value) {
   const { status, body } = await call(cred, 'write', { v, data: await seal(cred, value) });
   if (status === 200) return { ok: true, v: body.v };
-  if (status === 409) return { ok: false, v: body.v, value: await open(cred, body.data) };
+  // Conflit : version du serveur à fusionner (vide si la sauvegarde n'existe plus, ex. effacée
+  // depuis un autre appareil : la page la recrée en version 0).
+  if (status === 409) return { ok: false, v: body.v, value: body.data ? await open(cred, body.data) : null };
   throw new Error(body?.error || `HTTP ${status}`);
 }
 

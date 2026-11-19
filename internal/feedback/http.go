@@ -72,17 +72,18 @@ type Config struct {
 }
 
 type Service struct {
-	cfg         Config
-	origins     map[string]bool
-	submit      *limiter // envois par visiteur
-	reads       *limiter // « mes propositions » par visiteur
-	loginIP     *limiter // essais de connexion admin par visiteur
-	loginAll    *limiter // essais de connexion admin au total
-	pings       *limiter // statistiques : ouvertures comptées par visiteur
-	vaultReads  *limiter
-	vaultWrites *limiter
-	mu          sync.Mutex
-	sessions    map[string]adminSession // empreinte du jeton → session
+	cfg          Config
+	origins      map[string]bool
+	submit       *limiter // envois par visiteur
+	reads        *limiter // « mes propositions » par visiteur
+	loginIP      *limiter // essais de connexion admin par visiteur
+	loginAll     *limiter // essais de connexion admin au total
+	pings        *limiter // statistiques : ouvertures comptées par visiteur
+	vaultReads   *limiter
+	vaultWrites  *limiter
+	vaultCreates *limiter // nouvelles sauvegardes, par adresse et par jour
+	mu           sync.Mutex
+	sessions     map[string]adminSession // empreinte du jeton → session
 }
 
 type adminSession struct {
@@ -98,7 +99,7 @@ func New(cfg Config) *Service {
 		cfg: cfg, origins: map[string]bool{}, sessions: map[string]adminSession{},
 		submit: newLimiter(5, 10*time.Minute), reads: newLimiter(60, time.Minute),
 		loginIP: newLimiter(5, 15*time.Minute), loginAll: newLimiter(30, 15*time.Minute),
-		pings: newLimiter(600, time.Hour), vaultReads: newLimiter(120, 10*time.Minute), vaultWrites: newLimiter(240, 10*time.Minute),
+		pings: newLimiter(600, time.Hour), vaultReads: newLimiter(120, 10*time.Minute), vaultWrites: newLimiter(240, 10*time.Minute), vaultCreates: newLimiter(200, 24*time.Hour),
 	}
 	for _, o := range cfg.AllowedOrigins {
 		s.origins[strings.TrimRight(o, "/")] = true
