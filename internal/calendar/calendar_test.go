@@ -140,3 +140,24 @@ func TestHTTP(t *testing.T) {
 		}
 	}
 }
+
+// Retour d'étudiants FIE5 : ADE nomme le projet tutoré « TD-E5-1-PROJET-1 Projet innovation »,
+// la maquette « E5-1-PTUT-1 » (2026-27 : « E5-1-PRJ-1 ») ; les séances doivent rester dans les
+// trois parcours.
+func TestFIE5ProjectSessionsKept(t *testing.T) {
+	c := loadData(t).Classes["FIE5"]
+	for _, track := range []string{"ia", "developpement", "management"} {
+		for _, s := range []struct{ summary, desc string }{
+			{"TD-E5-1-PROJET-1 Projet innovation", "\nProjet d'innovation\nSalle : B101\nTD-E5-1-PROJET-1 Projet innovation\n"},
+			{"Projet d'innovation", "E5-1-PRJ-1 Projet d'Innovation\n"},
+		} {
+			if !Keep(c, Choice{Track: track}, s.summary, s.desc) {
+				t.Errorf("%s : séance de projet « %s » retirée", track, s.summary)
+			}
+		}
+	}
+	// Le filtre reste actif : un cours d'un autre parcours est toujours retiré.
+	if Keep(c, Choice{Track: "ia"}, "CM-E5-1-IMTNS-2 Aide à la décision", "") {
+		t.Error("un cours du parcours Management ne doit pas apparaître en IA")
+	}
+}

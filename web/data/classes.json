@@ -131,7 +131,11 @@
    "filter": "fie5",
    "aliases": {
     "A5-1-UI-2": "E5-1-IDSNS-2",
-    "A5-1-UI-3": "E5-1-IDSNS-4"
+    "A5-1-UI-3": "E5-1-IDSNS-4",
+    "E5-1-PROJET": "E5-1-PTUT-1",
+    "E5-1-PROJET-1": "E5-1-PTUT-1",
+    "E5-1-PRJ": "E5-1-PTUT-1",
+    "E5-1-PRJ-1": "E5-1-PTUT-1"
    },
    "tracks": {
     "ia": [
