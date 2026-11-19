@@ -28,8 +28,9 @@ test('pop-up : première fois de la 1.0.3 à la 1.0.5, puis seulement les versio
   assert.deepEqual(unseen('n’importe quoi').map((e) => e.version), unseen(null).map((e) => e.version));
 });
 
-test('journal : les évolutions de l’administration sont listées à part', () => {
-  for (const v of ['0.0.1', '0.0.2', '1.0.0', '1.0.1', '1.0.2', '1.0.3', '1.0.5']) {
-    assert.ok(CHANGELOG.find((e) => e.version === v).admin?.length, v);
+test('journal public : aucune entrée sur l’administration', () => {
+  for (const e of CHANGELOG) {
+    assert.equal(e.admin, undefined, e.version);
+    for (const line of [e.title, ...e.short, ...e.details]) assert.doesNotMatch(line, /administration|admin\b/i, `${e.version} : ${line}`);
   }
 });

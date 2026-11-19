@@ -26,9 +26,7 @@ export function setupChangelog() {
             i === 0 ? h('span.log-now', { text: 'actuelle' }) : null,
             h('time', { text: when(e.date), attrs: { datetime: e.date } })),
           h('h3.log-title', { text: e.title }),
-          h('ul.log-points', {}, e.details.map((d) => h('li', { text: d }))),
-          e.admin?.length ? h('p.log-sub', { text: 'Administration' }) : null,
-          e.admin?.length ? h('ul.log-points', {}, e.admin.map((d) => h('li', { text: d }))) : null),
+          h('ul.log-points', {}, e.details.map((d) => h('li', { text: d })))),
       ),
     );
     if (newsDialog.open) news.close();
@@ -36,7 +34,7 @@ export function setupChangelog() {
   }
 
   function openNews(entries) {
-    $('[data-news-sub]', newsDialog).textContent = `Depuis ta dernière visite : ${entries.map((e) => tag(e.version)).join(' et ')}`;
+    $('[data-news-sub]', newsDialog).textContent = `Depuis ta dernière visite : ${new Intl.ListFormat('fr', { type: 'conjunction' }).format(entries.map((e) => tag(e.version)))}`;
     $('[data-news-list]', newsDialog).replaceChildren(
       ...entries.map((e) =>
         h('section.news-entry', {},
