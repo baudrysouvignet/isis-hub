@@ -46,6 +46,16 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
   let current = -1;
   let generation = 0;
   let lastRefresh = 0;
+  // Reprises (voir net/engine.js pour la connexion elle-même) : après une erreur passagère,
+  // 4 nouveaux essais espacés de 1, 2, 4 et 8 s (± 30 %), puis le bouton « Réessayer ». Jamais
+  // de boucle : le compteur ne repart qu'à un clic, à un succès, ou au retour sur l'application /
+  // du réseau (au plus une fois toutes les 30 s).
+  const RETRY_DELAYS = [1000, 2000, 4000, 8000];
+  let retryTimer = null;
+  let pendingAttempt = 0; // essai reporté parce que la page était cachée (0 = aucun)
+  let failed = false; // tous les essais ont échoué : « Réessayer » affiché
+  let lastResume = 0;
+  let moreFailures = 0;
   let currentText = '';
   let currentFiles = [];
   const searchBox = $('[data-mail-searchbox]', tile);
@@ -85,6 +95,10 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
 
   function showSignedOut(expired) {
     generation++;
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    pendingAttempt = 0;
+    failed = false;
     ids = [];
     lastRefresh = 0;
     box = 'inbox';
@@ -244,6 +258,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
     if (loading || mails.length >= ids.length) return;
     loading = true;
     const gen = generation;
+    let ok = false;
     try {
       const batch = await withRules(await mail.getMails(ids.slice(mails.length, mails.length + PAGE), box));
       if (gen !== generation) return;
@@ -253,20 +268,36 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
       if (mails.length >= ids.length) endOfList();
       if (!reader.hidden) stepButtons();
       filter();
+      ok = true;
+      moreFailures = 0;
     } catch (error) {
-      if (gen === generation) toast(`Mails plus anciens indisponibles : ${error.message}`);
+      if (gen !== generation) return;
+      if (error instanceof NotSignedIn) return onSessionLost('mail');
+      moreFailures++;
+      if (moreFailures >= 3) toast(`Mails plus anciens indisponibles : ${error.message}`);
     } finally {
       loading = false;
-      // si la fin de liste est encore visible, on continue
+      // Si la fin de liste est encore visible, on continue : tout de suite après un succès, avec
+      // une pause croissante après un échec (3 essais au plus, puis seulement au défilement).
       const room = list && more.getBoundingClientRect().top < list.getBoundingClientRect().bottom + 240;
       if (gen === generation && list && mails.length < ids.length && room && (!narrowedNow() || searchBudget > 0)) {
-        setTimeout(loadMore, 0);
+        if (ok) setTimeout(loadMore, 0);
+        else if (moreFailures < 3) setTimeout(() => gen === generation && loadMore(), 1000 * 2 ** moreFailures * (0.7 + Math.random() * 0.6));
       }
     }
   }
 
-  async function load() {
+  /** Erreur qui peut passer toute seule (réseau, relais, serveur), par opposition à un refus. */
+  const transient = (error) =>
+    !(error instanceof NotSignedIn) && !(error?.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429);
+
+  async function load({ attempt = 0 } = {}) {
     const gen = ++generation;
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    pendingAttempt = 0;
+    if (attempt === 0) moreFailures = 0;
+    let retrying = false;
     if (selecting()) setSelecting(false);
     list = null;
     chrome(false);
@@ -274,7 +305,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
     filters.hidden = false;
     sync.hidden = false;
     sync.classList.add('is-busy');
-    sync.textContent = 'Mise à jour…';
+    sync.textContent = attempt ? 'Reconnexion…' : 'Mise à jour…';
     showLoading();
     try {
       const result = await mail.listInbox(box);
@@ -283,6 +314,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
       mails = [];
       if (box === 'inbox') setUnread(result.unread);
       lastRefresh = Date.now();
+      failed = false;
       if (!ids.length) {
         const EMPTY = {
           trash: ['trash', 'Corbeille vide', 'Les mails supprimés depuis ISIS Hub ou la messagerie arrivent ici.'],
@@ -316,10 +348,25 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
       if (mails.length < ids.length) observer.observe(more);
     } catch (error) {
       if (gen !== generation) return;
-      if (error instanceof NotSignedIn) onSessionLost('mail');
-      else showError(error);
+      if (error instanceof NotSignedIn) return onSessionLost('mail');
+      if (transient(error) && attempt < RETRY_DELAYS.length) {
+        // Le squelette reste affiché : l'étudiant voit « Reconnexion… », pas une erreur.
+        retrying = true;
+        sync.textContent = 'Reconnexion…';
+        const delay = RETRY_DELAYS[attempt] * (0.7 + Math.random() * 0.6);
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          if (gen !== generation) return;
+          // Page cachée (téléphone verrouillé, application en arrière-plan) : on attend son retour.
+          if (document.visibilityState === 'hidden') pendingAttempt = attempt + 1;
+          else load({ attempt: attempt + 1 });
+        }, delay);
+        return;
+      }
+      failed = true;
+      showError(error);
     } finally {
-      if (gen === generation) renderSync();
+      if (gen === generation && !retrying) renderSync();
     }
   }
 
@@ -970,10 +1017,19 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
     if (!reader.hidden) renderReaderTags();
   });
 
-  // Nouveau courrier : rafraîchi quand on revient sur l'onglet (au plus toutes les 2 minutes).
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && list && reader.hidden && Date.now() - lastRefresh > 120_000) load();
-  });
+  // Retour sur l'application ou du réseau : essai reporté repris, tuile en erreur relancée, ou
+  // nouveau courrier (au plus toutes les 2 minutes). Au plus une relance toutes les 30 s.
+  function resume() {
+    if (document.visibilityState !== 'visible' || retryTimer || sync.classList.contains('is-busy')) return;
+    if (pendingAttempt) return load({ attempt: pendingAttempt });
+    const due = failed || (list && reader.hidden && Date.now() - lastRefresh > 120_000);
+    if (!due || Date.now() - lastResume < 30_000) return;
+    lastResume = Date.now();
+    load();
+  }
+  document.addEventListener('visibilitychange', resume);
+  addEventListener('online', resume);
+  addEventListener('pageshow', (event) => event.persisted && resume());
 
   return {
     load,
