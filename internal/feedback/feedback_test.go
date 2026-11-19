@@ -171,6 +171,18 @@ func TestAdmin(t *testing.T) {
 	if up.Code != http.StatusOK {
 		t.Fatalf("mise à jour : %d %s", up.Code, up.Body)
 	}
+	if rec := call(s, "POST", "/api/admin/feedback/1/delete", map[string]string{}, admin); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("suppression sans session : %d", rec.Code)
+	}
+	if del := call(s, "POST", "/api/admin/feedback/1/delete", map[string]string{}, admin, cookie); del.Code != http.StatusOK {
+		t.Fatalf("suppression : %d %s", del.Code, del.Body)
+	}
+	if list := call(s, "GET", "/api/admin/feedback", nil, admin, cookie); strings.Contains(list.Body.String(), `"id":1`) {
+		t.Fatal("la proposition supprimée ne doit plus apparaître")
+	}
+	if del := call(s, "POST", "/api/admin/feedback/1/delete", map[string]string{}, admin, cookie); del.Code != http.StatusNotFound {
+		t.Fatalf("seconde suppression : %d, attendu 404", del.Code)
+	}
 	call(s, "POST", "/api/admin/logout", map[string]string{}, admin, cookie)
 	if rec := call(s, "GET", "/api/admin/feedback", nil, admin, cookie); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("après déconnexion : %d", rec.Code)

@@ -311,6 +311,20 @@ func (s *Service) handleAdmin(w http.ResponseWriter, r *http.Request, action str
 		reply(w, http.StatusOK, s.cfg.Stats.Summary())
 	case action == "feedback" && r.Method == http.MethodGet:
 		reply(w, http.StatusOK, s.cfg.Store.All())
+	case strings.HasPrefix(action, "feedback/") && strings.HasSuffix(action, "/delete") && r.Method == http.MethodPost:
+		id, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(action, "feedback/"), "/delete"))
+		if err != nil {
+			fail(w, http.StatusNotFound, "inconnu")
+			return
+		}
+		switch err := s.cfg.Store.Delete(id); {
+		case errors.Is(err, ErrNotFound):
+			fail(w, http.StatusNotFound, err.Error())
+		case err != nil:
+			fail(w, http.StatusServiceUnavailable, "suppression impossible")
+		default:
+			reply(w, http.StatusOK, map[string]bool{"ok": true})
+		}
 	case strings.HasPrefix(action, "feedback/"):
 		id, err := strconv.Atoi(strings.TrimPrefix(action, "feedback/"))
 		var in Update

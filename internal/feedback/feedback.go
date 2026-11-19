@@ -10,6 +10,7 @@
 package feedback
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -88,10 +89,16 @@ func Open(dir string) (*Store, error) {
 
 // save écrit de façon atomique : fichier temporaire, synchronisation disque, renommage.
 func (s *Store) save() error {
-	raw, err := json.MarshalIndent(s.items, "", " ")
-	if err != nil {
+	// Sans échappement HTML (« < » restait « \u003c », six fois plus long) : le fichier n'est
+	// jamais servi tel quel, et la page d'administration affiche tout comme du texte.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", " ")
+	if err := enc.Encode(s.items); err != nil {
 		return err
 	}
+	raw := buf.Bytes()
 	tmp, err := os.CreateTemp(filepath.Dir(s.path), ".feedback-*")
 	if err != nil {
 		return err
@@ -239,6 +246,26 @@ type Update struct {
 }
 
 var ErrNotFound = errors.New("proposition introuvable")
+
+// Delete retire une proposition (administration) : la liste ne peut plus être bloquée par des
+// envois abusifs, et une proposition traitée peut être effacée.
+func (s *Store) Delete(id int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.items {
+		if s.items[i].ID != id {
+			continue
+		}
+		prev := s.items
+		s.items = append(append([]Item{}, s.items[:i]...), s.items[i+1:]...)
+		if err := s.save(); err != nil {
+			s.items = prev
+			return err
+		}
+		return nil
+	}
+	return ErrNotFound
+}
 
 func (s *Store) Update(id int, u Update) (Item, error) {
 	if !Statuses[u.Status] {

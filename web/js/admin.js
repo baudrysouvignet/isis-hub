@@ -154,6 +154,21 @@ $('[data-adm-save]').addEventListener('click', async () => {
   }
 });
 
+$('[data-adm-delete]').addEventListener('click', async () => {
+  const f = items.find((x) => x.id === current);
+  if (!f || !confirm(`Supprimer définitivement la proposition #${f.id} « ${f.title} » ? Son auteur ne la verra plus dans « Mes propositions ».`)) return;
+  try {
+    await api(`feedback/${f.id}/delete`, {});
+    items = items.filter((x) => x.id !== f.id);
+    renderList();
+    detail.hidden = true;
+    if (items.length) select(items[0].id);
+    toast(`#${f.id} supprimée`, 'check');
+  } catch (err) {
+    toast(`Suppression impossible : ${err.message}`);
+  }
+});
+
 // ------------------------------------------------------------ répartition des emplois du temps
 
 let classes = null; // répartition en vigueur (api/classes)
