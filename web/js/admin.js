@@ -2,7 +2,7 @@
 //
 // Cette page n'est servie qu'avec une session administrateur, ouverte par le CAS de l'université
 // pour un identifiant de ADMIN_USERS (voir internal/feedback/cas.go). La session est un cookie
-// HttpOnly (SameSite=Strict, 2 h) ; chaque appel porte en plus l'en-tête X-Hub-Admin, qu'un autre
+// HttpOnly (SameSite=Strict, 8 h) ; chaque appel porte en plus l'en-tête X-Hub-Admin, qu'un autre
 // site ne peut pas ajouter. Tout ce qui vient des étudiants est affiché comme du texte.
 
 import { $, $$, h, toast, motionOK, EASE } from './core/dom.js';
