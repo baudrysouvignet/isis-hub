@@ -50,6 +50,22 @@ export function setupFeedback({ username, version }) {
     const n = tokens().length;
     mineCount.textContent = n ? ` · ${n}` : '';
   };
+  // Connecté (sauvegarde lue) : les propositions suivies dans le navigateur (envoyées avant la 1.0.6
+  // ou sans connexion sur cet appareil) rejoignent la sauvegarde chiffrée. Elles suivent alors
+  // l'étudiant sur tous ses appareils et ne restent plus dans le navigateur.
+  function adopt() {
+    const local = valid(prefs.get('feedback', []));
+    if (!local.length || !UD.isReady()) return;
+    const saved = valid(UD.get('feedback'));
+    const known = new Set(saved.map((t) => t.token));
+    UD.set('feedback', [...saved, ...local.filter((t) => !known.has(t.token))].slice(-50));
+    prefs.set('feedback', null);
+  }
+  UD.onSyncStatus((status) => {
+    if (status === 'ok') adopt();
+    showCount();
+  });
+  UD.onUserData((touched) => touched.includes('feedback') && showCount());
 
   const ua = navigator.userAgent;
   const browser =
@@ -86,9 +102,10 @@ export function setupFeedback({ username, version }) {
   }
 
   async function loadMine() {
+    adopt();
     const own = tokens();
     if (!own.length) {
-      list.replaceChildren(h('li.cs-none', { text: 'Tu n’as encore rien proposé depuis cet appareil.' }));
+      list.replaceChildren(h('li.cs-none', { text: UD.isConnected() ? 'Tu n’as encore rien proposé.' : 'Tu n’as encore rien proposé depuis cet appareil.' }));
       return;
     }
     list.replaceChildren(h('li.cs-none', {}, h('span.spinner'), ' Chargement…'));
