@@ -24,6 +24,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"isishub/internal/visitor"
 )
 
 // Types de paquets et motifs de fermeture définis par Wisp v1.
@@ -154,14 +156,14 @@ func (r *Relay) clientIP(req *http.Request) string {
 	if r.cfg.TrustProxy {
 		if xff := req.Header.Get("X-Forwarded-For"); xff != "" {
 			parts := strings.Split(xff, ",")
-			return strings.TrimSpace(parts[len(parts)-1]) // ajoutée par notre propre frontal
+			return visitor.Key(strings.TrimSpace(parts[len(parts)-1])) // ajoutée par notre propre frontal
 		}
 	}
 	host, _, err := net.SplitHostPort(req.RemoteAddr)
 	if err != nil {
-		return req.RemoteAddr
+		return visitor.Key(req.RemoteAddr)
 	}
-	return host
+	return visitor.Key(host) // IPv6 : préfixe /64
 }
 
 func (r *Relay) originAllowed(req *http.Request) bool {
