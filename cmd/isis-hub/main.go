@@ -214,9 +214,13 @@ func serve() error {
 		Addr:              env("ADDR", ":8080"),
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    32 << 10,
-		ErrorLog:          log.New(io.Discard, "", 0), // aucun journal de requête, même en erreur
+		// Corps envoyé goutte à goutte, réponse jamais lue : la connexion ne reste pas ouverte
+		// indéfiniment. Sans effet sur le relais : upgrade() lève ces délais après la réponse 101.
+		ReadTimeout:    30 * time.Second,
+		WriteTimeout:   120 * time.Second, // large : libcurl.wasm (1,4 Mo) sur un réseau mobile lent
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 32 << 10,
+		ErrorLog:       log.New(io.Discard, "", 0), // aucun journal de requête, même en erreur
 	}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)

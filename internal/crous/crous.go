@@ -199,8 +199,12 @@ func (s *Service) Get(ctx context.Context) Menus {
 	today := s.now().In(paris).Format("2006-01-02")
 	age := s.now().Sub(s.fetched)
 	if _, ok := s.menus.Days[today]; age >= ttl || (!ok && age >= retry) {
+		// Lecture détachée de la requête du visiteur : une requête interrompue ne fait plus échouer
+		// (ni repousser de 15 min) la mise à jour du menu.
+		fetchCtx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+		defer cancel()
 		for _, src := range s.sources {
-			days, name, err := src(ctx)
+			days, name, err := src(fetchCtx)
 			if err != nil {
 				continue
 			}
