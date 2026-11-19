@@ -26,8 +26,10 @@ pnpm-debug.log*
 !.env.example.prod
 
 # Données locales d'exécution et logs
-data/
+/data/
 feedback.json
+# web/data/ fait partie du site (servi et vérifiable par empreinte) : versionné.
+!web/data/
 *.log
 
 # Outils IA et assistants locaux

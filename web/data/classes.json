@@ -1,0 +1,218 @@
+{
+ "_": "Classes d'ISIS : ressources ADE et règles de filtrage par groupe, langue et parcours. Reprises à l'identique du projet « Calendriers ISIS » (maquettes FIE4 2025-2026 et FIE5 CFVU 19 juin 2025). À mettre à jour chaque année.",
+ "projectId": 10,
+ "season": {
+  "first": "2026-08-01",
+  "last": "2027-08-31"
+ },
+ "trackLabels": {
+  "ia": "Données de santé & IA",
+  "developpement": "Développement",
+  "management": "Management"
+ },
+ "classes": {
+  "FIE1": {
+   "label": "1re année · cycle préparatoire",
+   "resources": [
+    3191,
+    3272
+   ],
+   "filter": "groupLanguage",
+   "linkedLanguage": true
+  },
+  "FIE2": {
+   "label": "2e année · cycle préparatoire",
+   "resources": [
+    3349,
+    3438
+   ],
+   "filter": "groupLanguage"
+  },
+  "FIE3": {
+   "label": "3e année · cycle ingénieur",
+   "resources": [
+    2572,
+    2663
+   ],
+   "filter": "groupLanguage"
+  },
+  "FIE4": {
+   "label": "4e année · cycle ingénieur",
+   "resources": [
+    2732
+   ],
+   "filter": "fie4",
+   "common": "ISIS-FIE4-SEMESTRE7",
+   "aliases": {
+    "E4-1-PROJET": "E4-1-PRJ-1",
+    "E4-1-PROJET-1": "E4-1-PRJ-1",
+    "E4-1-SOUTIEN": "E4-1-SO-1",
+    "E4-1-DI-6-1": "E4-1-DI-6",
+    "E4-1-DI-6-2": "E4-1-DI-6"
+   },
+   "tracks": {
+    "ia": [
+     "E4-1-DI-1",
+     "E4-1-DI-2",
+     "E4-1-DI-3",
+     "E4-1-DI-4",
+     "E4-1-DI-5",
+     "E4-1-DI-6",
+     "E4-1-DI-7",
+     "E4-1-DSIA-1",
+     "E4-1-DSIA-2",
+     "E4-1-DSIA-3",
+     "E4-1-DSIA-4",
+     "E4-1-DSIA-5",
+     "E4-1-IDSNS-3",
+     "E4-1-IDSNS-5",
+     "E4-1-IMTNS-1",
+     "E4-1-IMTNS-3",
+     "E4-1-IMTNS-5",
+     "E4-1-IMTNS-7",
+     "E4-1-IMTNS-8",
+     "E4-1-PRJ-1",
+     "E4-1-SO-1"
+    ],
+    "developpement": [
+     "E4-1-DI-1",
+     "E4-1-DI-2",
+     "E4-1-DI-3",
+     "E4-1-DI-4",
+     "E4-1-DI-5",
+     "E4-1-DI-6",
+     "E4-1-DI-7",
+     "E4-1-IDSNS-1",
+     "E4-1-IDSNS-2",
+     "E4-1-IDSNS-3",
+     "E4-1-IDSNS-4",
+     "E4-1-IDSNS-5",
+     "E4-1-IDSNS-6",
+     "E4-1-DSIA-2",
+     "E4-1-DSIA-4",
+     "E4-1-IMTNS-3",
+     "E4-1-IMTNS-7",
+     "E4-1-IMTNS-8",
+     "E4-1-PRJ-1",
+     "E4-1-SO-1"
+    ],
+    "management": [
+     "E4-1-DI-1",
+     "E4-1-DI-2",
+     "E4-1-DI-3",
+     "E4-1-DI-4",
+     "E4-1-DI-5",
+     "E4-1-DI-6",
+     "E4-1-DI-7",
+     "E4-1-IMTNS-1",
+     "E4-1-IMTNS-2",
+     "E4-1-IMTNS-3",
+     "E4-1-IMTNS-4",
+     "E4-1-IMTNS-5",
+     "E4-1-IMTNS-6",
+     "E4-1-IMTNS-7",
+     "E4-1-IMTNS-8",
+     "E4-1-DSIA-1",
+     "E4-1-DSIA-2",
+     "E4-1-IDSNS-2",
+     "E4-1-IDSNS-3",
+     "E4-1-IDSNS-5",
+     "E4-1-PRJ-1",
+     "E4-1-SO-1"
+    ]
+   },
+   "codeYear": 4
+  },
+  "FIE5": {
+   "label": "5e année · cycle ingénieur",
+   "resources": [
+    3040
+   ],
+   "filter": "fie5",
+   "aliases": {
+    "A5-1-UI-2": "E5-1-IDSNS-2",
+    "A5-1-UI-3": "E5-1-IDSNS-4"
+   },
+   "tracks": {
+    "ia": [
+     "E5-1-DI-1",
+     "E5-1-DI-2",
+     "E5-1-DI-3",
+     "E5-1-PTUT-1",
+     "E5-1-DSIA-1",
+     "E5-1-DSIA-2",
+     "E5-1-DSIA-3",
+     "E5-1-DSIA-4",
+     "E5-1-DSIA-5",
+     "E5-1-DSIA-6",
+     "E5-1-IDSNS-7",
+     "E5-1-IDSNS-2",
+     "E5-1-IDSNS-1",
+     "E5-1-IMTNS-5",
+     "E5-1-IMTNS-8"
+    ],
+    "developpement": [
+     "E5-1-DI-1",
+     "E5-1-DI-2",
+     "E5-1-DI-3",
+     "E5-1-PTUT-1",
+     "E5-1-IDSNS-1",
+     "E5-1-IDSNS-2",
+     "E5-1-IDSNS-3",
+     "E5-1-IDSNS-4",
+     "E5-1-IDSNS-5",
+     "E5-1-IDSNS-6",
+     "E5-1-IDSNS-7",
+     "E5-1-IMTNS-1",
+     "E5-1-IMTNS-3",
+     "E5-1-IMTNS-5",
+     "E5-1-IMTNS-6",
+     "E5-1-DSIA-1"
+    ],
+    "management": [
+     "E5-1-DI-1",
+     "E5-1-DI-2",
+     "E5-1-DI-3",
+     "E5-1-PTUT-1",
+     "E5-1-IMTNS-1",
+     "E5-1-IMTNS-2",
+     "E5-1-IMTNS-3",
+     "E5-1-IMTNS-4",
+     "E5-1-IMTNS-5",
+     "E5-1-IMTNS-6",
+     "E5-1-IMTNS-7",
+     "E5-1-IMTNS-8",
+     "E5-1-DSIA-1",
+     "E5-1-DSIA-2",
+     "E5-1-IDSNS-5",
+     "E5-1-IDSNS-4"
+    ]
+   },
+   "codeYear": 5
+  },
+  "FIA3": {
+   "label": "3e année · apprentissage",
+   "resources": [
+    3528,
+    3571
+   ],
+   "filter": "all"
+  },
+  "FIA4": {
+   "label": "4e année · apprentissage",
+   "resources": [
+    3612,
+    3657
+   ],
+   "filter": "all"
+  },
+  "FIA5": {
+   "label": "5e année · apprentissage",
+   "resources": [
+    3754,
+    3706
+   ],
+   "filter": "all"
+  }
+ }
+}
