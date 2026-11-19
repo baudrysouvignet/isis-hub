@@ -4,6 +4,7 @@
 
 import { $, $$, h, icon, restartClass, motionOK, EASE } from '../core/dom.js';
 import { prefs } from '../core/store.js';
+import * as UD from '../core/userdata.js';
 import { modal } from './layout.js';
 
 const TYPE = { idea: 'Idée', better: 'Amélioration', bug: 'Bug', other: 'Autre' };
@@ -37,7 +38,13 @@ export function setupFeedback({ username, version }) {
   const label = $('[data-fb-label]', dialog);
   const mineCount = $('[data-fb-mine-n]', dialog);
 
-  const tokens = () => prefs.get('feedback', []).filter((t) => t && typeof t.token === 'string');
+  // Jetons « Mes propositions » : dans la sauvegarde chiffrée pour un étudiant connecté (retrouvés
+  // sur ses appareils, effacés de l'appareil à la déconnexion), sinon dans le navigateur.
+  const valid = (list) => (Array.isArray(list) ? list : []).filter((t) => t && typeof t.token === 'string');
+  const tokens = () => {
+    const seen = new Set();
+    return [...valid(UD.get('feedback')), ...valid(prefs.get('feedback', []))].filter((t) => !seen.has(t.token) && seen.add(t.token));
+  };
   const showCount = () => {
     const n = tokens().length;
     mineCount.textContent = n ? ` · ${n}` : '';
@@ -149,7 +156,9 @@ export function setupFeedback({ username, version }) {
         tech: $('[data-fb-tech]', form).checked ? tech() : '',
         author: anonymous ? '' : username() || '',
       });
-      prefs.set('feedback', [...tokens(), { id: res.id, token: res.token }].slice(-50));
+      const mine = { id: res.id, token: res.token };
+      if (UD.isConnected()) UD.set('feedback', [...valid(UD.get('feedback')), mine].slice(-50));
+      else prefs.set('feedback', [...valid(prefs.get('feedback', [])), mine].slice(-50));
       showCount();
       $('[data-fb-ref]', dialog).textContent = `#${res.id}`;
       form.hidden = true;

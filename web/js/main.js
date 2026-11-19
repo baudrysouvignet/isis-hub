@@ -391,6 +391,7 @@ async function logout() {
   UD.disconnect({ wipeLocal: true });
   vault.forgetSync();
   forgetLocal();
+  prefs.set('feedback', null); // « Mes propositions » : rien ne reste pour la personne suivante
   welcomed = false;
   resetMailPrefs();
   notes?.load(state.promo, state.choice);
