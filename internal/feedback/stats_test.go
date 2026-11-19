@@ -31,6 +31,7 @@ func TestStatsCountsWithoutIdentifiers(t *testing.T) {
 	if len(sum.Days) != 120 || sum.Days[119].Date != "2026-11-17" {
 		t.Fatalf("série des jours : %d, %+v", len(sum.Days), sum.Days[119])
 	}
+	st.Flush()
 	raw, _ := os.ReadFile(filepath.Join(dir, "stats.json"))
 	if strings.ContainsAny(string(raw), ":.") && strings.Contains(string(raw), "127.0.0.1") {
 		t.Fatal("aucune adresse ne doit être enregistrée")
@@ -97,6 +98,7 @@ func TestStatsAccountsPerDay(t *testing.T) {
 		t.Fatalf("répartitions : %+v", d)
 	}
 	// Redémarrage : les jetons du jour sont gardés (pas de double compte).
+	st.Flush()
 	again, _ := OpenStats(dir)
 	again.now = st.now
 	again.Record(Visit{Token: a})
@@ -106,6 +108,7 @@ func TestStatsAccountsPerDay(t *testing.T) {
 	// Le lendemain : les jetons d'hier sont oubliés.
 	day = day.AddDate(0, 0, 1)
 	again.Record(Visit{Token: a})
+	again.Flush()
 	raw, _ := os.ReadFile(filepath.Join(dir, "stats.json"))
 	if strings.Contains(string(raw), b) {
 		t.Fatal("les jetons de la veille doivent disparaître")
@@ -121,5 +124,22 @@ func TestStatsReadsOldFormat(t *testing.T) {
 	st, err := OpenStats(dir)
 	if err != nil || st.days["2026-11-17"].Visits != 5 {
 		t.Fatalf("ancien fichier illisible : %v %+v", err, st.days)
+	}
+}
+
+// Une rafale de visites ne réécrit pas le fichier à chaque fois : écriture groupée (Flush).
+func TestStatsWritesAreDeferred(t *testing.T) {
+	dir := t.TempDir()
+	st, _ := OpenStats(dir)
+	for i := 0; i < 100; i++ {
+		st.Record(Visit{First: true})
+	}
+	if _, err := os.Stat(filepath.Join(dir, "stats.json")); !os.IsNotExist(err) {
+		t.Fatal("aucune écriture attendue avant Flush")
+	}
+	st.Flush()
+	again, _ := OpenStats(dir)
+	if again.Summary().Today.Visits != 100 {
+		t.Fatal("les 100 visites doivent être écrites par Flush")
 	}
 }

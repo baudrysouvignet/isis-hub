@@ -51,8 +51,13 @@ type Stats struct {
 	days   map[string]Day // « AAAA-MM-JJ »
 	tokDay string
 	tokens map[string]struct{}
+	dirty  bool // compteurs changés depuis la dernière écriture
 	now    func() time.Time
 }
+
+// statsFlushEvery : le fichier est réécrit au plus à ce rythme (et à l'arrêt), pas à chaque
+// visite : une rafale de pings ne se traduit plus en rafale d'écritures sur le disque.
+const statsFlushEvery = 30 * time.Second
 
 const (
 	statsKeepDays  = 800
@@ -81,6 +86,11 @@ func OpenStats(dir string) (*Stats, error) {
 		return nil, err
 	}
 	s := &Stats{path: filepath.Join(dir, "stats.json"), days: map[string]Day{}, tokens: map[string]struct{}{}, now: time.Now}
+	go func() {
+		for range time.Tick(statsFlushEvery) {
+			s.Flush()
+		}
+	}()
 	raw, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return s, nil
@@ -172,21 +182,42 @@ func (s *Stats) Record(v Visit) error {
 		d.Modes = bump(d.Modes, v.Mode, 2)
 	}
 	s.days[k] = d
+	s.dirty = true
+	return nil
+}
+
+// Flush écrit les compteurs s'ils ont changé (appelé régulièrement et à l'arrêt du serveur).
+// Les jetons du jour sont écrits aussi, pour qu'un redémarrage ne compte pas deux fois un compte ;
+// ceux de la veille ne le sont plus.
+func (s *Stats) Flush() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.dirty {
+		return nil
+	}
 	limit := s.now().In(paris).AddDate(0, 0, -statsKeepDays).Format("2006-01-02")
 	for k := range s.days {
 		if k < limit {
 			delete(s.days, k)
 		}
 	}
-	f := statsFile{Days: s.days, TokenDay: s.tokDay, TokensDay: make([]string, 0, len(s.tokens))}
-	for t := range s.tokens {
-		f.TokensDay = append(f.TokensDay, t)
+	f := statsFile{Days: s.days}
+	if s.tokDay == s.today() {
+		f.TokenDay = s.tokDay
+		f.TokensDay = make([]string, 0, len(s.tokens))
+		for t := range s.tokens {
+			f.TokensDay = append(f.TokensDay, t)
+		}
 	}
 	raw, err := json.Marshal(f)
 	if err != nil {
 		return err
 	}
-	return writeAtomic(s.path, raw)
+	if err := writeAtomic(s.path, raw); err != nil {
+		return err
+	}
+	s.dirty = false
+	return nil
 }
 
 // Summary : ce que voit l'administration (les filtres et graphiques sont faits par la page).

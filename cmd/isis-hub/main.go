@@ -224,6 +224,7 @@ func serve() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		srv.Shutdown(ctx)
+		stats.Flush() // compteurs du jour écrits avant l'arrêt
 	}()
 	// Seule ligne écrite par le serveur : de quoi comparer avec le dépôt, rien sur les visiteurs.
 	admin := "administration désactivée"
