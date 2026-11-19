@@ -188,7 +188,7 @@ ISIS Hub, lui, ne l'est pas) et ne suit pas la redirection. Le serveur reçoit c
 valider **directement par `auth.univ-jfc.fr`** (`/cas/serviceValidate`) : c'est l'université qui
 renvoie l'identifiant, la page ne peut pas le falsifier. Le ticket est à usage unique et l'ENT ne le
 reçoit jamais. Seul celui qui ouvre `/admin` envoie un ticket ; le serveur ne garde rien d'un refus.
-Session de 8 h (cookie HttpOnly, SameSite=Strict), 5 essais par quart d'heure, en-tête anti-CSRF.
+Session de 2 h (cookie HttpOnly, SameSite=Strict), 5 essais par quart d'heure, en-tête anti-CSRF.
 
 **Répartition des emplois du temps** : dans l'onglet *Emplois du temps*, chaque classe se règle
 sans toucher au code. Pour chaque classe :

@@ -65,7 +65,9 @@ type adminSession struct {
 	expires time.Time
 }
 
-const sessionTTL = 8 * time.Hour
+// sessionTTL : courte, car l'identité repose sur un ticket émis pour l'ENT (cas.go) ; un ticket
+// qui fuiterait n'ouvre l'administration que 2 h.
+const sessionTTL = 2 * time.Hour
 const cookieName = "hub_admin"
 
 func New(cfg Config) *Service {
