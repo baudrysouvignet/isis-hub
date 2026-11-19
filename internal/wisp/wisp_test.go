@@ -163,7 +163,7 @@ func TestInitialContinue(t *testing.T) {
 	srv := newRelay(t, echo(t), nil)
 	c, _ := dialWS(t, srv, origin(srv))
 	kind, id, p := c.read(t)
-	if kind != pktContinue || id != 0 || binary.LittleEndian.Uint32(p) != 128 {
+	if kind != pktContinue || id != 0 || binary.LittleEndian.Uint32(p) != 32 {
 		t.Fatalf("paquet initial inattendu : %x %d %x", kind, id, p)
 	}
 }
@@ -300,5 +300,80 @@ func TestPortalCloseIsForwarded(t *testing.T) {
 	}
 	if kind, id, _ := c.read(t); kind != pktClose || id != 7 {
 		t.Fatalf("CLOSE attendu, reçu %x", kind)
+	}
+}
+
+// Connexions TCP plafonnées par visiteur, tous WebSockets confondus.
+func TestStreamCapPerVisitor(t *testing.T) {
+	port := echo(t)
+	srv := newRelay(t, port, func(c *Config) { c.MaxStreamsPerIP = 2 })
+	a, _ := dialWS(t, srv, origin(srv))
+	a.read(t)
+	b, _ := dialWS(t, srv, origin(srv))
+	b.read(t)
+	a.send(pktConnect, 1, connectPayload("portail.test", port))
+	a.send(pktConnect, 2, connectPayload("portail.test", port))
+	time.Sleep(100 * time.Millisecond)
+	b.send(pktConnect, 1, connectPayload("portail.test", port))
+	if kind, id, p := b.read(t); kind != pktClose || id != 1 || p[0] != closeThrottled {
+		t.Fatalf("3e connexion du même visiteur : refus 0x49 attendu, reçu %x flux %d", kind, id)
+	}
+	// Une place libérée se réutilise.
+	a.send(pktClose, 1, []byte{closeVoluntary})
+	time.Sleep(100 * time.Millisecond)
+	b.send(pktConnect, 2, connectPayload("portail.test", port))
+	b.send(pktData, 2, []byte("ping"))
+	if kind, _, p := b.read(t); kind != pktData || string(p) != "ping" {
+		t.Fatalf("après libération, données attendues, reçu %x %q", kind, p)
+	}
+}
+
+// Un client qui ignore le contrôle de flux et inonde une connexion lente est coupé dès que son
+// budget en octets est dépassé, sans faire gonfler la mémoire du serveur.
+func TestByteBudgetCutsFlood(t *testing.T) {
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	defer ln.Close()
+	hold := make(chan struct{})
+	defer close(hold)
+	go func() {
+		c, err := ln.Accept()
+		if err == nil {
+			c.(*net.TCPConn).SetReadBuffer(4096)
+			<-hold // portail qui ne lit jamais
+			c.Close()
+		}
+	}()
+	port := uint16(ln.Addr().(*net.TCPAddr).Port)
+	srv := newRelay(t, port, func(c *Config) { c.StreamBytes = 64 << 10 })
+	c, _ := dialWS(t, srv, origin(srv))
+	c.read(t)
+	c.send(pktConnect, 1, connectPayload("portail.test", port))
+	time.Sleep(100 * time.Millisecond)
+	chunk := make([]byte, 16<<10)
+	go func() { // 16 Mio d'un coup, sans attendre de CONTINUE (bien plus que les tampons du système)
+		for i := 0; i < 1024; i++ {
+			c.send(pktData, 1, chunk)
+		}
+	}()
+	for {
+		kind, id, p := c.read(t)
+		if kind == pktContinue {
+			continue
+		}
+		if kind != pktClose || id != 1 || p[0] != closeThrottled {
+			t.Fatalf("coupure 0x49 attendue, reçu %x flux %d", kind, id)
+		}
+		return
+	}
+}
+
+// Message plus grand que la limite (64 Kio par défaut) : connexion fermée.
+func TestMessageLimit(t *testing.T) {
+	srv := newRelay(t, echo(t), nil)
+	c, _ := dialWS(t, srv, origin(srv))
+	c.read(t)
+	c.sendFrame(opBinary, make([]byte, 65<<10))
+	if kind, _, _ := c.read(t); kind != 0xFF {
+		t.Fatal("un message de plus de 64 Kio doit fermer la connexion")
 	}
 }

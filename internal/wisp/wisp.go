@@ -49,12 +49,17 @@ type Config struct {
 	Targets          []string      // « hôte:port » autorisés
 	AllowedOrigins   []string      // origines de page acceptées ; vide = même hôte que la requête
 	TrustProxy       bool          // lire l'IP du visiteur dans X-Forwarded-For (derrière Caddy)
-	MaxConnsPerIP    int           // WebSockets simultanés par visiteur
+	MaxConnsPerIP    int           // WebSockets simultanés par visiteur (une adresse de campus en NAT en porte beaucoup)
 	MaxConns         int           // WebSockets simultanés au total
 	MaxStreams       int           // connexions TCP simultanées par WebSocket
+	MaxStreamsPerIP  int           // connexions TCP simultanées par visiteur, tous WebSockets confondus
+	MaxStreamsTotal  int           // connexions TCP simultanées au total (vers l'université)
 	ConnectsPerMin   int           // nouvelles connexions TCP par minute et par WebSocket
 	Buffer           uint32        // paquets en vol autorisés par connexion (contrôle de flux)
 	MaxMessage       int           // taille maximale d'un message WebSocket
+	StreamBytes      int64         // octets en attente d'écriture par connexion avant coupure
+	TotalBytes       int64         // octets en attente d'écriture, toutes connexions, avant refus
+	FrameTimeout     time.Duration // délai pour recevoir une trame une fois son en-tête arrivé
 	DialTimeout      time.Duration // délai d'ouverture d'une connexion TCP
 	IdleTimeout      time.Duration // inactivité tolérée sur le WebSocket
 	Resolver         func(ctx context.Context, host string) ([]netip.Addr, error)
@@ -64,22 +69,37 @@ type Config struct {
 
 func (c *Config) defaults() {
 	if c.MaxConnsPerIP == 0 {
-		c.MaxConnsPerIP = 8
+		c.MaxConnsPerIP = 96
 	}
 	if c.MaxConns == 0 {
 		c.MaxConns = 2000
 	}
 	if c.MaxStreams == 0 {
-		c.MaxStreams = 64
+		c.MaxStreams = 16 // la page en ouvre au plus 6 à la fois
+	}
+	if c.MaxStreamsPerIP == 0 {
+		c.MaxStreamsPerIP = 256
+	}
+	if c.MaxStreamsTotal == 0 {
+		c.MaxStreamsTotal = 6000
 	}
 	if c.ConnectsPerMin == 0 {
-		c.ConnectsPerMin = 240
+		c.ConnectsPerMin = 120
 	}
 	if c.Buffer == 0 {
-		c.Buffer = 128
+		c.Buffer = 32 // 32 enregistrements TLS (≤ 16 Kio) : 512 Kio en vol, bien assez
 	}
 	if c.MaxMessage == 0 {
-		c.MaxMessage = 1 << 20
+		c.MaxMessage = 64 << 10 // un enregistrement TLS fait au plus ~17 Kio
+	}
+	if c.StreamBytes == 0 {
+		c.StreamBytes = 1 << 20
+	}
+	if c.TotalBytes == 0 {
+		c.TotalBytes = 256 << 20
+	}
+	if c.FrameTimeout == 0 {
+		c.FrameTimeout = 15 * time.Second
 	}
 	if c.DialTimeout == 0 {
 		c.DialTimeout = 10 * time.Second
@@ -106,18 +126,21 @@ type Stats struct {
 }
 
 type Relay struct {
-	cfg     Config
-	targets map[string]bool
-	origins map[string]bool
-	mu      sync.Mutex
-	perIP   map[string]int
-	total   int
-	Stats   Stats
+	cfg       Config
+	targets   map[string]bool
+	origins   map[string]bool
+	mu        sync.Mutex
+	perIP     map[string]int
+	total     int
+	ipStreams map[string]int
+	streams   int
+	queued    atomic.Int64 // octets reçus de pages, pas encore écrits vers les portails
+	Stats     Stats
 }
 
 func New(cfg Config) *Relay {
 	cfg.defaults()
-	r := &Relay{cfg: cfg, targets: map[string]bool{}, origins: map[string]bool{}, perIP: map[string]int{}}
+	r := &Relay{cfg: cfg, targets: map[string]bool{}, origins: map[string]bool{}, perIP: map[string]int{}, ipStreams: map[string]int{}}
 	for _, t := range cfg.Targets {
 		r.targets[strings.ToLower(t)] = true
 	}
@@ -176,6 +199,28 @@ func (r *Relay) release(ip string) {
 	}
 }
 
+// Connexions TCP vers l'université : plafonnées par visiteur et au total, pour qu'un client ne
+// puisse ni épuiser le serveur ni faire bannir l'adresse du relais par le pare-feu de l'université.
+func (r *Relay) acquireStream(ip string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.streams >= r.cfg.MaxStreamsTotal || r.ipStreams[ip] >= r.cfg.MaxStreamsPerIP {
+		return false
+	}
+	r.streams++
+	r.ipStreams[ip]++
+	return true
+}
+
+func (r *Relay) releaseStream(ip string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.streams--
+	if r.ipStreams[ip]--; r.ipStreams[ip] <= 0 {
+		delete(r.ipStreams, ip)
+	}
+}
+
 // ServeHTTP accepte un WebSocket Wisp.
 func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if !isUpgrade(req) {
@@ -199,9 +244,10 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		return
 	}
+	ws.frameTimeout = r.cfg.FrameTimeout
 	r.Stats.Conns.Add(1)
 	defer r.Stats.Conns.Add(-1)
-	(&session{relay: r, ws: ws, streams: map[uint32]*stream{}}).run()
+	(&session{relay: r, ws: ws, ip: ip, streams: map[uint32]*stream{}}).run()
 }
 
 // ---------------------------------------------------------------- session Wisp
@@ -209,6 +255,7 @@ func (r *Relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 type session struct {
 	relay    *Relay
 	ws       *wsConn
+	ip       string
 	mu       sync.Mutex
 	streams  map[uint32]*stream
 	window   time.Time
@@ -219,6 +266,7 @@ type session struct {
 type stream struct {
 	id     uint32
 	queue  chan []byte
+	bytes  atomic.Int64 // octets dans la file (budget par connexion)
 	conn   net.Conn
 	ready  chan struct{} // fermé quand la connexion TCP est ouverte (ou a échoué)
 	cancel context.CancelFunc
@@ -288,13 +336,22 @@ func (s *session) run() {
 		case pktData:
 			// L'envoi dans la file se fait sous le verrou : closeStream ferme la file sous ce
 			// même verrou, après avoir retiré la connexion, donc jamais d'écriture tardive.
+			// Budget en octets (par connexion et au total), pas seulement en paquets : un client
+			// qui n'attend pas les CONTINUE ne peut pas faire gonfler la mémoire du serveur.
 			overflow := false
+			n := int64(len(payload))
 			s.mu.Lock()
 			if st := s.streams[id]; st != nil {
-				select {
-				case st.queue <- payload:
-				default:
+				if st.bytes.Load()+n > cfg.StreamBytes || s.relay.queued.Load()+n > cfg.TotalBytes {
 					overflow = true
+				} else {
+					select {
+					case st.queue <- payload:
+						st.bytes.Add(n)
+						s.relay.queued.Add(n)
+					default:
+						overflow = true
+					}
 				}
 			}
 			s.mu.Unlock()
@@ -337,7 +394,7 @@ func (s *session) connect(id uint32, payload []byte) {
 	s.connects++
 	_, exists := s.streams[id]
 	full := len(s.streams) >= cfg.MaxStreams || s.connects > cfg.ConnectsPerMin
-	if exists || full {
+	if exists || full || !s.relay.acquireStream(s.ip) {
 		s.mu.Unlock()
 		s.refuse(id, map[bool]byte{true: closeInvalid, false: closeThrottled}[exists])
 		return
@@ -405,6 +462,8 @@ func (s *session) pump(ctx context.Context, st *stream, host string, port uint16
 	go func() {
 		processed := uint32(0)
 		for data := range st.queue {
+			st.bytes.Add(-int64(len(data)))
+			s.relay.queued.Add(-int64(len(data)))
 			conn.SetWriteDeadline(time.Now().Add(cfg.IdleTimeout))
 			if _, err := conn.Write(data); err != nil {
 				s.closeStream(st.id, closeNetwork, true)
@@ -450,6 +509,14 @@ func (s *session) closeStream(id uint32, reason byte, notify bool) {
 	if st == nil {
 		return
 	}
+	s.relay.releaseStream(s.ip)
+	// Octets jamais écrits : rendus au budget global (la file n'est plus lue après la coupure).
+	go func() {
+		for data := range st.queue {
+			st.bytes.Add(-int64(len(data)))
+			s.relay.queued.Add(-int64(len(data)))
+		}
+	}()
 	st.cancel()
 	go func() {
 		<-st.ready

@@ -117,9 +117,9 @@ func serve() error {
 		Targets:        Portals,
 		AllowedOrigins: origins,
 		TrustProxy:     os.Getenv("TRUST_PROXY") == "1",
-		MaxConnsPerIP:  envInt("MAX_CONNS_PER_IP", 8),
+		MaxConnsPerIP:  envInt("MAX_CONNS_PER_IP", 96), // tout un campus peut sortir par une adresse
 		MaxConns:       envInt("MAX_CONNS", 2000),
-		MaxStreams:     envInt("MAX_STREAMS", 64),
+		MaxStreams:     envInt("MAX_STREAMS", 16),
 	})
 
 	// Répartition des emplois du temps : celle livrée avec le code, remplacée par celle de

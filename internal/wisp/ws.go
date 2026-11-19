@@ -35,10 +35,11 @@ var (
 )
 
 type wsConn struct {
-	conn   net.Conn
-	r      *bufio.Reader
-	wmu    sync.Mutex
-	maxMsg int
+	conn         net.Conn
+	r            *bufio.Reader
+	wmu          sync.Mutex
+	maxMsg       int
+	frameTimeout time.Duration
 }
 
 func headerHas(h http.Header, name, token string) bool {
@@ -176,6 +177,11 @@ func (c *wsConn) readMessage(alive func()) ([]byte, error) {
 		if length > uint64(c.maxMsg) || uint64(len(msg))+length > uint64(c.maxMsg) {
 			return nil, errTooLarge
 		}
+		// Une fois l'en-tête reçu, la trame doit arriver vite : une connexion qui annonce une trame
+		// puis se tait ne garde pas sa mémoire pendant tout le délai d'inactivité.
+		if c.frameTimeout > 0 {
+			c.conn.SetReadDeadline(time.Now().Add(c.frameTimeout))
+		}
 		var mask [4]byte
 		if _, err := io.ReadFull(c.r, mask[:]); err != nil {
 			return nil, err
@@ -187,6 +193,7 @@ func (c *wsConn) readMessage(alive func()) ([]byte, error) {
 		for i := range payload {
 			payload[i] ^= mask[i&3]
 		}
+		alive() // trame complète : retour au délai d'inactivité
 
 		switch op {
 		case opPing:
