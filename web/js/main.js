@@ -13,6 +13,7 @@ import * as moodle from './portals/moodle.js';
 import * as mail from './portals/mail.js';
 import { createMatcher } from './portals/match.js';
 import { createLogin } from './ui/login.js';
+import { setupInfinite } from './ui/infinite.js';
 import { createPromo } from './ui/promo.js';
 import { createSchedule } from './ui/schedule.js';
 import { createMails } from './ui/mails.js';
@@ -120,25 +121,52 @@ function show(screen) {
 
 const matcher = createMatcher({ search: (q) => moodle.searchCourses(q), enabled: () => state.signedIn });
 
+/** Après une connexion acceptée par le CAS (mot de passe tapé, ou connexion infinie). */
+async function completeLogin(username, password) {
+  await vault.save(jar.toJSON());
+  state.signedIn = true;
+  state.username = username;
+  // Sauvegarde du serveur lue avant d'entrer : classe et notes suivent l'étudiant d'un appareil à l'autre.
+  login.step('Récupération de tes données…');
+  await Promise.race([startSync(username, password), new Promise((r) => setTimeout(r, 15_000))]);
+  const changed = applyProfile();
+  if (!changed && state.promo) saveProfile(); // première connexion avec cette version : la classe part sur le serveur
+  if (wantsAdmin) return openAdmin();
+  if (!state.promo) {
+    const user = await loadUser().catch(() => null);
+    promo.show({ mode: 'first', current: guessPromo(), choice: state.choice, firstName: firstName(user?.name) });
+    show('promo');
+  } else enterDashboard(changed || !dashboardReady);
+}
+
+/**
+ * Connexion infinie (ui/infinite.js) : identifiants rouverts par la passkey, sur un geste de
+ * l'étudiant. Refusés par le CAS : le mot de passe a changé, la connexion infinie est effacée.
+ */
+async function unlockLogin(username, password) {
+  vault.keepOnDevice();
+  try {
+    await casLogin(jar, username, password);
+  } catch (err) {
+    if (err.name === 'LoginRefused') {
+      await infinite.passwordChanged();
+      login.show('Ton mot de passe universitaire a changé : la connexion infinie a été effacée. Connecte-toi avec le nouveau, tu pourras la réactiver.');
+    }
+    throw err;
+  }
+  await completeLogin(username, password);
+}
+
+const infinite = await setupInfinite({ vault, onUnlock: unlockLogin });
+
 const login = createLogin({
   async onSubmit(username, password) {
     // Session gardée sur l'appareil (chiffrée) jusqu'à sa fin côté université ou « Se déconnecter ».
     vault.keepOnDevice();
     await casLogin(jar, username, password);
-    await vault.save(jar.toJSON());
-    state.signedIn = true;
-    state.username = username;
-    // Sauvegarde du serveur lue avant d'entrer : classe et notes suivent l'étudiant d'un appareil à l'autre.
-    login.step('Récupération de tes données…');
-    await Promise.race([startSync(username, password), new Promise((r) => setTimeout(r, 15_000))]);
-    const changed = applyProfile();
-    if (!changed && state.promo) saveProfile(); // première connexion avec cette version : la classe part sur le serveur
-    if (wantsAdmin) return openAdmin();
-    if (!state.promo) {
-      const user = await loadUser().catch(() => null);
-      promo.show({ mode: 'first', current: guessPromo(), choice: state.choice, firstName: firstName(user?.name) });
-      show('promo');
-    } else enterDashboard(changed || !dashboardReady);
+    // Connexion infinie demandée (case cochée, clé créée et vérifiée) : chiffrée maintenant.
+    await infinite.afterPasswordLogin(username, password);
+    await completeLogin(username, password);
   },
   onSkip() {
     if (state.promo) enterDashboard();
@@ -375,7 +403,11 @@ function sessionLost() {
   mails.showSignedOut(true);
   courses.showSignedOut(true);
   notes?.refresh(); // les notes demandent d'être connecté
-  toast('Ta session universitaire a expiré : reconnecte-toi pour retrouver mails et Moodle.');
+  toast(
+    infinite.enabled()
+      ? 'Ta session universitaire a expiré : « Se connecter », puis un geste pour la reprendre.'
+      : 'Ta session universitaire a expiré : reconnecte-toi pour retrouver mails et Moodle.',
+  );
   setTimeout(() => (lostOnce = false), 2000);
 }
 
@@ -388,6 +420,7 @@ async function logout() {
     jar.clear(); // le CAS injoignable n'empêche pas d'oublier la session ici
   }
   vault.clear();
+  await infinite.disable(); // connexion infinie : copie du mot de passe effacée, passkey signalée inutile
   // Se déconnecter efface de cet appareil les données personnelles (notes, règles, examens marqués)
   // et le secret de la sauvegarde ; la sauvegarde chiffrée reste, retrouvée à la prochaine connexion.
   UD.disconnect({ wipeLocal: true });
@@ -414,7 +447,7 @@ async function logout() {
 
 // ------------------------------------------------------------ Transparence
 
-const transparency = setupTransparency({ sessionPlace: () => vault.place, syncId: UD.syncId });
+const transparency = setupTransparency({ sessionPlace: () => vault.place, syncId: UD.syncId, infinite: () => infinite.enabled() });
 // « Supprimer mes données sauvegardées » (Transparence) : appareil et sauvegarde anonyme.
 $$('[data-erase-data]').forEach((b) =>
   b.addEventListener('click', async () => {
@@ -422,6 +455,7 @@ $$('[data-erase-data]').forEach((b) =>
     try {
       await withdrawVotes(state.promo); // votes anonymes des séances à venir retirés aussi
       await UD.eraseEverywhere();
+      await infinite.disable();
       vault.forgetSync();
       notes?.load(state.promo, state.choice);
       schedule?.rerender();
@@ -518,6 +552,7 @@ async function openAdmin() {
 
 if (wantsAdmin && state.signedIn) openAdmin();
 else if (wantsAdmin) show('login'); // l'administrateur se connecte d'abord, puis la suite se fait seule
+else if (!state.signedIn && infinite.enabled()) show('login'); // connexion infinie : un geste pour reprendre
 else if (state.signedIn && !state.promo) {
   promo.show({ mode: 'first', current: guessPromo(), choice: state.choice });
   show('promo');

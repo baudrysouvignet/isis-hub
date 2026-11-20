@@ -18,6 +18,7 @@ export const CACHE_KEY = 'hub.cache';
 export const MAILPREFS_KEY = 'hub.mailprefs'; // ancien emplacement des règles (repris une fois)
 export const USERDATA_KEY = 'hub.userdata';
 export const SYNC_KEY = 'hub.sync';
+export const INFINITE_KEY = 'hub.infinite'; // connexion infinie (net/passkey.js)
 const SEALED = [SESSION_KEY, CACHE_KEY];
 const DB = 'isis-hub';
 const STORE = 'keys';
@@ -148,6 +149,18 @@ export async function openVault() {
         (where === device ? tab : device)?.removeItem(SYNC_KEY);
       } catch {}
       return write(SYNC_KEY, Array.from(bits));
+    },
+    // Connexion infinie : la copie déjà chiffrée par la passkey (net/passkey.js), chiffrée une
+    // seconde fois ici, sur l'appareil seulement ; jamais dans l'onglet, jamais sur le serveur.
+    canKeepOnDevice: Boolean(key && device),
+    loadInfinite: async () => (key && device ? await read(INFINITE_KEY, device) : null),
+    saveInfinite: (blob) => (key && device ? write(INFINITE_KEY, blob, device) : Promise.resolve()),
+    // Effacée tout de suite, puis encore après les écritures en file (aucune ne la recrée).
+    forgetInfinite: () => {
+      try {
+        device?.removeItem(INFINITE_KEY);
+      } catch {}
+      return write(INFINITE_KEY, null, device);
     },
     forgetSync: () => {
       try {

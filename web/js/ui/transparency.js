@@ -96,7 +96,7 @@ export async function versionLabel() {
 
 // ------------------------------------------------------------ écran
 
-export function setupTransparency({ sessionPlace, syncId = () => null, onErase }) {
+export function setupTransparency({ sessionPlace, syncId = () => null, infinite = () => false, onErase }) {
   const dialog = $('[data-sheet]');
   let timer = null;
 
@@ -123,6 +123,9 @@ export function setupTransparency({ sessionPlace, syncId = () => null, onErase }
         : place === 'tab'
           ? 'La session (chiffrée) reste dans cet onglet et disparaît à sa fermeture.'
           : 'La session reste en mémoire seulement (stockage indisponible).';
+    const inf = $('[data-fact-infinite]', dialog);
+    inf.hidden = !infinite();
+    inf.textContent = 'Connexion infinie activée : ton mot de passe y est gardé, chiffré par ta passkey puis par le coffre de l’appareil. Le serveur n’en reçoit rien.';
   }
 
   async function version() {
