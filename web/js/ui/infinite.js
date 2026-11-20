@@ -30,7 +30,7 @@ const MESSAGES = {
 };
 const say = (err) => MESSAGES[err?.code] ?? MESSAGES.unsupported;
 
-export async function setupInfinite({ vault, onUnlock }) {
+export async function setupInfinite({ vault, onUnlock, onShowLogin }) {
   const pk = createPasskeys();
   const name = unlockName();
   const card = $('[data-infinite-card]');
@@ -46,9 +46,14 @@ export async function setupInfinite({ vault, onUnlock }) {
   const next = $('[data-inf-next]', dialog);
   const cancel = $('[data-inf-cancel]', dialog);
   const status = $('[data-inf-status]', dialog);
+  // Fiche « Session expirée » : identifiant + passkey, sans quitter la page.
+  const resumeDialog = $('dialog[data-resume-sheet]');
+  const resumeBtn = $('[data-resume-unlock]', resumeDialog);
+  const resumeStatus = $('[data-resume-status]', resumeDialog);
 
   $$('[data-unlock-name]').forEach((el) => (el.textContent = name));
   $('[data-infinite-unlock-label]').textContent = `Continuer avec ${name}`;
+  $('[data-resume-label]', resumeDialog).textContent = `Continuer avec ${name}`;
 
   let support = vault.canKeepOnDevice ? await availability() : 'unsupported';
   let blob = null; // copie gardée (chiffrée par la passkey, puis par le coffre de l'appareil)
@@ -56,6 +61,7 @@ export async function setupInfinite({ vault, onUnlock }) {
   let created = null; // { id, salt } : clé créée, à contrôler par un second geste
   let pendingTimer = 0; // efface `pending` resté inutilisé
   let mode = 'passkey'; // écran de connexion : 'passkey' (carte) ou 'password' (formulaire)
+  let wantPassword = false; // « Me connecter avec mon mot de passe » choisi depuis la fiche de reprise
   let step = 'read';
   let busy = false;
   let notice = '';
@@ -80,14 +86,17 @@ export async function setupInfinite({ vault, onUnlock }) {
     opt.hidden = on || support === 'unsupported';
     menuItem.hidden = !on;
     userEl.textContent = on ? pk.userOf(blob) : '';
+    $('[data-resume-user]', resumeDialog).textContent = userEl.textContent;
     if (!pending) box.checked = false;
   }
 
-  function showCard(message, error = false) {
-    cardStatus.hidden = !message;
-    cardStatus.textContent = message ?? '';
-    cardStatus.classList.toggle('is-error', error);
-  }
+  const statusIn = (el) => (message, error = false) => {
+    el.hidden = !message;
+    el.textContent = message ?? '';
+    el.classList.toggle('is-error', error);
+  };
+  const showCard = statusIn(cardStatus);
+  const showResume = statusIn(resumeStatus);
 
   /** Abandon avant d'avoir rien chiffré : la passkey créée pour rien est signalée inutile. */
   function drop() {
@@ -193,42 +202,70 @@ export async function setupInfinite({ vault, onUnlock }) {
 
   // ------------------------------------------------------------- écran de connexion
 
-  unlockBtn.addEventListener('click', async () => {
-    if (busy || !blob) return;
+  /**
+   * Reprise par la passkey (geste de l'étudiant sur `button`). Rend true une fois reconnecté.
+   * `show` affiche l'état ; `gone` est appelé quand la connexion infinie vient d'être effacée.
+   */
+  async function resume({ button, show: say_ = () => {}, gone = () => {} }) {
+    if (busy || !blob) return false;
     busy = true;
-    unlockBtn.disabled = true;
-    showCard(`${name}…`);
+    button.disabled = true;
+    say_(`${name}…`);
     try {
       const { username, password } = await pk.unlock(blob);
-      showCard('Connexion chiffrée à l’université…');
+      say_('Connexion chiffrée à l’université…');
       await onUnlock(username, password);
       blob = { ...blob, last: Date.now() }; // dernier usage : repousse l'effacement automatique
       await vault.saveInfinite(blob);
-      showCard(null);
+      say_(null);
+      return true;
     } catch (err) {
       if (err instanceof InfiniteError) {
-        if (err.code === 'cancelled') showCard(MESSAGES.cancelled, true);
+        if (err.code === 'cancelled') say_(MESSAGES.cancelled, true);
         else {
           notice = say(err);
-          await disable(); // la carte disparaît : le message passe par une notification
+          await disable();
+          gone();
           toast(`${notice} Connecte-toi avec ton mot de passe.`, 'alert');
         }
-      } else if (err?.name !== 'LoginRefused') showCard(`Connexion impossible : ${err?.message ?? 'erreur inconnue'}`, true);
+      } else if (err?.name === 'LoginRefused') gone(); // mot de passe changé : écran de connexion
+      else say_(`Connexion impossible : ${err?.message ?? 'erreur inconnue'}`, true);
+      return false;
     } finally {
       busy = false;
-      unlockBtn.disabled = false;
+      button.disabled = false;
     }
+  }
+
+  unlockBtn.addEventListener('click', () => resume({ button: unlockBtn, show: showCard }));
+
+  // ------------------------------------------------------------- fiche « Session expirée »
+
+  const resumeSheet = modal(resumeDialog);
+  resumeBtn.addEventListener('click', async () => {
+    if (await resume({ button: resumeBtn, show: showResume, gone: () => resumeSheet.close() })) resumeSheet.close();
+  });
+  $('[data-resume-password]', resumeDialog).addEventListener('click', () => {
+    resumeSheet.close();
+    wantPassword = true;
+    onShowLogin(); // l'écran de connexion s'ouvre sur le formulaire, identifiant prérempli
+  });
+  $('[data-resume-off]', resumeDialog).addEventListener('click', async () => {
+    await disable();
+    resumeSheet.close();
+    toast('Connexion infinie désactivée : connecte-toi avec ton mot de passe pour retrouver mails et Moodle.', 'lock');
   });
 
   // « Me connecter avec mon mot de passe » : le formulaire, identifiant prérempli.
-  $('[data-infinite-password]').addEventListener('click', () => {
+  function passwordMode() {
     mode = 'password';
     showCard(null);
     render();
     const id = $('#login-id');
     if (!id.value && blob) id.value = pk.userOf(blob);
-    (id.value ? $('[data-pw]') : id).focus();
-  });
+    setTimeout(() => (id.value ? $('[data-pw]') : id).focus(), 80);
+  }
+  $('[data-infinite-password]').addEventListener('click', passwordMode);
   back.addEventListener('click', () => {
     mode = 'passkey';
     render();
@@ -250,11 +287,24 @@ export async function setupInfinite({ vault, onUnlock }) {
   return {
     enabled: () => Boolean(blob),
     disable,
-    /** Écran de connexion affiché : la carte « identifiant + passkey » d'abord. */
+    /** Écran de connexion affiché : la carte « identifiant + passkey » d'abord (sauf choix du mot de passe). */
     loginShown() {
+      if (wantPassword) {
+        wantPassword = false;
+        return passwordMode();
+      }
       mode = 'passkey';
       showCard(null);
       render();
+    },
+    /** Session universitaire expirée pendant l'usage : fiche « identifiant + passkey » sur place. */
+    offerResume() {
+      if (!blob || resumeDialog.open) return false;
+      showResume(null);
+      render();
+      resumeSheet.open();
+      setTimeout(() => resumeBtn.focus(), 60);
+      return true;
     },
     /** Après une connexion par mot de passe acceptée par le CAS : chiffre et garde, si demandé. */
     async afterPasswordLogin(username, password) {

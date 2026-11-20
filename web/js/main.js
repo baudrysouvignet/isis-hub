@@ -154,6 +154,7 @@ async function unlockLogin(username, password) {
   } catch (err) {
     if (err.name === 'LoginRefused') {
       await infinite.passwordChanged();
+      show('login');
       login.show('Ton mot de passe universitaire a changé : la connexion infinie a été effacée. Connecte-toi avec le nouveau, tu pourras la réactiver.');
     }
     throw err;
@@ -161,7 +162,7 @@ async function unlockLogin(username, password) {
   await completeLogin(username, password);
 }
 
-const infinite = await setupInfinite({ vault, onUnlock: unlockLogin });
+const infinite = await setupInfinite({ vault, onUnlock: unlockLogin, onShowLogin: () => show('login') });
 
 // Moodle envoie une alerte « Nouvelle connexion » quand ISIS Hub s'y connecte : seule celle de CET
 // appareil, dans la minute et demie, est mise à la corbeille (core/loginalerts.js). Réglable.
@@ -417,11 +418,8 @@ function sessionLost() {
   mails.showSignedOut(true);
   courses.showSignedOut(true);
   notes?.refresh(); // les notes demandent d'être connecté
-  toast(
-    infinite.enabled()
-      ? 'Ta session universitaire a expiré : « Se connecter », puis un geste pour la reprendre.'
-      : 'Ta session universitaire a expiré : reconnecte-toi pour retrouver mails et Moodle.',
-  );
+  // Connexion infinie : reprise sur place (identifiant + passkey), sans passer par l'écran de connexion.
+  if (!infinite.offerResume()) toast('Ta session universitaire a expiré : reconnecte-toi pour retrouver mails et Moodle.');
   setTimeout(() => (lostOnce = false), 2000);
 }
 
