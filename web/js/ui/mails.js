@@ -386,6 +386,21 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
   // --------------------------------------------------------- recherche et étiquette
 
   const norm = (t) => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  // Texte où chercher, calculé une fois par mail. Les adresses y sont aussi découpées en mots :
+  // « jean martin » trouve jean.martin@… comme « MARTIN Jean ».
+  const hays = new WeakMap();
+  const hayOf = (m) => {
+    let hay = hays.get(m);
+    if (hay === undefined) {
+      const people = [m.from, ...(m.to ?? []), ...(m.cc ?? [])].map((p) => `${p?.name ?? ''} ${p?.address ?? ''}`).join(' ');
+      hay = norm(`${people} ${m.subject ?? ''} ${m.preview ?? ''}`);
+      hay = `${hay} ${hay.replace(/[._+@-]+/g, ' ')}`;
+      hays.set(m, hay);
+    }
+    return hay;
+  };
+  // Chaque mot cherché doit apparaître quelque part, dans n'importe quel ordre.
+  const matches = (m, terms) => terms.every((t) => hayOf(m).includes(t));
   // Recherche : les mails plus anciens se chargent tout seuls jusqu'à MIN_RESULTS résultats
   // (au plus SEARCH_BUDGET mails par recherche), puis au défilement, comme la liste normale.
   const MIN_RESULTS = 20;
@@ -396,13 +411,13 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
   function filter() {
     if (!list) return;
     const q = norm(searchInput.value.trim());
+    const terms = q.split(/\s+/).filter(Boolean);
     const narrowed = Boolean(q) || Boolean(tagFilter);
     tile.classList.toggle('is-searching', narrowed);
     let n = 0;
     for (const row of $$('[data-mail]', tile)) {
       const m = mails[Number(row.dataset.mail)];
-      const hay = norm(`${m.from.name} ${m.from.address} ${[...m.to, ...m.cc].map((p) => `${p.name} ${p.address}`).join(' ')} ${m.subject} ${m.preview}`);
-      const ok = (!q || hay.includes(q)) && (!tagFilter || MP.tagsOf(m).some((t) => t.id === tagFilter));
+      const ok = (!q || matches(m, terms)) && (!tagFilter || MP.tagsOf(m).some((t) => t.id === tagFilter));
       row.parentElement.hidden = !ok;
       if (ok) n++;
     }
