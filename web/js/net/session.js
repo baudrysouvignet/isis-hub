@@ -50,10 +50,31 @@ export function parseSetCookie(header, url) {
 export class CookieJar {
   #cookies;
   #onChange;
+  // Ordre des changements : une réponse ne modifie pas un cookie écrit ou effacé APRÈS le départ
+  // de sa requête. Sans cela, une réponse en retard (ex. la page du CAS, qui efface « TGC » faute de
+  // session) effaçait la session qu'on venait d'ouvrir : boucle « Session expirée » après Touch ID.
+  #tick = 0;
+  #written = new Map(); // nom|domaine|chemin → tick de la dernière écriture
+  #clearedHost = new Map(); // hôte → tick du dernier effacement de ses cookies
+  #clearedAll = 0;
 
   constructor(saved = [], onChange = () => {}) {
     this.#cookies = Array.isArray(saved) ? saved : [];
     this.#onChange = onChange;
+  }
+
+  /** Position actuelle, à relever au départ d'une requête puis à rendre à store(). */
+  get tick() {
+    return this.#tick;
+  }
+
+  #changedSince(cookie, since) {
+    if (since === undefined) return false;
+    return (
+      this.#clearedAll > since ||
+      (this.#clearedHost.get(cookie.domain) ?? 0) > since ||
+      (this.#written.get(`${cookie.name}|${cookie.domain}|${cookie.path}`) ?? 0) > since
+    );
   }
 
   #alive() {
@@ -61,16 +82,20 @@ export class CookieJar {
     return this.#cookies.filter((c) => c.expires === null || c.expires > now);
   }
 
-  /** Enregistre les en-têtes Set-Cookie d'une réponse reçue de `url`. */
-  store(url, headers) {
+  /**
+   * Enregistre les en-têtes Set-Cookie d'une réponse reçue de `url`. `since` : position relevée
+   * au départ de la requête (voir tick) ; un cookie changé depuis n'est pas touché.
+   */
+  store(url, headers, since) {
     if (!headers.length) return;
     for (const header of headers) {
       const cookie = parseSetCookie(header, url);
-      if (!cookie) continue;
+      if (!cookie || this.#changedSince(cookie, since)) continue;
       this.#cookies = this.#cookies.filter(
         (c) => !(c.name === cookie.name && c.domain === cookie.domain && c.path === cookie.path),
       );
       this.#cookies.push(cookie); // un cookie déjà expiré est filtré aussitôt : c'est une suppression
+      this.#written.set(`${cookie.name}|${cookie.domain}|${cookie.path}`, ++this.#tick);
     }
     this.#cookies = this.#alive();
     this.#onChange();
@@ -92,6 +117,9 @@ export class CookieJar {
   /** Oublie les cookies d'un hôte, ou tous si aucun n'est précisé. */
   clear(hostname) {
     this.#cookies = hostname ? this.#cookies.filter((c) => c.domain !== hostname) : [];
+    this.#tick++;
+    if (hostname) this.#clearedHost.set(hostname, this.#tick);
+    else this.#clearedAll = this.#tick;
     this.#onChange();
   }
 
@@ -103,6 +131,7 @@ export class CookieJar {
   /** Remplace tout le contenu (session relue depuis le coffre). */
   replace(cookies) {
     this.#cookies = Array.isArray(cookies) ? cookies : [];
+    this.#clearedAll = ++this.#tick; // contenu remplacé : les réponses d'avant ne s'y mêlent pas
   }
 
   toJSON() {
@@ -129,10 +158,11 @@ export function createClient({ raw, jar, allowedHosts, maxRedirects = 15 }) {
         throw new Error(`Destination refusée : ${target.host}`);
       }
       const cookie = jar.header(target);
+      const since = jar.tick; // départ de la requête : sa réponse ne remplace rien de plus récent
       // idempotent : la requête peut être rejouée sans effet de bord (lecture), voir engine.js.
       const idempotent = method === 'GET' || method === 'HEAD' || Boolean(init.idempotent);
       const res = await raw(target.href, { method, body, idempotent, headers: cookie ? { ...headers, Cookie: cookie } : headers });
-      jar.store(target, res.setCookies);
+      jar.store(target, res.setCookies, since);
 
       // redirect: 'manual' : on rend la redirection elle-même (ticket CAS, à ne pas suivre).
       if (init.redirect === 'manual' && REDIRECTS.has(res.status)) {

@@ -11,7 +11,13 @@ let session = null; // { sid, domain, userId, defaultEmail, formatedName }
 let inbox = null; // { uid }
 let folders = null; // nom complet → { uid, id } (INBOX, Outbox, Sent, Trash…)
 
+// Change à chaque reset (session perdue, déconnexion) : une ouverture de session lancée avant ne
+// sert plus, ne remplace rien et n'est plus partagée avec les demandes d'après.
+let epoch = 0;
+
 export const reset = () => {
+  epoch++;
+  connecting = null;
   recentCache = null;
   session = null;
   inbox = null;
@@ -33,14 +39,18 @@ async function readSessionInfos() {
 // deux fois le SSO (ce qui pouvait finir en fausse « Session expirée »).
 let connecting = null;
 export function connect() {
-  connecting ??= (async () => {
+  if (connecting) return connecting;
+  const mine = epoch;
+  const attempt = (async () => {
     let infos = await readSessionInfos();
     if (infos === undefined) infos = await readSessionInfos();
     if (!infos) throw new NotSignedIn('messagerie');
-    session = infos;
+    if (mine === epoch) session = infos; // ouverte avant une déconnexion : ne remplace rien
     return { email: infos.defaultEmail ?? '', name: infos.formatedName ?? '', login: infos.login ?? '' };
-  })().finally(() => (connecting = null));
-  return connecting;
+  })();
+  connecting = attempt;
+  attempt.finally(() => connecting === attempt && (connecting = null)).catch(() => {});
+  return attempt;
 }
 
 // Appels de lecture (même en POST) : rejouables sans effet de bord si la connexion est coupée.
@@ -48,6 +58,8 @@ const READS = /(?:\/_sorted|\/_count|\/_mgetById|\/_all|\/_search|\/part\/)/;
 
 async function api(path, { method, body, bytes, raw = false } = {}, retry = true) {
   if (!session) await connect();
+  // Demande partie avant une déconnexion : elle s'arrête là, sans déclarer la session perdue.
+  if (!session) throw new Error('session de messagerie renouvelée entre-temps');
   const json = body !== undefined;
   const verb = method ?? (json || bytes ? 'POST' : 'GET');
   const res = await http(`${HOSTS.mail}/api/${path}`, {

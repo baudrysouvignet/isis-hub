@@ -10,7 +10,11 @@ const HOUR = 3600e3;
 
 let session = null; // { sesskey, userId }, en mémoire seulement
 
+// Change à chaque reset : une ouverture de session lancée avant ne remplace plus rien.
+let epoch = 0;
+
 export const reset = () => {
+  epoch++;
   session = null;
 };
 
@@ -34,20 +38,24 @@ const loggedIn = (at) => loginListeners.forEach((fn) => {
 
 export async function connect() {
   const at = Date.now();
+  const mine = epoch;
   const first = await http(`${HOSTS.moodle}/my/`);
-  session = readSession(await first.text());
-  if (session && first.redirected) loggedIn(at); // Moodle est passé par le CAS : c'est une connexion
-  if (!session) {
+  let found = readSession(await first.text());
+  if (found && first.redirected) loggedIn(at); // Moodle est passé par le CAS : c'est une connexion
+  if (!found) {
     const afterSso = await page('/login/index.php?authCAS=CAS').catch(() => '');
-    session = readSession(afterSso) || readSession(await page('/my/'));
-    if (session) loggedIn(at);
+    found = readSession(afterSso) || readSession(await page('/my/'));
+    if (found) loggedIn(at);
   }
-  if (!session) throw new NotSignedIn('Moodle');
-  return session;
+  if (!found) throw new NotSignedIn('Moodle');
+  if (mine === epoch) session = found; // ouverte avant une déconnexion : ne remplace rien
+  return found;
 }
 
 async function call(methodname, args, retry = true) {
   if (!session) await connect();
+  // Demande partie avant une déconnexion : elle s'arrête là, sans déclarer la session perdue.
+  if (!session) throw new Error('session Moodle renouvelée entre-temps');
   const res = await http(`${HOSTS.moodle}/lib/ajax/service.php?sesskey=${session.sesskey}&info=${methodname}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
