@@ -38,7 +38,7 @@ test('journal public : aucune entrée sur l’administration', () => {
 test('pop-up : une version de correctifs (quiet) reste au journal, sans pop-up', () => {
   const quiet = CHANGELOG.filter((e) => e.quiet).map((e) => e.version);
   assert.ok(quiet.includes('1.1.1'));
-  assert.deepEqual(unseen('1.1.0'), [], 'qui a vu la 1.1.0 ne revoit pas de pop-up pour la 1.1.1');
-  assert.deepEqual(unseen('1.0.6').map((e) => e.version), ['1.1.0']);
+  assert.deepEqual(unseen('1.1.0').map((e) => e.version).filter((v) => v === '1.1.1'), [], 'qui a vu la 1.1.0 ne revoit pas de pop-up pour la 1.1.1');
+  assert.ok(unseen('1.0.6').map((e) => e.version).includes('1.1.0'));
   assert.ok(unseen(null).every((e) => !e.quiet));
 });

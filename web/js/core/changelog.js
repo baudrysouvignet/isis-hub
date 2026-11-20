@@ -6,6 +6,27 @@
 
 export const CHANGELOG = [
   {
+    version: '1.1.2',
+    date: '2026-11-20',
+    title: 'Recherche par personne, notes renommées',
+    short: [
+      'Mails : cherche une personne, puis affine avec d’autres mots ; les PDF joints s’ouvrent dans le Hub.',
+      'Notes : renomme une évaluation (« Contrôle continu » → « Oral ») et ajoute des notes en simulation.',
+      'Emploi du temps : un petit crayon signale les cours où tu as écrit une note.',
+    ],
+    details: [
+      'Mails : en tapant un nom, la recherche propose les personnes de tes mails et de l’annuaire. En choisir une garde les mails qu’elle a envoyés, ou où elle est destinataire ou en copie ; tu peux encore taper des mots (« contrôle »).',
+      'Mails en plein écran : la liste ne passe plus sous le mail ouvert, les dates sont visibles, et la recherche n’affiche que les mails trouvés.',
+      'Pièces jointes : les PDF s’affichent dans le Hub, comme les images.',
+      'Mails non lus plus visibles : en gras, les mails lus plus discrets.',
+      'Menu « Affichage » : il passe devant la messagerie en plein écran.',
+      'Notes : renomme une évaluation prévue depuis sa fiche ; le nouveau nom n’est visible que par toi.',
+      'Notes en simulation : « + » ajoute une note simulée en plus des évaluations prévues, et elle ne disparaît plus.',
+      'Notes : si une évaluation disparaît de la maquette de ta classe, la note que tu avais saisie reste, en note personnelle.',
+      'Emploi du temps : un crayon, à côté du lien Moodle, sur les séances des cours où tu as écrit une note.',
+    ],
+  },
+  {
     version: '1.1.1',
     date: '2026-11-20',
     title: 'Reconnexion stable, examens dès 3 votes',
