@@ -24,7 +24,7 @@ test('pop-up : première fois de la 1.0.3 à la 1.0.5, puis seulement les versio
   assert.deepEqual(unseen(null).map((e) => e.version).slice(-3), ['1.0.5', '1.0.4', '1.0.3']);
   assert.ok(unseen(null).every((e) => cmpVersion(e.version, '1.0.3') >= 0));
   assert.deepEqual(unseen(LATEST), []);
-  assert.deepEqual(unseen('1.0.4').map((e) => e.version), CHANGELOG.filter((e) => cmpVersion(e.version, '1.0.4') > 0).map((e) => e.version));
+  assert.deepEqual(unseen('1.0.4').map((e) => e.version), CHANGELOG.filter((e) => !e.quiet && cmpVersion(e.version, '1.0.4') > 0).map((e) => e.version));
   assert.deepEqual(unseen('n’importe quoi').map((e) => e.version), unseen(null).map((e) => e.version));
 });
 
@@ -33,4 +33,12 @@ test('journal public : aucune entrée sur l’administration', () => {
     assert.equal(e.admin, undefined, e.version);
     for (const line of [e.title, ...e.short, ...e.details]) assert.doesNotMatch(line, /administration|admin\b/i, `${e.version} : ${line}`);
   }
+});
+
+test('pop-up : une version de correctifs (quiet) reste au journal, sans pop-up', () => {
+  const quiet = CHANGELOG.filter((e) => e.quiet).map((e) => e.version);
+  assert.ok(quiet.includes('1.1.1'));
+  assert.deepEqual(unseen('1.1.0'), [], 'qui a vu la 1.1.0 ne revoit pas de pop-up pour la 1.1.1');
+  assert.deepEqual(unseen('1.0.6').map((e) => e.version), ['1.1.0']);
+  assert.ok(unseen(null).every((e) => !e.quiet));
 });

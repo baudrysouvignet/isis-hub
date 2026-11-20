@@ -2,8 +2,20 @@
 //   short : 1 à 3 points, ce qui change pour toi (pop-up « Nouveautés », une fois par version)
 //   details : le détail complet (page « Journal des versions » du compte)
 // Les petits correctifs ne vont que dans le détail. Rien sur l'administration : le journal est public.
+//   quiet : version de correctifs, au journal seulement, jamais dans la pop-up « Nouveautés »
 
 export const CHANGELOG = [
+  {
+    version: '1.1.1',
+    date: '2026-11-20',
+    title: 'Reconnexion stable, examens dès 3 votes',
+    quiet: true, // correctifs de la 1.1.0 : au journal, sans pop-up
+    short: ['Reconnexion avec Face ID ou Touch ID stable, et examens signalés dès 3 camarades.'],
+    details: [
+      'Connexion infinie : après Face ID ou Touch ID, la fenêtre « Session expirée » pouvait revenir aussitôt, en boucle. Des échanges partis avant la reconnexion effaçaient la session neuve ; ils ne la touchent plus.',
+      'Examens signalés : une séance apparaît chez toute la classe en « Examen ? » dès 3 camarades, quelle que soit la taille de la classe.',
+    ],
+  },
   {
     version: '1.1.0',
     date: '2026-11-20',
@@ -177,8 +189,8 @@ export function cmpVersion(a, b) {
 // Première pop-up (personne n'a encore de « déjà vu ») : de la 1.0.3 à la 1.0.5 ensemble.
 const FIRST_SHOWN = '1.0.3';
 
-/** Versions à présenter dans la pop-up, de la plus récente à la plus ancienne. */
+/** Versions à présenter dans la pop-up, de la plus récente à la plus ancienne (sans les `quiet`). */
 export function unseen(lastSeen) {
   const floor = typeof lastSeen === 'string' && /^\d+(\.\d+)*$/.test(lastSeen) ? lastSeen : null;
-  return CHANGELOG.filter((e) => (floor ? cmpVersion(e.version, floor) > 0 : cmpVersion(e.version, FIRST_SHOWN) >= 0));
+  return CHANGELOG.filter((e) => !e.quiet && (floor ? cmpVersion(e.version, floor) > 0 : cmpVersion(e.version, FIRST_SHOWN) >= 0));
 }
