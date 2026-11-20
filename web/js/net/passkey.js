@@ -121,42 +121,89 @@ export function createPasskeys({
 } = {}) {
   const subtle = crypto.subtle;
   const random = (n) => crypto.getRandomValues(new Uint8Array(n));
-  const aad = (id) => enc.encode(`${INFO}|${rpId}|${b64u(id)}`);
+  // Données associées : la copie ne s'ouvre que pour ce site, cette clé et cet identifiant.
+  const aad = (id, user) => enc.encode(`${INFO}|${rpId}|${b64u(id)}|${user}`);
+
+  /** Contrôle d'une réponse de l'appareil : même site, utilisateur présent ET vérifié. */
+  async function checkAuthData(raw) {
+    const auth = bytes(raw);
+    const site = new Uint8Array(await subtle.digest('SHA-256', enc.encode(rpId)));
+    if (auth.length < 37 || !same(auth.slice(0, 32), site)) throw new InfiniteError('wrong-site');
+    if ((auth[32] & (FLAG_UP | FLAG_UV)) !== (FLAG_UP | FLAG_UV)) throw new InfiniteError('not-verified');
+  }
+
+  /** Secret PRF (32 octets) → clé AES-GCM 256 non exportable ; le secret est effacé ensuite. */
+  async function deriveKey(first, salt) {
+    const secret = bytes(first);
+    if (secret.length !== 32) throw new InfiniteError('unsupported');
+    try {
+      const base = await subtle.importKey('raw', secret, 'HKDF', false, ['deriveKey']);
+      return await subtle.deriveKey(
+        { name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode(`${INFO}/key`) },
+        base,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt'],
+      );
+    } finally {
+      secret.fill(0);
+    }
+  }
 
   /**
-   * 1re étape de l'activation : crée une passkey pour ce site, vérification de l'utilisateur
-   * exigée, extension prf demandée. Rend son identifiant et un sel neuf (32 octets).
+   * Activation : crée une passkey pour ce site, vérification de l'utilisateur exigée. Quand
+   * l'appareil rend le secret PRF dès la création (trousseau iCloud, Google…) ET que sa réponse se
+   * contrôle (site, utilisateur vérifié), un seul geste suffit : rend { id, salt, key }. Sinon,
+   * rend { id, salt } et la clé se tire d'un second geste (unlockKey), contrôlé de la même façon.
    */
   async function createKey() {
+    const salt = random(32);
+    const options = (prf) => ({
+      publicKey: {
+        rp: { id: rpId, name: 'ISIS Hub' },
+        // Identifiant aléatoire : ni nom, ni identifiant universitaire chez Apple, Google…
+        user: { id: random(16), name: `Connexion infinie (${label})`, displayName: `Connexion infinie (${label})` },
+        challenge: random(32),
+        pubKeyCredParams: [
+          { type: 'public-key', alg: -7 },
+          { type: 'public-key', alg: -8 },
+          { type: 'public-key', alg: -257 },
+        ],
+        authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
+        attestation: 'none',
+        timeout: TIMEOUT,
+        extensions: { prf },
+      },
+    });
     let cred;
     try {
-      cred = await credentials.create({
-        publicKey: {
-          rp: { id: rpId, name: 'ISIS Hub' },
-          // Identifiant aléatoire : ni nom, ni identifiant universitaire chez Apple, Google…
-          user: { id: random(16), name: `Connexion infinie (${label})`, displayName: `Connexion infinie (${label})` },
-          challenge: random(32),
-          pubKeyCredParams: [
-            { type: 'public-key', alg: -7 },
-            { type: 'public-key', alg: -8 },
-            { type: 'public-key', alg: -257 },
-          ],
-          authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
-          attestation: 'none',
-          timeout: TIMEOUT,
-          extensions: { prf: {} },
-        },
-      });
+      cred = await credentials.create(options({ eval: { first: salt } }));
     } catch (err) {
-      throw translate(err);
+      // Navigateur qui refuse le calcul dès la création : on recrée sans, le second geste suivra.
+      if (err?.name !== 'NotSupportedError' && err?.name !== 'TypeError') throw translate(err);
+      try {
+        cred = await credentials.create(options({}));
+      } catch (again) {
+        throw translate(again);
+      }
     }
     if (!cred || cred.type !== 'public-key') throw new InfiniteError('cancelled');
+    const id = bytes(cred.rawId);
     const prf = cred.getClientExtensionResults?.()?.prf;
     if (!prf || prf.enabled === false) {
-      forget(bytes(cred.rawId)); // clé inutilisable : on demande à l'appareil de l'oublier
+      forget(id); // clé inutilisable : on demande à l'appareil de l'oublier
       throw new InfiniteError('unsupported');
     }
-    return { id: bytes(cred.rawId), salt: random(32) };
+    const first = prf.results?.first;
+    const authData = typeof cred.response?.getAuthenticatorData === 'function' ? cred.response.getAuthenticatorData() : null;
+    if (!first || !authData) return { id, salt }; // second geste nécessaire
+    try {
+      await checkAuthData(authData);
+      return { id, salt, key: await deriveKey(first, salt) };
+    } catch (err) {
+      forget(id);
+      throw translate(err);
+    }
   }
 
   /**
@@ -180,32 +227,22 @@ export function createPasskeys({
       throw translate(err);
     }
     if (!cred || !same(bytes(cred.rawId), id)) throw new InfiniteError('wrong-key');
-    const auth = bytes(cred.response?.authenticatorData);
-    const site = new Uint8Array(await subtle.digest('SHA-256', enc.encode(rpId)));
-    if (auth.length < 37 || !same(auth.slice(0, 32), site)) throw new InfiniteError('wrong-site');
-    if ((auth[32] & (FLAG_UP | FLAG_UV)) !== (FLAG_UP | FLAG_UV)) throw new InfiniteError('not-verified');
-    const first = cred.getClientExtensionResults?.()?.prf?.results?.first;
-    const secret = bytes(first);
-    if (secret.length !== 32) throw new InfiniteError('unsupported');
-    try {
-      const base = await subtle.importKey('raw', secret, 'HKDF', false, ['deriveKey']);
-      return await subtle.deriveKey(
-        { name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode(`${INFO}/key`) },
-        base,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['encrypt', 'decrypt'],
-      );
-    } finally {
-      secret.fill(0);
-    }
+    await checkAuthData(cred.response?.authenticatorData);
+    return deriveKey(cred.getClientExtensionResults?.()?.prf?.results?.first, salt);
   }
 
-  /** Chiffre identifiant et mot de passe ; rend la copie à garder (sans rien en clair). */
+  const USER_RE = /^[^\s\p{C}]{1,128}$/u;
+
+  /**
+   * Chiffre identifiant et mot de passe ; rend la copie à garder. L'identifiant y figure aussi en
+   * clair (champ `user`, pour l'afficher à l'écran de connexion), lié au chiffré : modifié, la
+   * copie ne s'ouvre plus. Le mot de passe, lui, n'y est que chiffré.
+   */
   async function seal(key, { id, salt }, { username, password }) {
-    const u = enc.encode(String(username ?? ''));
+    const user = String(username ?? '');
+    const u = enc.encode(user);
     const p = enc.encode(String(password ?? ''));
-    if (!u.length || !p.length || u.length > MAX_FIELD || p.length > MAX_FIELD) throw new InfiniteError('invalid');
+    if (!USER_RE.test(user) || !p.length || u.length > MAX_FIELD || p.length > MAX_FIELD) throw new InfiniteError('invalid');
     // Octets plutôt que JSON : pas de copie du mot de passe dans une chaîne de plus.
     const plain = new Uint8Array(2 + u.length + p.length);
     plain[0] = u.length >> 8;
@@ -214,9 +251,9 @@ export function createPasskeys({
     plain.set(p, 2 + u.length);
     const iv = random(12);
     try {
-      const ct = new Uint8Array(await subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad(id) }, key, plain));
+      const ct = new Uint8Array(await subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad(id, user) }, key, plain));
       const t = now();
-      return { v: VERSION, id: b64u(id), salt: b64u(salt), iv: b64u(iv), ct: b64u(ct), since: t, last: t };
+      return { v: VERSION, user, id: b64u(id), salt: b64u(salt), iv: b64u(iv), ct: b64u(ct), since: t, last: t };
     } finally {
       plain.fill(0);
       p.fill(0);
@@ -228,11 +265,13 @@ export function createPasskeys({
     const ok =
       blob &&
       blob.v === VERSION &&
+      typeof blob.user === 'string' &&
+      USER_RE.test(blob.user) &&
       Number.isFinite(blob.since) &&
       Number.isFinite(blob.last) &&
       ['id', 'salt', 'iv', 'ct'].every((k) => typeof blob[k] === 'string' && blob[k].length <= 4096);
     if (!ok) throw new InfiniteError('damaged');
-    const out = { id: unb64u(blob.id), salt: unb64u(blob.salt), iv: unb64u(blob.iv), ct: unb64u(blob.ct), since: blob.since, last: blob.last };
+    const out = { user: blob.user, id: unb64u(blob.id), salt: unb64u(blob.salt), iv: unb64u(blob.iv), ct: unb64u(blob.ct), since: blob.since, last: blob.last };
     if (out.id.length < 16 || out.id.length > 1023 || out.salt.length !== 32 || out.iv.length !== 12 || out.ct.length < 19) throw new InfiniteError('damaged');
     return out;
   }
@@ -245,14 +284,16 @@ export function createPasskeys({
     if (expired(b)) throw new InfiniteError('expired');
     let plain;
     try {
-      plain = new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv: b.iv, additionalData: aad(b.id) }, key, b.ct));
+      plain = new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv: b.iv, additionalData: aad(b.id, b.user) }, key, b.ct));
     } catch {
       throw new InfiniteError('damaged');
     }
     try {
       const n = (plain[0] << 8) | plain[1];
       if (plain.length < 2 + n + 1 || n < 1) throw new InfiniteError('damaged');
-      return { username: dec.decode(plain.subarray(2, 2 + n)), password: dec.decode(plain.subarray(2 + n)) };
+      const username = dec.decode(plain.subarray(2, 2 + n));
+      if (username !== b.user) throw new InfiniteError('damaged');
+      return { username, password: dec.decode(plain.subarray(2 + n)) };
     } finally {
       plain.fill(0);
     }
@@ -274,5 +315,5 @@ export function createPasskeys({
     } catch {}
   }
 
-  return { createKey, unlockKey, seal, open, unlock, parse, expired, forget, idOf: (blob) => parse(blob).id };
+  return { createKey, unlockKey, seal, open, unlock, parse, expired, forget, idOf: (blob) => parse(blob).id, userOf: (blob) => parse(blob).user };
 }

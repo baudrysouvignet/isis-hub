@@ -49,7 +49,9 @@ Les autres verrous :
   puis une seconde fois par le coffre de l'appareil. Le serveur ne participe pas : ni mot de passe,
   ni copie chiffrée, ni clé, ni passkey. La réponse de l'appareil est contrôlée (même clé, même site,
   utilisateur présent et vérifié) ; chaque reprise part d'un geste. Toute anomalie, un mot de passe
-  changé, 90 jours sans usage ou « Se déconnecter » effacent la copie. Code : `web/js/net/passkey.js`,
+  changé, 90 jours sans usage, « Désactiver » ou « Supprimer mes données » effacent la copie ;
+  « Se déconnecter » la garde : au retour, l'identifiant et la passkey suffisent, et le mot de passe
+  reste possible. Code : `web/js/net/passkey.js`,
   tests avec un faux authentificateur : `test/passkey.test.js`.
 - **Mails inertes** : le HTML d'un mail est reconstruit balise par balise à partir d'une liste
   fermée. Scripts, styles, formulaires, cadres et images distantes (qui préviendraient l'expéditeur)

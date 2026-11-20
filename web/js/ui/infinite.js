@@ -1,15 +1,17 @@
-// Connexion infinie : case du formulaire, fiche d'explication et d'activation, carte « Continuer »
-// de l'écran de connexion, désactivation. La cryptographie est dans net/passkey.js ; ici, l'ordre
-// des gestes et ce qui est dit à l'étudiant.
+// Connexion infinie : case du formulaire, fiche d'activation, carte « identifiant + passkey » de
+// l'écran de connexion, désactivation. La cryptographie est dans net/passkey.js ; ici, l'ordre des
+// gestes et ce qui est dit à l'étudiant.
 //
 // Règles :
-//   - rien n'est activé sans avoir lu la fiche et coché « J'ai lu et compris » ;
+//   - rien n'est activé sans la fiche, qui dit en une ligne pourquoi c'est plus risqué ;
 //   - chaque appel à la passkey part d'un appui de l'étudiant sur un bouton de cette page ;
-//   - la clé est créée PUIS vérifiée (second appel) avant de chiffrer quoi que ce soit : ce qui est
-//     gardé s'ouvre donc exactement comme au déverrouillage ;
+//   - la clé n'est gardée qu'après contrôle de la réponse de l'appareil (site, utilisateur
+//     vérifié), dès la création si l'appareil le permet, sinon par un second geste ;
 //   - le mot de passe n'est chiffré qu'après une connexion acceptée par le CAS, puis oublié ;
-//   - toute anomalie (copie illisible, mauvaise clé, autre site, utilisateur non vérifié, 90 jours
-//     sans usage, mot de passe changé) efface la connexion infinie : retour au mot de passe.
+//   - « Se déconnecter » garde la connexion infinie (au retour : identifiant + passkey) ; elle
+//     s'efface par « Désactiver », « Supprimer mes données », et d'elle-même à toute anomalie
+//     (copie illisible, mauvaise clé, autre site, utilisateur non vérifié), mot de passe changé
+//     ou 90 jours sans usage.
 
 import { $, $$, toast } from '../core/dom.js';
 import { modal } from './layout.js';
@@ -17,8 +19,8 @@ import { createPasskeys, availability, unlockName, InfiniteError } from '../net/
 
 const MESSAGES = {
   unsupported:
-    'Cet appareil ou ce navigateur ne sait pas protéger un mot de passe avec une passkey (il faut iOS 18.4 ou plus récent, Android avec Chrome, Windows 11 à jour, ou un Mac récent). Rien n’a été activé.',
-  cancelled: 'Annulé, ou délai dépassé. Rien n’a été activé.',
+    'Cet appareil ou ce navigateur ne sait pas verrouiller un mot de passe avec une passkey (il faut iOS 18.4 ou plus récent, Android avec Chrome, Windows 11 à jour ou un Mac récent).',
+  cancelled: 'Annulé, ou délai dépassé.',
   'not-verified': 'L’appareil n’a pas vérifié ton identité (visage, empreinte ou code) : refusé par sécurité.',
   'wrong-key': 'L’appareil a répondu avec une autre clé : refusé par sécurité.',
   'wrong-site': 'La réponse de l’appareil ne concerne pas ce site : refusé par sécurité.',
@@ -34,24 +36,26 @@ export async function setupInfinite({ vault, onUnlock }) {
   const card = $('[data-infinite-card]');
   const cardStatus = $('[data-infinite-card-status]');
   const unlockBtn = $('[data-infinite-unlock]');
+  const userEl = $('[data-infinite-user]');
+  const back = $('[data-infinite-back]');
+  const form = $('[data-login-form]');
   const opt = $('[data-infinite-opt]');
   const box = $('[data-infinite]');
   const menuItem = $('[data-infinite-menu]');
   const dialog = $('dialog[data-infinite-sheet]');
-  const ack = $('[data-inf-ack]', dialog);
   const next = $('[data-inf-next]', dialog);
   const cancel = $('[data-inf-cancel]', dialog);
   const status = $('[data-inf-status]', dialog);
-  const text = $('[data-inf-text]', dialog);
 
   $$('[data-unlock-name]').forEach((el) => (el.textContent = name));
   $('[data-infinite-unlock-label]').textContent = `Continuer avec ${name}`;
 
   let support = vault.canKeepOnDevice ? await availability() : 'unsupported';
   let blob = null; // copie gardée (chiffrée par la passkey, puis par le coffre de l'appareil)
-  let pending = null; // { id, salt, key } : clé vérifiée, en attente du mot de passe
-  let created = null; // { id, salt } : clé créée, pas encore vérifiée
+  let pending = null; // { id, salt, key } : clé contrôlée, en attente du mot de passe
+  let created = null; // { id, salt } : clé créée, à contrôler par un second geste
   let pendingTimer = 0; // efface `pending` resté inutilisé
+  let mode = 'passkey'; // écran de connexion : 'passkey' (carte) ou 'password' (formulaire)
   let step = 'read';
   let busy = false;
   let notice = '';
@@ -69,9 +73,13 @@ export async function setupInfinite({ vault, onUnlock }) {
   }
 
   function render() {
-    card.hidden = !blob;
-    opt.hidden = Boolean(blob) || support === 'unsupported';
-    menuItem.hidden = !blob;
+    const on = Boolean(blob);
+    card.hidden = !on || mode === 'password';
+    form.hidden = on && mode === 'passkey';
+    back.hidden = !on || mode !== 'password';
+    opt.hidden = on || support === 'unsupported';
+    menuItem.hidden = !on;
+    userEl.textContent = on ? pk.userOf(blob) : '';
     if (!pending) box.checked = false;
   }
 
@@ -79,16 +87,6 @@ export async function setupInfinite({ vault, onUnlock }) {
     cardStatus.hidden = !message;
     cardStatus.textContent = message ?? '';
     cardStatus.classList.toggle('is-error', error);
-  }
-
-  /** Efface tout : copie de l'appareil, clé en attente ; la passkey est signalée comme inutile. */
-  async function disable() {
-    const id = blob ? (() => { try { return pk.idOf(blob); } catch { return null; } })() : null;
-    blob = null;
-    drop();
-    await vault.forgetInfinite();
-    if (id) pk.forget(id);
-    render();
   }
 
   /** Abandon avant d'avoir rien chiffré : la passkey créée pour rien est signalée inutile. */
@@ -100,7 +98,7 @@ export async function setupInfinite({ vault, onUnlock }) {
     pending = null;
   }
 
-  // Clé vérifiée mais pas encore utilisée (case cochée, connexion pas faite) : oubliée après 10 min.
+  // Clé contrôlée mais pas encore utilisée (case cochée, connexion pas faite) : oubliée après 10 min.
   function armPending() {
     clearTimeout(pendingTimer);
     pendingTimer = setTimeout(() => {
@@ -110,11 +108,25 @@ export async function setupInfinite({ vault, onUnlock }) {
     }, 10 * 60_000);
   }
 
+  /** Efface tout : copie de l'appareil, clé en attente ; la passkey est signalée comme inutile. */
+  async function disable() {
+    let id = null;
+    try {
+      id = blob ? pk.idOf(blob) : null;
+    } catch {}
+    blob = null;
+    drop();
+    mode = 'passkey';
+    await vault.forgetInfinite();
+    if (id) pk.forget(id);
+    render();
+  }
+
   // ------------------------------------------------------------- fiche d'activation
 
   const sheet = modal(dialog, {
     onClose() {
-      if (step !== 'done') drop();
+      if (!pending) drop();
       box.checked = Boolean(pending);
       render();
     },
@@ -122,59 +134,43 @@ export async function setupInfinite({ vault, onUnlock }) {
 
   function show(nextStep, message = '', error = false) {
     step = nextStep;
-    for (const sec of $$('[data-inf-step]', dialog)) sec.hidden = !sec.dataset.infStep.split(' ').includes(step);
-    const order = ['create', 'confirm', 'done'];
-    for (const li of $$('[data-inf-dot]', dialog)) {
-      const k = order.indexOf(li.dataset.infDot);
-      const at = order.indexOf(step);
-      li.classList.toggle('is-done', k < at || step === 'done');
-      li.classList.toggle('is-current', k === at && step !== 'done');
-    }
-    text.textContent = {
-      create: `Ton appareil va te demander ${name} pour créer la clé d’ISIS Hub. Elle reste dans sa puce sécurisée.`,
-      confirm: `Clé créée. Confirme une fois avec ${name} : ISIS Hub vérifie que la clé protège bien ton mot de passe avant de s’en servir.`,
-      done: 'Tout est prêt. Connecte-toi avec ton mot de passe : il sera chiffré par cette clé, sur cet appareil seulement. Ensuite, tu n’auras plus à le retaper.',
-    }[step] ?? '';
     status.hidden = !message;
     status.textContent = message;
     status.classList.toggle('is-error', error);
-    cancel.hidden = step === 'done';
-    next.textContent = { read: 'Créer ma clé', create: `Créer ma clé avec ${name}`, confirm: `Confirmer avec ${name}`, done: 'Continuer' }[step];
-    next.disabled = busy || (step === 'read' && !ack.checked) || (step === 'failed');
-    if (step === 'failed') {
-      next.textContent = 'Fermer';
-      next.disabled = false;
-    }
+    cancel.hidden = step === 'failed';
+    next.disabled = busy;
+    next.textContent = step === 'confirm' ? `Confirmer avec ${name}` : step === 'failed' ? 'Fermer' : `Activer avec ${name}`;
   }
 
-  function openSheet() {
-    drop();
-    ack.checked = false;
-    show('read');
-    sheet.open();
+  function ready(meta) {
+    pending = meta;
+    created = null;
+    armPending();
+    sheet.close();
+    box.checked = true;
+    toast('C’est prêt : connecte-toi, ton mot de passe sera verrouillé sur cet appareil.', 'lock');
   }
 
-  ack.addEventListener('change', () => show(step));
   cancel.addEventListener('click', () => sheet.close());
 
   next.addEventListener('click', async () => {
     if (busy) return;
-    if (step === 'done' || step === 'failed') return sheet.close();
-    if (step === 'read') return show('create');
+    if (step === 'failed') return sheet.close();
     busy = true;
     next.disabled = true;
     try {
-      if (step === 'create') {
-        created = await pk.createKey();
+      if (step === 'read') {
+        const meta = await pk.createKey();
         busy = false;
-        show('confirm');
+        if (meta.key) ready(meta);
+        else {
+          created = meta;
+          show('confirm', `Encore une fois ${name} : ISIS Hub vérifie la clé avant de s’en servir.`);
+        }
       } else if (step === 'confirm') {
         const key = await pk.unlockKey(created);
-        pending = { ...created, key };
-        created = null;
-        armPending();
         busy = false;
-        show('done');
+        ready({ ...created, key });
       }
     } catch (err) {
       busy = false;
@@ -185,15 +181,17 @@ export async function setupInfinite({ vault, onUnlock }) {
     }
   });
 
-  // Cocher ouvre la fiche : la case ne reste cochée qu'une fois la clé créée et vérifiée.
+  // Cocher ouvre la fiche : la case ne reste cochée qu'une fois la clé créée et contrôlée.
   box.addEventListener('change', () => {
     if (box.checked) {
       box.checked = false;
-      openSheet();
+      drop();
+      show('read');
+      sheet.open();
     } else drop();
   });
 
-  // ------------------------------------------------------------- reprise et désactivation
+  // ------------------------------------------------------------- écran de connexion
 
   unlockBtn.addEventListener('click', async () => {
     if (busy || !blob) return;
@@ -209,7 +207,7 @@ export async function setupInfinite({ vault, onUnlock }) {
       showCard(null);
     } catch (err) {
       if (err instanceof InfiniteError) {
-        if (err.code === 'cancelled') showCard(MESSAGES.cancelled.replace(' Rien n’a été activé.', ''), true);
+        if (err.code === 'cancelled') showCard(MESSAGES.cancelled, true);
         else {
           notice = say(err);
           await disable(); // la carte disparaît : le message passe par une notification
@@ -222,9 +220,24 @@ export async function setupInfinite({ vault, onUnlock }) {
     }
   });
 
+  // « Me connecter avec mon mot de passe » : le formulaire, identifiant prérempli.
+  $('[data-infinite-password]').addEventListener('click', () => {
+    mode = 'password';
+    showCard(null);
+    render();
+    const id = $('#login-id');
+    if (!id.value && blob) id.value = pk.userOf(blob);
+    (id.value ? $('[data-pw]') : id).focus();
+  });
+  back.addEventListener('click', () => {
+    mode = 'passkey';
+    render();
+    unlockBtn.focus();
+  });
+
   $('[data-infinite-off]').addEventListener('click', async () => {
     await disable();
-    toast('Connexion infinie désactivée sur cet appareil.', 'lock');
+    toast('Connexion infinie désactivée : ton mot de passe ne sera plus gardé sur cet appareil.', 'lock');
   });
   menuItem.addEventListener('click', async () => {
     await disable();
@@ -237,6 +250,12 @@ export async function setupInfinite({ vault, onUnlock }) {
   return {
     enabled: () => Boolean(blob),
     disable,
+    /** Écran de connexion affiché : la carte « identifiant + passkey » d'abord. */
+    loginShown() {
+      mode = 'passkey';
+      showCard(null);
+      render();
+    },
     /** Après une connexion par mot de passe acceptée par le CAS : chiffre et garde, si demandé. */
     async afterPasswordLogin(username, password) {
       if (!pending || !box.checked) return drop();
@@ -254,6 +273,7 @@ export async function setupInfinite({ vault, onUnlock }) {
         pk.forget(p.id);
         toast(say(err), 'alert');
       }
+      mode = 'passkey';
       render();
     },
     /** Mot de passe refusé par le CAS au déverrouillage : il a changé, tout est effacé. */

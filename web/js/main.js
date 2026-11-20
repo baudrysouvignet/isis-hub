@@ -114,8 +114,10 @@ function show(screen) {
   state.screen = screen;
   for (const el of $$('[data-screen]')) el.hidden = el.dataset.screen !== screen;
   app.dataset.page = screen;
-  if (screen === 'login') login.show();
-  else login.hide();
+  if (screen === 'login') {
+    login.show();
+    infinite.loginShown(); // connexion infinie : identifiant + passkey d'abord
+  } else login.hide();
   window.scrollTo(0, 0);
 }
 
@@ -420,7 +422,8 @@ async function logout() {
     jar.clear(); // le CAS injoignable n'empêche pas d'oublier la session ici
   }
   vault.clear();
-  await infinite.disable(); // connexion infinie : copie du mot de passe effacée, passkey signalée inutile
+  // Connexion infinie gardée si elle est active : au retour, l'identifiant et la passkey suffisent.
+  // Elle s'efface par « Désactiver » (menu du compte, écran de connexion) ou « Supprimer mes données ».
   // Se déconnecter efface de cet appareil les données personnelles (notes, règles, examens marqués)
   // et le secret de la sauvegarde ; la sauvegarde chiffrée reste, retrouvée à la prochaine connexion.
   UD.disconnect({ wipeLocal: true });

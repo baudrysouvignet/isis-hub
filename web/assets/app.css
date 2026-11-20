@@ -1259,29 +1259,25 @@ details[open] > .gr-sum .gr-chev { transform: rotate(90deg); }
 }
 .inf-card > * { min-width: 0; }
 .inf-card .btn { height: auto; min-height: 52px; padding-block: 12px; white-space: normal; text-wrap: balance; text-align: center; }
-.inf-sheet .sheet-section-title { margin-bottom: 12px; }
 .inf-card-head { display: flex; align-items: center; gap: 12px; }
-.inf-card-ic { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: var(--surface); color: var(--brand); }
-.inf-card-head b { display: block; font: 700 15px/1.3 var(--font); }
+.inf-card-ic { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--surface); color: var(--brand); }
+.inf-card-head b { display: block; font: 700 17px/1.25 var(--font); overflow-wrap: anywhere; }
 .inf-card-head span { font: 500 12.5px/1.4 var(--font); color: var(--text-2); }
-.inf-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; font: 500 12.5px/1.4 var(--font); color: var(--text-3); }
+.inf-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; font: 500 13px/1.4 var(--font); }
+.inf-card-foot .inf-off { color: var(--text-3); }
+.inf-back { justify-self: start; margin-bottom: 14px; font: 600 13.5px/1.4 var(--font); }
 .inf-opt .hint { display: block; }
-.inf-how { display: grid; gap: 10px; padding-left: 20px; font: 450 14px/1.5 var(--font); color: var(--text-2); }
-.inf-how b { color: var(--text); font-weight: 650; }
-.inf-sheet .keep { grid-template-columns: minmax(0, 1fr); }
-.inf-tips { display: grid; gap: 6px; padding-left: 18px; list-style: disc; font: 450 13.5px/1.45 var(--font); color: var(--text-2); }
-.inf-ack { margin-top: 16px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); }
-.inf-steps { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 14px; padding: 0; list-style: none; counter-reset: inf; }
-.inf-steps li { counter-increment: inf; display: flex; align-items: center; gap: 7px; font: 600 12.5px/1.2 var(--font); color: var(--text-3); }
-.inf-steps li::before {
-  content: counter(inf); display: grid; place-items: center; width: 21px; height: 21px; border-radius: 50%;
-  border: 1.5px solid var(--line-2); font: 700 11px/1 var(--font);
+.inf-body { display: grid; gap: 14px; padding-top: 16px; align-content: start; }
+.inf-sheet .sheet-foot { align-items: center; }
+.inf-sheet .sheet-foot .btn--primary { flex: 0 1 auto; min-width: 0; height: auto; min-height: 44px; padding-block: 10px; white-space: normal; text-align: center; text-wrap: balance; }
+.inf-lead { font: 500 15px/1.5 var(--font); }
+.inf-warn {
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px;
+  font: 500 13.5px/1.45 var(--font); color: var(--text);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
 }
-.inf-steps li.is-current { color: var(--text); }
-.inf-steps li.is-current::before { border-color: var(--brand); color: var(--brand); }
-.inf-steps li.is-done { color: var(--ok); }
-.inf-steps li.is-done::before { content: "✓"; border-color: var(--ok); background: var(--ok); color: var(--surface); }
-.inf-text { font: 450 14px/1.55 var(--font); color: var(--text-2); }
+.inf-warn .ic { flex: none; margin-top: 2px; color: var(--warn); }
+.inf-more summary { cursor: pointer; font: 600 13px/1.4 var(--font); color: var(--text-2); }
+.inf-more ul { display: grid; gap: 6px; margin-top: 10px; padding-left: 18px; list-style: disc; font: 450 13px/1.45 var(--font); color: var(--text-2); }
 .inf-status { padding: 10px 12px; border-radius: 10px; font: 500 13px/1.45 var(--font); background: var(--surface-2); color: var(--text-2); }
-.inf-sheet .inf-status { margin-top: 14px; }
 .inf-status.is-error { background: color-mix(in srgb, var(--err) 10%, transparent); color: var(--err); }

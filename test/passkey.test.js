@@ -7,17 +7,42 @@ import { createPasskeys, InfiniteError, MAX_IDLE_MS, deviceLabel, unlockName } f
 const enc = new TextEncoder();
 const hex = (b) => Buffer.from(b).toString('hex');
 
-function authenticator({ uv = true, prfAtCreate = true, prfAtGet = true, site = null, swapId = false, refuse = false } = {}) {
+/**
+ * Options : uv (vérification faite), prfEnabled (PRF connu), atCreate (secret PRF rendu dès la
+ * création, avec getAuthenticatorData), prfAtGet, site (empreinte d'un autre site), swapId,
+ * refuse (annulation), noEvalAtCreate (le calcul à la création est refusé : NotSupportedError).
+ */
+function authenticator({ uv = true, prfEnabled = true, atCreate = false, prfAtGet = true, site = null, swapId = false, refuse = false, noEvalAtCreate = false } = {}) {
   const secrets = new Map();
   const seen = { create: [], get: [] };
+  const prfOf = async (secret, salt) => {
+    const k = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    return crypto.subtle.sign('HMAC', k, salt);
+  };
+  const authData = async (rpId) => {
+    const auth = new Uint8Array(37);
+    auth.set(new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(site ?? rpId))));
+    auth[32] = 0x01 | (uv ? 0x04 : 0);
+    return auth.buffer;
+  };
   return {
     seen,
     async create({ publicKey }) {
       seen.create.push(publicKey);
       if (refuse) throw Object.assign(new Error('annulé'), { name: 'NotAllowedError' });
+      const salt = publicKey.extensions.prf.eval?.first;
+      if (salt && noEvalAtCreate) throw Object.assign(new Error('pas à la création'), { name: 'NotSupportedError' });
       const id = crypto.getRandomValues(new Uint8Array(32));
-      secrets.set(hex(id), crypto.getRandomValues(new Uint8Array(32)));
-      return { type: 'public-key', rawId: id.buffer, getClientExtensionResults: () => (prfAtCreate ? { prf: { enabled: true } } : {}) };
+      const secret = crypto.getRandomValues(new Uint8Array(32));
+      secrets.set(hex(id), secret);
+      const results = atCreate && salt ? { first: await prfOf(secret, salt) } : undefined;
+      const data = atCreate ? await authData(publicKey.rp.id) : null;
+      return {
+        type: 'public-key',
+        rawId: id.buffer,
+        response: atCreate ? { getAuthenticatorData: () => data } : {},
+        getClientExtensionResults: () => (prfEnabled ? { prf: { enabled: true, ...(results && { results }) } } : {}),
+      };
     },
     async get({ publicKey }) {
       seen.get.push(publicKey);
@@ -25,15 +50,11 @@ function authenticator({ uv = true, prfAtCreate = true, prfAtGet = true, site = 
       const id = new Uint8Array(publicKey.allowCredentials[0].id);
       const secret = secrets.get(hex(id));
       if (!secret) throw Object.assign(new Error('inconnue'), { name: 'NotAllowedError' });
-      const k = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-      const out = await crypto.subtle.sign('HMAC', k, publicKey.extensions.prf.eval.first);
-      const auth = new Uint8Array(37);
-      auth.set(new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(site ?? publicKey.rpId))));
-      auth[32] = 0x01 | (uv ? 0x04 : 0);
+      const out = await prfOf(secret, publicKey.extensions.prf.eval.first);
       return {
         type: 'public-key',
         rawId: (swapId ? crypto.getRandomValues(new Uint8Array(32)) : id).buffer,
-        response: { authenticatorData: auth.buffer },
+        response: { authenticatorData: await authData(publicKey.rpId) },
         getClientExtensionResults: () => (prfAtGet ? { prf: { results: { first: out } } } : {}),
       };
     },
@@ -45,22 +66,41 @@ const CREDS = { username: 'lmartin', password: 'Un-mot-de-passe-très-secret 42'
 async function enroll(device, opts = {}) {
   const pk = createPasskeys({ credentials: device, rpId: 'hub.test', label: 'iPhone', ...opts });
   const meta = await pk.createKey();
-  const key = await pk.unlockKey(meta);
+  const key = meta.key ?? (await pk.unlockKey(meta));
   const blob = await pk.seal(key, meta, CREDS);
-  return { pk, meta, blob };
+  return { pk, meta, key, blob };
 }
 
 const rejects = (p, code) => assert.rejects(p, (e) => e instanceof InfiniteError && e.code === code);
 
-test('connexion infinie : chiffrer puis rouvrir rend les mêmes identifiants, rien en clair dans la copie', async () => {
+test('connexion infinie : chiffrer puis rouvrir rend les mêmes identifiants, mot de passe jamais en clair', async () => {
   const device = authenticator();
   const { pk, blob } = await enroll(device);
   const saved = JSON.stringify(blob);
-  for (const secret of [CREDS.password, CREDS.username, Buffer.from(CREDS.password).toString('base64')]) {
-    assert.ok(!saved.includes(secret), 'la copie gardée ne doit rien contenir en clair');
+  for (const secret of [CREDS.password, Buffer.from(CREDS.password).toString('base64'), Buffer.from(CREDS.password).toString('base64url')]) {
+    assert.ok(!saved.includes(secret), 'la copie gardée ne doit pas contenir le mot de passe');
   }
+  assert.equal(blob.user, CREDS.username); // affiché à l'écran de connexion
+  assert.equal(pk.userOf(blob), CREDS.username);
   assert.deepEqual(await pk.unlock(blob), CREDS);
   assert.deepEqual(await pk.unlock(JSON.parse(saved)), CREDS); // après passage par le stockage
+});
+
+test('connexion infinie : un seul geste quand l’appareil rend le secret dès la création, contrôlé pareil', async () => {
+  const device = authenticator({ atCreate: true });
+  const { pk, meta, blob } = await enroll(device);
+  assert.ok(meta.key, 'clé obtenue à la création');
+  assert.equal(device.seen.get.length, 0, 'aucun second geste');
+  assert.deepEqual(await pk.unlock(blob), CREDS); // et la reprise ouvre bien ce qui a été chiffré
+  // À la création aussi : utilisateur non vérifié ou autre site → refusé.
+  await rejects(enroll(authenticator({ atCreate: true, uv: false })), 'not-verified');
+  await rejects(enroll(authenticator({ atCreate: true, site: 'evil.test' })), 'wrong-site');
+  // Calcul refusé à la création : la clé est recréée sans, puis tirée d'un second geste.
+  const strict = authenticator({ noEvalAtCreate: true });
+  const r = await enroll(strict);
+  assert.equal(strict.seen.create.length, 2);
+  assert.equal(strict.seen.get.length, 1);
+  assert.deepEqual(await r.pk.unlock(r.blob), CREDS);
 });
 
 test('connexion infinie : la passkey exige la vérification de l’utilisateur et ne dit rien de lui', async () => {
@@ -70,7 +110,7 @@ test('connexion infinie : la passkey exige la vérification de l’utilisateur e
   assert.equal(created.authenticatorSelection.userVerification, 'required');
   assert.equal(created.attestation, 'none');
   assert.equal(created.rp.id, 'hub.test');
-  assert.ok(!JSON.stringify(created.user.name + created.user.displayName).includes(CREDS.username));
+  assert.ok(!`${created.user.name} ${created.user.displayName}`.includes(CREDS.username));
   assert.equal(device.seen.get[0].userVerification, 'required');
   assert.equal(device.seen.get[0].allowCredentials.length, 1);
 });
@@ -86,15 +126,15 @@ test('connexion infinie : refusée sans vérification, sur un autre site, avec u
 });
 
 test('connexion infinie : copie modifiée, abîmée ou trop ancienne → refusée', async () => {
-  const device = authenticator();
   let t = Date.UTC(2026, 10, 20);
-  const { pk, meta, blob } = await enroll(device, { now: () => t });
-  const key = await pk.unlockKey(meta);
+  const { pk, key, blob } = await enroll(authenticator(), { now: () => t });
   const flip = (s) => (s[5] === 'A' ? `${s.slice(0, 5)}B${s.slice(6)}` : `${s.slice(0, 5)}A${s.slice(6)}`);
   await rejects(pk.open(key, { ...blob, ct: flip(blob.ct) }), 'damaged');
   await rejects(pk.open(key, { ...blob, iv: flip(blob.iv) }), 'damaged');
   await rejects(pk.open(key, { ...blob, v: 2 }), 'damaged');
   await rejects(pk.open(key, { ...blob, salt: 'court' }), 'damaged');
+  await rejects(pk.open(key, { ...blob, user: 'autre' }), 'damaged'); // identifiant affiché changé
+  await rejects(pk.open(key, { ...blob, user: 'a b' }), 'damaged');
   await rejects(pk.open(key, null), 'damaged');
   // Copie déplacée sous une autre clé : les données associées ne correspondent plus.
   const moved = { ...blob, id: Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url') };
@@ -108,18 +148,18 @@ test('connexion infinie : copie modifiée, abîmée ou trop ancienne → refusé
 });
 
 test('connexion infinie : appareil sans PRF, annulation → rien n’est activé', async () => {
-  await rejects(enroll(authenticator({ prfAtCreate: false })), 'unsupported');
+  await rejects(enroll(authenticator({ prfEnabled: false })), 'unsupported');
   await rejects(enroll(authenticator({ prfAtGet: false })), 'unsupported');
   await rejects(enroll(authenticator({ refuse: true })), 'cancelled');
 });
 
 test('connexion infinie : identifiant ou mot de passe vide ou démesuré refusé', async () => {
-  const device = authenticator();
-  const pk = createPasskeys({ credentials: device, rpId: 'hub.test' });
+  const pk = createPasskeys({ credentials: authenticator(), rpId: 'hub.test' });
   const meta = await pk.createKey();
-  const key = await pk.unlockKey(meta);
+  const key = meta.key ?? (await pk.unlockKey(meta));
   await rejects(pk.seal(key, meta, { username: 'lmartin', password: '' }), 'invalid');
   await rejects(pk.seal(key, meta, { username: '', password: 'x' }), 'invalid');
+  await rejects(pk.seal(key, meta, { username: 'avec espace', password: 'x' }), 'invalid');
   await rejects(pk.seal(key, meta, { username: 'lmartin', password: 'x'.repeat(513) }), 'invalid');
   assert.deepEqual(await pk.open(key, await pk.seal(key, meta, { username: 'é', password: 'ü ✓ 😀' })), { username: 'é', password: 'ü ✓ 😀' });
 });
