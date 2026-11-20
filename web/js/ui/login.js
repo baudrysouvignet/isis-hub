@@ -102,9 +102,8 @@ export function createLogin({ onSubmit, onSkip, onTransparency }) {
     [id, pw].forEach((f) => f.removeAttribute('aria-invalid'));
     busy(true);
     const password = pw.value;
-    const remember = $('[data-remember]', form).checked;
     try {
-      await onSubmit(id.value.trim(), password, remember);
+      await onSubmit(id.value.trim(), password);
       pw.value = '';
       renderTyped();
     } catch (error) {

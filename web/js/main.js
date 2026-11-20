@@ -121,8 +121,9 @@ function show(screen) {
 const matcher = createMatcher({ search: (q) => moodle.searchCourses(q), enabled: () => state.signedIn });
 
 const login = createLogin({
-  async onSubmit(username, password, remember) {
-    vault.choose(remember);
+  async onSubmit(username, password) {
+    // Session gardée sur l'appareil (chiffrée) jusqu'à sa fin côté université ou « Se déconnecter ».
+    vault.keepOnDevice();
     await casLogin(jar, username, password);
     await vault.save(jar.toJSON());
     state.signedIn = true;

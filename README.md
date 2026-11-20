@@ -40,8 +40,9 @@ Les autres verrous :
   un portail (clé d'API de la messagerie) ne suivent pas une redirection.
 - **Session chiffrée sur l'appareil** : les cookies des portails sont gardés chiffrés (AES-GCM 256),
   avec une clé que le navigateur crée **non exportable** : aucun script ne peut en lire la valeur.
-  Dans l'onglet par défaut, sur l'appareil si « Rester connecté » est coché. Le mot de passe n'est
-  jamais stocké : le champ est vidé dès l'envoi.
+  Gardée sur l'appareil jusqu'à la fin de la session universitaire (fixée par le CAS) ou
+  « Se déconnecter », qui efface tout. Le mot de passe n'est jamais stocké : le champ est vidé dès
+  l'envoi.
 - **Mails inertes** : le HTML d'un mail est reconstruit balise par balise à partir d'une liste
   fermée. Scripts, styles, formulaires, cadres et images distantes (qui préviendraient l'expéditeur)
   ne sont jamais recopiés.

@@ -8,8 +8,10 @@
 // illisibles. Limite : la clé reste dans le profil du navigateur ; un logiciel ou une extension qui
 // accède à tout le profil (IndexedDB compris) ou à la page elle-même peut aussi déchiffrer.
 //
-// Par défaut tout est dans sessionStorage (effacé à la fermeture de l'onglet) ; avec « Rester
-// connecté », dans localStorage. Le mot de passe, lui, n'est jamais stocké nulle part.
+// Une connexion range la session dans localStorage : l'étudiant reste connecté sur l'appareil
+// jusqu'à la fin de sa session universitaire (fixée par le CAS) ou « Se déconnecter », qui efface
+// tout. Une session ouverte avant (case « Rester connecté » décochée) reste dans sessionStorage
+// jusqu'à la fermeture de l'onglet. Le mot de passe, lui, n'est jamais stocké nulle part.
 
 export const SESSION_KEY = 'hub.session';
 export const CACHE_KEY = 'hub.cache';
@@ -135,8 +137,8 @@ export async function openVault() {
     // Données personnelles (notes, examens marqués, règles de mails) : sur l'appareil, chiffrées.
     loadUserData: async () => (await read(USERDATA_KEY, device)) ?? null,
     saveUserData: (data) => write(USERDATA_KEY, data, device),
-    // Secret de la sauvegarde anonyme, dérivé à la connexion : rangé comme la session (onglet ou
-    // appareil selon « Rester connecté »), mais gardé quand la session universitaire expire.
+    // Secret de la sauvegarde anonyme, dérivé à la connexion : rangé comme la session, mais gardé
+    // quand la session universitaire expire.
     loadSync: async () => {
       const v = (await read(SYNC_KEY, device)) ?? (await read(SYNC_KEY, tab));
       return Array.isArray(v) && v.length === 96 ? Uint8Array.from(v) : null;
@@ -154,9 +156,9 @@ export async function openVault() {
       } catch {}
     },
 
-    /** Change d'emplacement (case « Rester connecté »), en effaçant l'ancien. */
-    choose(remember) {
-      const next = remember && device ? device : tab;
+    /** À la connexion : la session va sur l'appareil (l'ancien emplacement est effacé). */
+    keepOnDevice() {
+      const next = device ?? tab;
       if (next !== where) {
         try {
           for (const name of SEALED) where?.removeItem(name);

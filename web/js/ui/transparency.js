@@ -119,7 +119,7 @@ export function setupTransparency({ sessionPlace, syncId = () => null, onErase }
     const place = sessionPlace();
     $('[data-fact-session]', dialog).textContent =
       place === 'device'
-        ? 'La session (chiffrée) reste sur l’appareil, car « Rester connecté » est coché.'
+        ? 'La session (chiffrée) reste sur cet appareil jusqu’à sa fin côté université, ou jusqu’à « Se déconnecter ».'
         : place === 'tab'
           ? 'La session (chiffrée) reste dans cet onglet et disparaît à sa fermeture.'
           : 'La session reste en mémoire seulement (stockage indisponible).';
