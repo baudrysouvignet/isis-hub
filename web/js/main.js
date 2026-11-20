@@ -14,6 +14,8 @@ import * as mail from './portals/mail.js';
 import { createMatcher } from './portals/match.js';
 import { createLogin } from './ui/login.js';
 import { setupInfinite } from './ui/infinite.js';
+import { createLoginAlerts } from './core/loginalerts.js';
+import * as MP from './core/mailprefs.js';
 import { createPromo } from './ui/promo.js';
 import { createSchedule } from './ui/schedule.js';
 import { createMails } from './ui/mails.js';
@@ -161,6 +163,15 @@ async function unlockLogin(username, password) {
 
 const infinite = await setupInfinite({ vault, onUnlock: unlockLogin });
 
+// Moodle envoie une alerte « Nouvelle connexion » quand ISIS Hub s'y connecte : seule celle de CET
+// appareil, dans la minute et demie, est mise à la corbeille (core/loginalerts.js). Réglable.
+const loginAlerts = createLoginAlerts();
+moodle.onLogin((at) => {
+  if (!MP.loginAlertsOn()) return;
+  loginAlerts.noteLogin(at);
+  mails?.watchLoginAlerts();
+});
+
 const login = createLogin({
   async onSubmit(username, password) {
     // Session gardée sur l'appareil (chiffrée) jusqu'à sa fin côté université ou « Se déconnecter ».
@@ -258,6 +269,7 @@ function setupDashboard() {
   composer = createComposer({ app, onSessionLost: sessionLost });
   mails = createMails({
     app,
+    loginAlerts,
     onSessionLost: sessionLost,
     onLogin: openLogin,
     onReply: (kind, m, text) => composer.respond(kind, m, text),

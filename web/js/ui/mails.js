@@ -25,7 +25,7 @@ const avatarClass = (text) => `av-${([...text].reduce((a, c) => (a * 31 + c.char
 const who = (p) => (p.name && p.address && p.name !== p.address ? `${p.name} <${p.address}>` : p.name || p.address);
 const tagChip = (t) => h('span.mtag', { class: `mtag--${t.color}`, text: t.name });
 
-export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) {
+export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, loginAlerts = null }) {
   const tile = $('.tile--mail');
   const slot = $('[data-slot="mail"]', tile);
   const live = $('[data-mail-live]', tile);
@@ -236,9 +236,74 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
     observer?.disconnect();
   }
 
+  // ------------------------------------------- alerte « Nouvelle connexion » de Moodle (ISIS Hub)
+
+  /**
+   * Alerte que Moodle envoie quand ISIS Hub se connecte, sur cet appareil : lue puis mise à la
+   * corbeille (récupérable). Critères stricts dans core/loginalerts.js ; toute autre alerte reste.
+   */
+  async function trashLoginAlerts(list) {
+    if (!loginAlerts?.pending() || !MP.loginAlertsOn()) return [];
+    const found = await loginAlerts.find(list, (m) => mail.fetchBody(m));
+    if (!found.length) return [];
+    await mail.setSeen(found, true).catch(() => {});
+    await mail.moveTo(found, 'trash');
+    loginAlerts.consume(found);
+    toast(
+      found.length > 1
+        ? `${found.length} alertes Moodle de tes connexions à ISIS Hub mises à la corbeille.`
+        : 'Alerte Moodle « Nouvelle connexion » de ta connexion à ISIS Hub mise à la corbeille.',
+      'trash',
+    );
+    return found;
+  }
+
+  async function withoutLoginAlerts(batch) {
+    try {
+      const found = await trashLoginAlerts(batch);
+      if (!found.length) return batch;
+      const gone = new Set(found.map((m) => m.id));
+      ids = ids.filter((id) => !gone.has(id));
+      setUnread(unread - found.filter((m) => m.unread).length);
+      return batch.filter((m) => !gone.has(m.id));
+    } catch {
+      return batch; // en cas de doute, le mail reste
+    }
+  }
+
+  // L'alerte arrive quelques secondes après la connexion : la boîte est relue à ≈ 12, 27, 47 et 77 s.
+  let alertTimer = 0;
+  function watchLoginAlerts() {
+    clearTimeout(alertTimer);
+    const delays = [12_000, 15_000, 20_000, 30_000];
+    let i = 0;
+    const tick = async () => {
+      if (!loginAlerts?.pending() || !MP.loginAlertsOn()) return;
+      try {
+        const res = await mail.listInbox('inbox');
+        const found = await trashLoginAlerts(await mail.getMails(res.ids.slice(0, 8), 'inbox'));
+        if (found.length && box === 'inbox') {
+          const gone = new Set(found.map((m) => m.id));
+          ids = ids.filter((id) => !gone.has(id));
+          setUnread(res.unread - found.filter((m) => m.unread).length);
+          if (mails.some((m) => gone.has(m.id))) {
+            mails = mails.filter((m) => !gone.has(m.id));
+            redraw();
+          }
+        }
+      } catch {
+        // boîte injoignable : nouvel essai au prochain passage, l'alerte reste sinon
+      }
+      if (i < delays.length && loginAlerts.pending()) alertTimer = setTimeout(tick, delays[i++]);
+    };
+    alertTimer = setTimeout(tick, delays[i++]);
+  }
+
   /** Règles automatiques sur un lot (boîte de réception seulement). Rend le lot sans les mails mis à la corbeille. */
-  async function withRules(batch) {
-    if (box !== 'inbox' || !MP.rules().length) return batch;
+  async function withRules(input) {
+    if (box !== 'inbox') return input;
+    const batch = await withoutLoginAlerts(input);
+    if (!MP.rules().length) return batch;
     const toTrash = MP.applyRules(batch);
     if (!toTrash.length) return batch;
     try {
@@ -1048,6 +1113,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand }) 
 
   return {
     load,
+    watchLoginAlerts,
     showSignedOut,
     close,
     isOpen: () => !reader.hidden || expanded(),

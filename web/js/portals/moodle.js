@@ -22,11 +22,25 @@ function readSession(html) {
   return sesskey && userId > 1 ? { sesskey, userId } : null; // 0 = anonyme, 1 = invité
 }
 
+// Connexions Moodle ouvertes par ISIS Hub : Moodle envoie alors une alerte « Nouvelle connexion »
+// par mail (voir core/loginalerts.js). L'instant est pris AVANT la demande.
+const loginListeners = new Set();
+export const onLogin = (fn) => loginListeners.add(fn);
+const loggedIn = (at) => loginListeners.forEach((fn) => {
+  try {
+    fn(at);
+  } catch {}
+});
+
 export async function connect() {
-  session = readSession(await page('/my/'));
+  const at = Date.now();
+  const first = await http(`${HOSTS.moodle}/my/`);
+  session = readSession(await first.text());
+  if (session && first.redirected) loggedIn(at); // Moodle est passé par le CAS : c'est une connexion
   if (!session) {
     const afterSso = await page('/login/index.php?authCAS=CAS').catch(() => '');
     session = readSession(afterSso) || readSession(await page('/my/'));
+    if (session) loggedIn(at);
   }
   if (!session) throw new NotSignedIn('Moodle');
   return session;

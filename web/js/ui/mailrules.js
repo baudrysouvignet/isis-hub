@@ -53,6 +53,13 @@ export function setupMailRules({ onRuleAdded }) {
   }
   MP.onMailPrefs(() => dialog.open && render());
 
+  // Alerte « Nouvelle connexion » de Moodle due à ISIS Hub (core/loginalerts.js).
+  const alerts = $('[data-login-alerts]', dialog);
+  const syncAlerts = () => (alerts.checked = MP.loginAlertsOn());
+  alerts.addEventListener('change', () => MP.setLoginAlerts(alerts.checked));
+  MP.onMailPrefs(syncAlerts);
+  syncAlerts();
+
   $('[data-tag-form]', dialog).addEventListener('submit', (e) => {
     e.preventDefault();
     const input = $('[data-tag-name]', dialog);

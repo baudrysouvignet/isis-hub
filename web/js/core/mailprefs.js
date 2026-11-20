@@ -9,7 +9,7 @@ const MAX_RULES = 30;
 const MAX_MARKS = 2000;
 export const TAG_COLORS = ['blue', 'green', 'orange', 'violet', 'pink', 'teal'];
 
-let state = { tags: [], marks: {}, rules: [] };
+let state = { tags: [], marks: {}, rules: [], loginAlerts: true };
 const listeners = new Set();
 
 const str = (v, max) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '');
@@ -36,7 +36,8 @@ function sanitize(raw) {
     }))
     .filter((r) => r.id && r.text)
     .slice(0, MAX_RULES);
-  return { tags, marks, rules };
+  // Alertes « Nouvelle connexion » de Moodle dues à ISIS Hub : mises à la corbeille sauf refus.
+  return { tags, marks, rules, loginAlerts: raw?.loginAlerts !== false };
 }
 
 function changed() {
@@ -52,7 +53,7 @@ export function initMailPrefs() {
 UD.onUserData((touched) => touched.includes('mail') && initMailPrefs());
 export const onMailPrefs = (fn) => listeners.add(fn);
 export const resetMailPrefs = () => {
-  state = { tags: [], marks: {}, rules: [] };
+  state = { tags: [], marks: {}, rules: [], loginAlerts: true };
   for (const fn of listeners) fn();
 };
 
@@ -63,6 +64,11 @@ export const tags = () => state.tags;
 export const tagById = (id) => state.tags.find((t) => t.id === id);
 export const tagsOf = (m) => (state.marks[mailKey(m)] ?? []).map(tagById).filter(Boolean);
 export const rules = () => state.rules;
+export const loginAlertsOn = () => state.loginAlerts !== false;
+export function setLoginAlerts(on) {
+  state.loginAlerts = Boolean(on);
+  changed();
+}
 
 export function addTag(name) {
   const n = str(name, 24);
