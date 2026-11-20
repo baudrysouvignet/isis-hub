@@ -18,6 +18,7 @@ let local = { sections: {} };
 let vault = null;
 let cred = null;
 let visitKey = null; // jetons de fréquentation (net/sync.js)
+let examKey = null; // votes anonymes « examen » (net/sync.js)
 let remoteV = 0;
 let pushTimer = null;
 let pushing = null;
@@ -124,6 +125,7 @@ async function pushNow() {
 export async function connect(secret, previous = null) {
   cred = await sync.credentials(secret);
   visitKey = await sync.visitKey(secret).catch(() => null);
+  examKey = await sync.examKey(secret).catch(() => null);
   setStatus('syncing');
   try {
     let remote = await sync.pull(cred);
@@ -172,6 +174,7 @@ export function disconnect({ wipeLocal = true } = {}) {
   clearTimeout(pushTimer);
   cred = null;
   visitKey = null;
+  examKey = null;
   remoteV = 0;
   pulled = false;
   setStatus('off');
@@ -196,3 +199,6 @@ export const syncId = () => cred?.id ?? null;
 
 /** Jeton de fréquentation du jour (compte connecté seulement), sinon null. */
 export const visitToken = async (day) => (cred && visitKey ? sync.visitToken(visitKey, day).catch(() => null) : null);
+
+/** Jeton de vote « examen » pour une séance (compte connecté seulement), sinon null. */
+export const examToken = async (uid) => (cred && examKey ? sync.examToken(examKey, uid).catch(() => null) : null);

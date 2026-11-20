@@ -152,6 +152,11 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("statistiques : %w", err)
 	}
+	exams, err := feedback.OpenExams(env("DATA_DIR", "data"))
+	if err != nil {
+		return fmt.Errorf("examens signalés : %w", err)
+	}
+	exams.Active = func(class string) int { return stats.Active(class, feedback.ExamActiveDays) }
 	// Calendriers filtrés par groupe, langue et parcours (abonnement des agendas).
 	calendars := calendar.New(content.Classes())
 	calendars.TrustProxy = os.Getenv("TRUST_PROXY") == "1"
@@ -168,6 +173,7 @@ func serve() error {
 		Content:        content,
 		Stats:          stats,
 		Vault:          vaultStore,
+		Exams:          exams,
 		AdminUsers:     admins,
 		CASValidate:    feedback.CASValidator(env("CAS_URL", "https://auth.univ-jfc.fr"), feedback.ENTService),
 		AllowedOrigins: origins,
@@ -230,6 +236,7 @@ func serve() error {
 		defer cancel()
 		srv.Shutdown(ctx)
 		stats.Flush() // compteurs du jour écrits avant l'arrêt
+		exams.Flush()
 	}()
 	// Seule ligne écrite par le serveur : de quoi comparer avec le dépôt, rien sur les visiteurs.
 	admin := "administration désactivée"

@@ -580,6 +580,11 @@ a:hover > .btn-arrow, .btn:hover > .btn-arrow { transform: translate(2px, -2px);
   background: var(--exam); color: var(--exam-ink);
   font: 750 11px/1 var(--font); letter-spacing: .03em;
 }
+/* Signal de la classe : pointillés, jamais confondu avec un examen d'ADE ou un repère personnel. */
+.exam--signal {
+  background: var(--exam-soft); color: var(--exam);
+  border: 1px dashed color-mix(in srgb, var(--exam) 65%, transparent); padding: 0 6px;
+}
 .live {
   display: inline-flex; align-items: center; gap: 6px; height: 19px; padding: 0 7px; border-radius: 5px;
   background: var(--brand); color: var(--brand-ink); font: 700 11px/1 var(--font);
@@ -1755,6 +1760,9 @@ button.link { width: 100%; border: 0; background: transparent; text-align: left;
 .cs-exam { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--exam-soft); color: var(--exam); }
 .cs-exam b { display: block; font: 650 14px/1.3 var(--font); }
 .cs-exam span { font: 500 12.5px/1.4 var(--font); color: var(--text-2); }
+.cs-signal { margin-top: 10px; align-items: center; border: 1px dashed color-mix(in srgb, var(--exam) 45%, transparent); }
+.cs-signal > div { flex: 1; min-width: 0; }
+.cs-signal .btn { flex: none; }
 .cs-none { font: 450 13.5px/1.5 var(--font); color: var(--text-3); }
 .cs-notes { display: grid; gap: 6px; }
 .cs-notes li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); }

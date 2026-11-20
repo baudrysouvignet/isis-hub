@@ -297,3 +297,18 @@ test('fréquentation : jeton du jour stable pour un compte, différent d’un jo
   const cred = await sync.credentials(a);
   assert.ok(!t1.includes(cred.id.slice(0, 22)) && t1 !== cred.auth.slice(0, 22));
 });
+
+test('examens signalés : un jeton par séance, stable sur tous les appareils, sans lien avec le reste', async () => {
+  const a = await sync.deriveSecret('etudiant', 'mot-de-passe', 1000);
+  const b = await sync.deriveSecret('autre', 'mot-de-passe', 1000);
+  const uid = 'ADE6050524f445f494e555f54435f323032362d323032372d353536382d302d33';
+  const t1 = await sync.examToken(await sync.examKey(a), uid);
+  assert.match(t1, /^[A-Za-z0-9_-]{22}$/); // format attendu par le serveur (tokenRE)
+  assert.equal(await sync.examToken(await sync.examKey(a), uid), t1); // autre appareil : même vote
+  assert.notEqual(await sync.examToken(await sync.examKey(a), `${uid}x`), t1); // autre séance
+  assert.notEqual(await sync.examToken(await sync.examKey(b), uid), t1); // autre étudiant
+  // Ni le jeton du jour, ni l'identifiant de la sauvegarde ne permettent de le retrouver.
+  assert.notEqual(await sync.visitToken(await sync.visitKey(a), uid), t1);
+  const cred = await sync.credentials(a);
+  assert.ok(!cred.id.includes(t1) && cred.auth.slice(0, 22) !== t1);
+});

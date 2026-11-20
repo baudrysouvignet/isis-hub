@@ -37,6 +37,7 @@ type Config struct {
 	Content    *ContentStore
 	Stats      *Stats      // compteurs anonymes de fréquentation (facultatif)
 	Vault      *VaultStore // coffre synchronisé, anonyme et chiffré (facultatif)
+	Exams      *ExamStore  // examens signalés par les classes, votes anonymes (facultatif)
 	AdminUsers []string    // identifiants universitaires autorisés (ADMIN_USERS) ; vide = pas d'administration
 	// CASValidate fait valider un ticket de service par le CAS et rend l'identifiant (voir cas.go).
 	CASValidate    func(ctx context.Context, ticket string) (string, error)
@@ -56,6 +57,10 @@ type Service struct {
 	vaultReads   *limiter
 	vaultWrites  *limiter
 	vaultCreates *limiter // nouvelles sauvegardes, par adresse et par jour
+	examReads    *limiter // signaux d'examen lus, par visiteur
+	examVotes    *limiter // votes envoyés, par visiteur
+	examNew      *limiter // nouveaux votants comptés, par visiteur et par jour
+	examPerEvent *limiter // nouveaux votants comptés, par visiteur et par séance
 	mu           sync.Mutex
 	sessions     map[string]adminSession // empreinte du jeton → session
 }
@@ -74,6 +79,10 @@ func New(cfg Config) *Service {
 		submit: newLimiter(5, 10*time.Minute), reads: newLimiter(60, time.Minute),
 		loginIP: newLimiter(5, 15*time.Minute), loginAll: newLimiter(200, 15*time.Minute),
 		pings: newLimiter(600, time.Hour), vaultReads: newLimiter(120, 10*time.Minute), vaultWrites: newLimiter(240, 10*time.Minute), vaultCreates: newLimiter(200, 24*time.Hour),
+		// Examens : larges, tout un campus peut partager la même adresse. Elles freinent un abus en
+		// masse, pas une personne décidée : d'où un signal présenté comme non vérifié.
+		examReads: newLimiter(300, 10*time.Minute), examVotes: newLimiter(120, 10*time.Minute),
+		examNew: newLimiter(150, 24*time.Hour), examPerEvent: newLimiter(6, 24*time.Hour),
 	}
 	for _, o := range cfg.AllowedOrigins {
 		s.origins[strings.TrimRight(o, "/")] = true
@@ -162,6 +171,10 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleVault(w, r)
 	case p == "/api/ping":
 		s.handlePing(w, r)
+	case p == "/api/exams":
+		s.handleExams(w, r)
+	case p == "/api/exams/vote":
+		s.handleExamVote(w, r)
 	case strings.HasPrefix(p, "/api/admin/"):
 		if !s.AdminEnabled() {
 			fail(w, http.StatusNotFound, "inconnu")

@@ -5,7 +5,7 @@ import { $, $$, h, icon, restartClass, clipFrom, lockScroll, motionOK, isTyping,
 import * as D from '../core/dates.js';
 import { prefs } from '../core/store.js';
 import { fetchSchedule } from '../portals/ade.js';
-import { isEval } from '../core/evals.js';
+import { isEval, signalOf } from '../core/evals.js';
 import { hasMenu } from './crous.js';
 
 // Créneau du Resto U' affiché chaque jour de cours (lundi – vendredi).
@@ -147,6 +147,7 @@ export function createSchedule({ app, matcher, onData, onOpen, onLunch }) {
     if (ev.lunch) return lunchEl(ev.day);
     const kind = (ev.kind ?? 'autre').toLowerCase();
     const exam = ev.exam || isEval(ev); // repère personnel « examen » : même affichage qu'un examen ADE
+    const signal = !exam && signalOf(ev); // signal de la classe : à part, jamais présenté comme sûr
     const el = h(
       'article.ev',
       { class: `ev--${ev.kind ? kind : 'cm'}`, data: { start: ev.startMin, end: ev.endMin } },
@@ -162,6 +163,7 @@ export function createSchedule({ app, matcher, onData, onOpen, onLunch }) {
             {},
             ev.kind && h('span.type', { class: `type--${kind}`, text: ev.kind, title: TYPE_TITLE[ev.kind] }),
             exam && h('span.exam', {}, icon('alert', 'ic ic--xs'), 'Examen'),
+            signal && h('span.exam.exam--signal', { title: `Signalé comme examen par ${signal.votes} camarade${signal.votes > 1 ? 's' : ''} (votes anonymes, non vérifiés)` }, icon('alert', 'ic ic--xs'), 'Examen ?'),
           ),
           h('h4.ev-title', { text: ev.title, title: ev.title }),
           h(

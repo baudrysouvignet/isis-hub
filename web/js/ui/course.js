@@ -4,7 +4,7 @@ import { $, h, icon } from '../core/dom.js';
 import * as D from '../core/dates.js';
 import * as moodle from '../portals/moodle.js';
 import { modal } from './layout.js';
-import { isEval, toggleEval } from '../core/evals.js';
+import { isEval, toggleEval, signalOf, hideSignal } from '../core/evals.js';
 import { getMemo, setMemo, memoDate, MAX_CHARS } from '../core/memos.js';
 import * as UD from '../core/userdata.js';
 
@@ -62,12 +62,33 @@ export function createCourseSheet({ notes, schedule, matcher, isSignedIn, onWrit
   }
 
 
+  const votesText = (n) => `${n} camarade${n > 1 ? 's' : ''}`;
+
   function renderKicker(ev) {
+    const exam = ev.exam || isEval(ev);
+    const signal = signalOf(ev);
     $('[data-cs-kicker]', dialog).replaceChildren(
       ev.kind ? h('span.type', { class: `type--${ev.kind.toLowerCase()}`, text: ev.kind }) : '',
       h('span', { text: TYPE_NAME[ev.kind] ?? 'Séance' }),
-      ev.exam || isEval(ev) ? h('span.exam', {}, icon('alert', 'ic ic--xs'), 'Examen') : '',
+      exam ? h('span.exam', {}, icon('alert', 'ic ic--xs'), 'Examen') : signal ? h('span.exam.exam--signal', {}, icon('alert', 'ic ic--xs'), 'Examen ?') : '',
     );
+    // Signal de la classe : jamais présenté comme sûr (le serveur ne peut pas vérifier les votants).
+    const box = $('[data-cs-signal]', dialog);
+    box.hidden = !signal;
+    if (signal) {
+      box.replaceChildren(
+        icon('alert', 'ic ic--sm'),
+        h(
+          'div',
+          {},
+          h('b', { text: isEval(ev) ? `Marquée aussi par d’autres : ${votesText(signal.votes)} en tout` : `Signalée comme examen par ${votesText(signal.votes)} de ${promo()}` }),
+          h('span', { text: 'Votes anonymes, non vérifiés : seul l’emploi du temps ou l’enseignant fait foi.' }),
+        ),
+        !isEval(ev) && isSignedIn() && UD.isReady()
+          ? h('button.btn.btn--sm.btn--ghost', { type: 'button', text: 'Masquer', on: { click: () => (hideSignal(ev), renderKicker(ev), onEvalChange?.()) } })
+          : '',
+      );
+    }
     const btn = $('[data-cs-eval]', dialog);
     btn.hidden = ev.exam || !isSignedIn(); // déjà un examen d'après ADE, ou pas connecté (repère sauvegardé)
     btn.closest('.cs-eval').hidden = btn.hidden;
@@ -77,7 +98,7 @@ export function createCourseSheet({ notes, schedule, matcher, isSignedIn, onWrit
 
   $('[data-cs-eval]', dialog).addEventListener('click', () => {
     if (!current) return;
-    toggleEval(current);
+    toggleEval(current, promo());
     renderKicker(current);
     onEvalChange?.();
   });
@@ -166,7 +187,7 @@ export function createCourseSheet({ notes, schedule, matcher, isSignedIn, onWrit
         : [h('li.cs-none', { text: `Aucune autre séance prévue dans les ${AHEAD_WEEKS} prochaines semaines.` })]),
     );
 
-    const exams = sessions.filter((x) => (x.exam || isEval(x)) && (x === ev || isFuture(x)));
+    const exams = sessions.filter((x) => (x.exam || isEval(x) || signalOf(x)) && (x === ev || isFuture(x)));
     const examBox = $('[data-cs-exam]', dialog);
     examBox.replaceChildren(
       ...(exams.length
@@ -175,7 +196,12 @@ export function createCourseSheet({ notes, schedule, matcher, isSignedIn, onWrit
               'div.cs-exam',
               {},
               icon('alert', 'ic ic--sm'),
-              h('div', {}, h('b', { text: `${x === ev ? 'Cette séance est un examen' : 'Examen'} · ${D.dayTitle(x.day)} · ${D.hourLabel(x.startMin)}` }), h('span', { text: `${x.room ? `Salle ${x.room} · ` : ''}${x.exam ? 'd’après l’emploi du temps ADE' : 'marqué par toi'}` })),
+              h(
+                'div',
+                {},
+                h('b', { text: `${x === ev ? (x.exam || isEval(x) ? 'Cette séance est un examen' : 'Examen probable') : x.exam || isEval(x) ? 'Examen' : 'Examen ?'} · ${D.dayTitle(x.day)} · ${D.hourLabel(x.startMin)}` }),
+                h('span', { text: `${x.room ? `Salle ${x.room} · ` : ''}${x.exam ? 'd’après l’emploi du temps ADE' : isEval(x) ? 'marqué par toi' : `signalé par ${votesText(signalOf(x).votes)}, non vérifié`}` }),
+              ),
             ),
           )
         : [none('Aucun examen prévu à l’emploi du temps pour l’instant.')]),

@@ -278,6 +278,21 @@ func (s *Stats) Summary() Summary {
 	return out
 }
 
+// Active : membres actifs récemment d'une classe, soit le plus grand nombre de visiteurs distincts
+// de la classe sur un des `days` derniers jours (seuil des examens signalés, voir exams.go).
+func (s *Stats) Active(class string, days int) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	best := 0
+	now := s.now().In(paris)
+	for i := 0; i < days; i++ {
+		if n := s.days[now.AddDate(0, 0, -i).Format("2006-01-02")].Classes[class]; n > best {
+			best = n
+		}
+	}
+	return best
+}
+
 func (s *Service) handlePing(w http.ResponseWriter, r *http.Request) {
 	var in Visit
 	if !s.readJSON(w, r, 256, &in) {

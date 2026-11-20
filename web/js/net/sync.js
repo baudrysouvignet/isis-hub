@@ -61,6 +61,28 @@ export async function visitToken(key, day) {
   return b64url(new Uint8Array(mac).slice(0, 16));
 }
 
+/**
+ * Clé des votes d'examen (HKDF du secret, encore un usage séparé) : le jeton d'une séance =
+ * HMAC(clé, identifiant ADE de la séance), tronqué à 16 octets. Même compte → même jeton pour cette
+ * séance sur tous ses appareils (un seul vote) ; deux séances → deux jetons sans lien entre eux.
+ * Le serveur ne peut ni le recalculer, ni le relier à la sauvegarde ou au jeton du jour.
+ */
+export async function examKey(secret) {
+  const base = await crypto.subtle.importKey('raw', new Uint8Array(secret), 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: enc.encode('isis-hub/exam/v1') },
+    base,
+    { name: 'HMAC', hash: 'SHA-256', length: 256 },
+    false,
+    ['sign'],
+  );
+}
+
+export async function examToken(key, uid) {
+  const mac = await crypto.subtle.sign('HMAC', key, enc.encode(`isis-hub/exam/v1:${uid}`));
+  return b64url(new Uint8Array(mac).slice(0, 16));
+}
+
 /** Chiffre un objet : IV aléatoire + AES-GCM, lié à l'identifiant de l'enregistrement. */
 export async function seal(cred, value) {
   const iv = crypto.getRandomValues(new Uint8Array(12));

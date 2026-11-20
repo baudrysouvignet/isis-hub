@@ -29,7 +29,7 @@ import { countVisit } from './core/stats.js';
 import { watchUpdates } from './core/update.js';
 import { initMailPrefs, resetMailPrefs } from './core/mailprefs.js';
 import * as UD from './core/userdata.js';
-import { isEval } from './core/evals.js';
+import { isEval, loadSignals, onSignals, withdrawVotes } from './core/evals.js';
 import { deriveSecret } from './net/sync.js';
 import { createNotes } from './ui/notes.js';
 import { setupFeedback } from './ui/feedback.js';
@@ -331,6 +331,7 @@ async function enterDashboard(promoChanged = true) {
   requestAnimationFrame(() => bento.syncDock()); // onglet du bas : la tuile en haut de l'écran
   setTimeout(() => bento.syncDock(), 300);
   countVisit({ signedIn: state.signedIn, promo: state.promo });
+  loadSignals(state.promo, { force: promoChanged }); // examens signalés par la classe
   if (promoChanged || !schedule.started) {
     schedule.started = true;
     schedule.start(state.promo, state.choice);
@@ -418,6 +419,7 @@ $$('[data-erase-data]').forEach((b) =>
   b.addEventListener('click', async () => {
     if (!confirm('Effacer tes notes saisies, séances marquées examen, étiquettes et règles de mails, sur cet appareil et dans la sauvegarde ? C’est définitif.')) return;
     try {
+      await withdrawVotes(state.promo); // votes anonymes des séances à venir retirés aussi
       await UD.eraseEverywhere();
       vault.forgetSync();
       notes?.load(state.promo, state.choice);
@@ -448,6 +450,12 @@ document.addEventListener('keydown', (e) => {
   if (mails?.isOpen()) return mails.close();
   if (notes?.isOpen()) return notes.close();
   if (schedule?.isExpanded()) schedule.collapse();
+});
+
+// Examens signalés par la classe : relus au retour sur l'onglet (au plus toutes les 2 minutes).
+onSignals(() => schedule?.rerender());
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && state.screen === 'dash') loadSignals(state.promo);
 });
 
 // Classe changée sur un autre appareil (ou retrouvée dans la sauvegarde) : appliquée ici aussi.
