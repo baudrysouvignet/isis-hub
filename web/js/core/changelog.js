@@ -5,6 +5,27 @@
 
 export const CHANGELOG = [
   {
+    version: '1.1.0',
+    date: '2026-11-20',
+    title: 'Connexion infinie, examens de la classe',
+    short: [
+      'Connexion infinie, en option : sur ton appareil, Face ID ou Touch ID remplace ton mot de passe, même quand ta session expire.',
+      'Examens signalés par ta classe : une séance que beaucoup de camarades ont marquée « examen » apparaît chez tous en « Examen ? ».',
+      'Recherche des mails plus juste, et tu restes connecté sans case à cocher.',
+    ],
+    details: [
+      'Connexion infinie (option, appareil par appareil) : ton mot de passe est chiffré et verrouillé sur l’appareil ; seule ta passkey (Face ID, Touch ID, empreinte, Windows Hello) peut l’ouvrir. Le serveur ne reçoit ni ton mot de passe, ni sa copie, ni la clé.',
+      'Session expirée pendant que tu utilises ISIS Hub : une fenêtre propose de reprendre avec Face ID ou Touch ID, sans quitter la page, ou avec ton mot de passe.',
+      'Après « Se déconnecter », l’écran de connexion montre ton identifiant et le bouton Face ID. La connexion infinie se désactive depuis le menu du compte ; elle s’efface seule après 90 jours sans usage ou si ton mot de passe change.',
+      'Connexion : plus de case « Rester connecté ». La session reste chiffrée sur l’appareil jusqu’à sa fin côté université ; sur un ordinateur partagé, pense à te déconnecter.',
+      'Examens signalés : marquer une séance comme examen compte aussi, anonymement, pour ta classe. Dès 20 % des membres actifs (3 au moins), la séance apparaît chez tous en « Examen ? », en pointillés. Votes anonymes et non vérifiés : seul l’emploi du temps ou l’enseignant fait foi, et tu peux masquer le signal.',
+      'Mails : la recherche trouve chaque mot dans n’importe quel ordre (« Hélène Martin » trouve « MARTIN Hélène » comme helene.martin@…). Le champ dit ce qu’il fouille : expéditeur, objet, début du mail.',
+      'Mails : l’alerte Moodle « Nouvelle connexion » envoyée quand ISIS Hub se connecte va à la corbeille, seulement si elle cite cet appareil et arrive dans la minute et demie. Une connexion faite d’ailleurs garde son alerte. Réglable dans « Règles et étiquettes ».',
+      'Téléphone : la page derrière une fiche ouverte ne défile plus.',
+      'Transparence : votes d’examen et connexion infinie ajoutés à ce que gardent le serveur et l’appareil.',
+    ],
+  },
+  {
     version: '1.0.6',
     date: '2026-11-19',
     title: 'Mails fiables, ptut FIE5',
