@@ -24,41 +24,39 @@ func openExamsAt(t *testing.T, dir string, day time.Time) *ExamStore {
 	return e
 }
 
-func TestExamThreshold(t *testing.T) {
+func TestExamThresholdIsThreeVotesForEveryClass(t *testing.T) {
 	e := openExamsAt(t, t.TempDir(), time.Date(2026, 11, 20, 10, 0, 0, 0, paris))
-	for active, want := range map[int]int{0: 3, 5: 3, 12: 3, 15: 3, 16: 4, 40: 8, 41: 9} {
-		e.Active = func(string) int { return active }
-		if got := e.Threshold("FIE4"); got != want {
-			t.Errorf("%d actifs : seuil %d, attendu %d", active, got, want)
+	for _, class := range []string{"FIE3", "FIE4", "FIA5"} {
+		if got := e.Threshold(class); got != 3 {
+			t.Errorf("%s : seuil %d, attendu 3", class, got)
 		}
 	}
 }
 
 func TestExamVotesAreCountedOncePerTokenAndShownOnlyAboveThreshold(t *testing.T) {
 	e := openExamsAt(t, t.TempDir(), time.Date(2026, 11, 20, 10, 0, 0, 0, paris))
-	e.Active = func(string) int { return 20 } // seuil : 4
 	vote := func(i int, on bool) {
 		t.Helper()
 		if err := e.Vote(ExamVote{Class: "FIE4", UID: "ADE-123-0", Day: "2026-12-01", Token: tok(i), On: on}, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 2; i++ {
 		vote(i, true)
 		vote(i, true) // même étudiant, autre appareil : un seul vote
 	}
-	if s, th := e.Signals("FIE4"); len(s) != 0 || th != 4 {
-		t.Fatalf("3 votes sur un seuil de 4 : rien ne doit être montré (%v, seuil %d)", s, th)
+	if s, th := e.Signals("FIE4"); len(s) != 0 || th != 3 {
+		t.Fatalf("2 votes sur un seuil de 3 : rien ne doit être montré (%v, seuil %d)", s, th)
 	}
-	vote(3, true)
+	vote(2, true)
 	s, _ := e.Signals("FIE4")
-	if s["ADE-123-0"] != (ExamSignal{Day: "2026-12-01", Votes: 4}) {
-		t.Fatalf("signal attendu : %v", s)
+	if s["ADE-123-0"] != (ExamSignal{Day: "2026-12-01", Votes: 3}) {
+		t.Fatalf("signal attendu dès 3 votes : %v", s)
 	}
 	if other, _ := e.Signals("FIE3"); len(other) != 0 {
 		t.Fatal("une autre classe ne voit pas ce signal")
 	}
-	vote(3, false) // repère retiré
+	vote(2, false) // repère retiré
 	if s, _ := e.Signals("FIE4"); len(s) != 0 {
 		t.Fatal("le retrait d'un vote doit repasser sous le seuil")
 	}
@@ -175,28 +173,5 @@ func TestExamEndpoints(t *testing.T) {
 	sig, _ := out["signals"].(map[string]any)["ADE-9"].(map[string]any)
 	if code != http.StatusOK || sig == nil || sig["votes"] != float64(6) {
 		t.Fatalf("signal attendu à 6 votes : %d %v", code, out)
-	}
-}
-
-func TestStatsActiveIsTheBusiestDayOfTheWindow(t *testing.T) {
-	st, err := OpenStats(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	today := time.Date(2026, 11, 20, 10, 0, 0, 0, paris)
-	visit := func(daysAgo, n int, class string) {
-		day := today.AddDate(0, 0, -daysAgo)
-		st.now = func() time.Time { return day }
-		for i := 0; i < n; i++ {
-			st.Record(Visit{Token: tok(daysAgo*1000 + i), Class: class})
-		}
-	}
-	visit(20, 30, "FIE4") // hors de la fenêtre de 14 jours
-	visit(5, 7, "FIE4")
-	visit(0, 4, "FIE4")
-	visit(0, 50, "FIE3") // une autre classe ne compte pas
-	st.now = func() time.Time { return today }
-	if got := st.Active("FIE4", ExamActiveDays); got != 7 {
-		t.Fatalf("membres actifs récemment : %d, attendu 7", got)
 	}
 }

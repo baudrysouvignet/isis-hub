@@ -156,7 +156,6 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("examens signalés : %w", err)
 	}
-	exams.Active = func(class string) int { return stats.Active(class, feedback.ExamActiveDays) }
 	// Calendriers filtrés par groupe, langue et parcours (abonnement des agendas).
 	calendars := calendar.New(content.Classes())
 	calendars.TrustProxy = os.Getenv("TRUST_PROXY") == "1"

@@ -13,11 +13,10 @@ package feedback
 // Le serveur garde, par classe et par séance, le jour et les jetons des votants : ni adresse IP, ni
 // heure, ni lien entre deux séances. Une séance passée depuis plus de deux jours est oubliée.
 //
-// Une séance est signalée à toute la classe quand ses votes atteignent 20 % des membres actifs
-// récemment (le plus grand nombre de visiteurs distincts de la classe sur un des 14 derniers jours,
-// d'après les statistiques anonymes), avec au moins 3 votes. Le serveur ne peut pas prouver qu'un
-// vote vient d'un vrai étudiant de la classe (il faudrait un ticket CAS, qui ouvrirait l'ENT de
-// l'étudiant) : la page présente donc un signal, jamais un examen certain.
+// Une séance est signalée à toute la classe dès 3 votes (3 jetons distincts), quelle que soit la
+// taille de la classe. Le serveur ne peut pas prouver qu'un vote vient d'un vrai étudiant de la
+// classe (il faudrait un ticket CAS, qui ouvrirait l'ENT de l'étudiant) : la page présente donc un
+// signal, jamais un examen certain, et chacun peut le masquer.
 
 import (
 	"encoding/json"
@@ -31,12 +30,8 @@ import (
 	"time"
 )
 
-// ExamActiveDays : fenêtre des « membres actifs récemment ».
-const ExamActiveDays = 14
-
 const (
-	examShare       = 20  // pour cent des membres actifs récemment
-	examMinVotes    = 3   // jamais moins de votes, même dans une petite classe
+	examThreshold   = 3   // votes (camarades distincts) pour signaler une séance à la classe
 	examKeepPast    = 2   // jours gardés après la séance
 	examMaxAhead    = 400 // jours : pas de vote pour une séance plus lointaine
 	examMaxClasses  = 40
@@ -65,9 +60,6 @@ type ExamStore struct {
 	classes map[string]map[string]*examVotes
 	dirty   bool
 	now     func() time.Time
-	// Active rend le nombre de membres actifs récemment d'une classe (statistiques) ; nil ou 0 :
-	// seul le minimum de votes compte.
-	Active func(class string) int
 }
 
 type examFile struct {
@@ -211,18 +203,8 @@ func (e *ExamStore) Vote(v ExamVote, admit func() bool) error {
 	return nil
 }
 
-// Threshold : votes nécessaires pour signaler une séance à toute la classe.
-func (e *ExamStore) Threshold(class string) int {
-	active := 0
-	if e.Active != nil {
-		active = e.Active(class)
-	}
-	t := (active*examShare + 99) / 100
-	if t < examMinVotes {
-		t = examMinVotes
-	}
-	return t
-}
+// Threshold : votes nécessaires pour signaler une séance à toute la classe (le même pour toutes).
+func (e *ExamStore) Threshold(string) int { return examThreshold }
 
 // ExamSignal : une séance signalée, sans rien sur les votants.
 type ExamSignal struct {
@@ -296,7 +278,7 @@ func (s *Service) handleExams(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Exams == nil {
-		reply(w, http.StatusOK, map[string]any{"threshold": examMinVotes, "signals": map[string]ExamSignal{}})
+		reply(w, http.StatusOK, map[string]any{"threshold": examThreshold, "signals": map[string]ExamSignal{}})
 		return
 	}
 	signals, threshold := s.cfg.Exams.Signals(class)

@@ -4,7 +4,7 @@
 //
 // Examens signalés par la classe (voir internal/feedback/exams.go) : marquer une séance envoie en
 // plus un vote anonyme (classe, séance, jour, jeton propre à cette séance). Quand assez de camarades
-// ont voté (20 % des membres actifs récemment, 3 au moins), la séance apparaît chez toute la classe
+// ont voté (3 camarades distincts), la séance apparaît chez toute la classe
 // comme « Examen ? ». Le serveur ne peut pas vérifier les votants : ce n'est qu'un signal, que
 // chacun peut masquer. Les repères posés avant cette fonction ne sont pas envoyés.
 
