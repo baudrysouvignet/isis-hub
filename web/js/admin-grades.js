@@ -135,7 +135,7 @@ export function setupGradesAdmin({ api, getClasses }) {
         'button.icon-btn.icon-btn--sm.gr-x',
         {
           type: 'button',
-          title: 'Retirer cette évaluation',
+          title: 'Retirer cette évaluation (les notes déjà saisies restent, en notes personnelles)',
           attrs: { 'aria-label': `Retirer l’évaluation ${e.label || ''}` },
           on: {
             click: () => {
@@ -179,6 +179,7 @@ export function setupGradesAdmin({ api, getClasses }) {
           field('Code ADE', bound(M, 'code', refresh, { placeholder: 'A4-1-ISI-2', max: 48, upper: true }), 'Relie la matière aux séances de l’emploi du temps.'),
         ),
         h('div.gr-evs-head', {}, h('span', { text: 'Évaluations prévues' }), h('span', { text: 'Coef' }), h('span', { text: 'Date' }), h('span')),
+        h('p.gf-h.gr-evs-hint', { text: 'Retirer une évaluation ne supprime aucune note : celles déjà saisies par les étudiants restent, comme notes personnelles de cette matière.' }),
         evals,
         h(
           'div.gr-m-foot',

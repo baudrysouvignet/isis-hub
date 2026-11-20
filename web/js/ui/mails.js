@@ -36,6 +36,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, lo
 
   let box = 'inbox'; // 'inbox' | 'sent' | 'trash'
   let tagFilter = null; // identifiant d'étiquette, ou null
+  let person = null; // recherche par personne : { name, email }, ou null
   let ids = [];
   let mails = [];
   let unread = 0;
@@ -88,6 +89,9 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, lo
     noResult.hidden = true;
     if (!listShown) {
       searchInput.value = '';
+      person = null;
+      renderPerson();
+      closeAc();
       expandedMore = false;
       if (!expanded()) tile.classList.remove('is-searching', 'is-more');
     }
@@ -466,28 +470,171 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, lo
   };
   // Chaque mot cherché doit apparaître quelque part, dans n'importe quel ordre.
   const matches = (m, terms) => terms.every((t) => hayOf(m).includes(t));
+
+  // Recherche par personne. En tapant un nom, une liste propose d'abord « Rechercher « … » »
+  // (la recherche dans le texte, déjà appliquée), puis les personnes trouvées : celles des mails
+  // déjà chargés, puis l'annuaire de la messagerie. En choisir une pose un filtre (une pastille
+  // dans le champ) : les mails qu'elle a envoyés, ou où elle est destinataire ou en copie. On
+  // peut ensuite taper d'autres mots (« contrôle ») pour affiner.
+  const peopleOf = (m) => [m.from, ...(m.to ?? []), ...(m.cc ?? [])].filter((p) => p?.address);
+  const involves = (m, email) => peopleOf(m).some((p) => p.address.toLowerCase() === email);
+  const ac = h('ul.ac.msearch-ac', { id: 'msearch-ac', attrs: { role: 'listbox', 'aria-label': 'Suggestions de recherche' } });
+  ac.hidden = true;
+  searchBox.append(ac);
+  let acItems = [];
+  let acIndex = -1;
+  let acToken = 0;
+  let acTimer = 0;
+  let personChip = null;
+  const PLACEHOLDER = searchInput.placeholder;
+
+  /** Personnes des mails déjà chargés dont le nom ou l'adresse contient tous les mots tapés. */
+  function peopleIn(q) {
+    const terms = norm(q).split(/\s+/).filter(Boolean);
+    const found = new Map();
+    for (const m of mails) {
+      for (const p of peopleOf(m)) {
+        const email = p.address.toLowerCase();
+        if (person?.email === email) continue;
+        const hay = norm(`${p.name ?? ''} ${email} ${email.replace(/[._+@-]+/g, ' ')}`);
+        if (!terms.every((t) => hay.includes(t))) continue;
+        const e = found.get(email) ?? { name: '', email, n: 0 };
+        e.n++;
+        if (!e.name && p.name && p.name !== p.address) e.name = p.name;
+        found.set(email, e);
+      }
+    }
+    return [...found.values()].map((e) => ({ ...e, name: e.name || e.email })).sort((a, b) => b.n - a.n);
+  }
+
+  function closeAc() {
+    clearTimeout(acTimer);
+    acToken++;
+    ac.hidden = true;
+    acItems = [];
+    acIndex = -1;
+    searchInput.setAttribute('aria-expanded', 'false');
+    searchInput.removeAttribute('aria-activedescendant');
+  }
+
+  function paintAc() {
+    $$('.ac-item', ac).forEach((x, k) => x.setAttribute('aria-selected', String(k === acIndex)));
+    if (acIndex >= 0) searchInput.setAttribute('aria-activedescendant', `msearch-${acIndex}`);
+    $(`#msearch-${acIndex}`, ac)?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function renderAc(q, people) {
+    acItems = [{ kind: 'text', q }, ...people.map((p) => ({ kind: 'person', ...p }))];
+    acIndex = Math.min(Math.max(acIndex, 0), acItems.length - 1);
+    ac.replaceChildren(
+      ...acItems.map((it, k) =>
+        h(
+          'li.ac-item',
+          {
+            id: `msearch-${k}`,
+            attrs: { role: 'option', 'aria-selected': String(k === acIndex) },
+            on: {
+              mousedown: (e) => {
+                e.preventDefault(); // le champ garde le focus
+                pick(k);
+              },
+            },
+          },
+          it.kind === 'text'
+            ? h('span.ac-ic', { attrs: { 'aria-hidden': 'true' } }, icon('search', 'ic ic--sm'))
+            : h('span.avatar', { class: avatarClass(it.email), text: initials(it.name), attrs: { 'aria-hidden': 'true' } }),
+          it.kind === 'text'
+            ? h('span.link-txt', {}, h('b', { text: `Rechercher « ${q} »` }), h('span', { text: person ? `Parmi les mails avec ${person.name}` : 'Expéditeur, destinataires, objet, début du mail' }))
+            : h('span.link-txt', {}, h('b', { text: it.name }), h('span', { text: `Envoyés, reçus ou en copie · ${it.email}` })),
+        ),
+      ),
+    );
+    ac.hidden = false;
+    searchInput.setAttribute('aria-expanded', 'true');
+    paintAc();
+  }
+
+  function suggest() {
+    const q = searchInput.value.trim();
+    clearTimeout(acTimer);
+    if (q.length < 2 || document.activeElement !== searchInput) return closeAc();
+    const local = peopleIn(q).slice(0, 6);
+    renderAc(q, local);
+    const token = ++acToken;
+    acTimer = setTimeout(async () => {
+      try {
+        const dir = (await mail.searchContacts(q, 8)).filter((p) => p.email !== person?.email && !local.some((l) => l.email === p.email));
+        if (token !== acToken || searchInput.value.trim() !== q) return;
+        if (dir.length) renderAc(q, [...local, ...dir.map((p) => ({ name: p.name, email: p.email }))].slice(0, 9));
+      } catch {
+        // annuaire indisponible : les personnes des mails chargés suffisent
+      }
+    }, 250);
+  }
+
+  function pick(k) {
+    const it = acItems[k];
+    closeAc();
+    if (!it || it.kind === 'text') return; // la recherche dans le texte est déjà appliquée
+    person = { name: it.name, email: it.email };
+    searchInput.value = '';
+    renderPerson();
+    filter();
+    searchInput.focus();
+  }
+
+  function renderPerson() {
+    personChip?.remove();
+    personChip = null;
+    searchInput.placeholder = person ? 'et qui contient…' : PLACEHOLDER;
+    if (!person) return;
+    personChip = h(
+      'span.msearch-chip',
+      { title: `Mails envoyés, reçus ou en copie : ${person.email}` },
+      h('span', { text: person.name }),
+      h('button', {
+        type: 'button',
+        text: '×',
+        attrs: { 'aria-label': `Retirer le filtre ${person.name}` },
+        on: {
+          click: (e) => {
+            e.preventDefault();
+            clearPerson();
+            searchInput.focus();
+          },
+        },
+      }),
+    );
+    searchInput.before(personChip);
+  }
+
+  function clearPerson() {
+    person = null;
+    renderPerson();
+    filter();
+  }
   // Recherche : les mails plus anciens se chargent tout seuls jusqu'à MIN_RESULTS résultats
   // (au plus SEARCH_BUDGET mails par recherche), puis au défilement, comme la liste normale.
   const MIN_RESULTS = 20;
   const SEARCH_BUDGET = 400;
   let searchBudget = 0;
   let lastQuery = '';
-  const narrowedNow = () => Boolean(searchInput.value.trim()) || Boolean(tagFilter);
+  const narrowedNow = () => Boolean(searchInput.value.trim()) || Boolean(tagFilter) || Boolean(person);
   function filter() {
     if (!list) return;
     const q = norm(searchInput.value.trim());
     const terms = q.split(/\s+/).filter(Boolean);
-    const narrowed = Boolean(q) || Boolean(tagFilter);
+    const narrowed = Boolean(q) || Boolean(tagFilter) || Boolean(person);
     tile.classList.toggle('is-searching', narrowed);
     let n = 0;
     for (const row of $$('[data-mail]', tile)) {
       const m = mails[Number(row.dataset.mail)];
-      const ok = (!q || matches(m, terms)) && (!tagFilter || MP.tagsOf(m).some((t) => t.id === tagFilter));
+      const ok = (!person || involves(m, person.email)) && (!q || matches(m, terms)) && (!tagFilter || MP.tagsOf(m).some((t) => t.id === tagFilter));
       row.parentElement.hidden = !ok;
       if (ok) n++;
     }
     $$('.mail-sep', tile).forEach((x) => (x.hidden = narrowed));
-    const key = `${q}|${tagFilter ?? ''}`;
+    const key = `${q}|${tagFilter ?? ''}|${person?.email ?? ''}`;
     if (key !== lastQuery) {
       lastQuery = key;
       searchBudget = narrowed ? SEARCH_BUDGET : 0;
@@ -503,7 +650,9 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, lo
     const exhausted = narrowed && left > 0 && searchBudget <= 0;
     noResult.hidden = !narrowed || (n > 0 && !exhausted);
     if (!noResult.hidden) {
-      const what = q ? `« ${searchInput.value.trim()} »` : `l’étiquette « ${MP.tagById(tagFilter)?.name ?? ''} »`;
+      const what = person
+        ? `« ${person.name} »${q ? ` et « ${searchInput.value.trim()} »` : ''}`
+        : q ? `« ${searchInput.value.trim()} »` : `l’étiquette « ${MP.tagById(tagFilter)?.name ?? ''} »`;
       noResult.replaceChildren(
         searching
           ? h('span', {}, h('span.spinner'), ` Recherche de ${what} dans les mails plus anciens (${mails.length} sur ${ids.length})…`)
@@ -519,12 +668,32 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, lo
     searchBudget = SEARCH_BUDGET;
     filter();
   }
-  searchInput.addEventListener('input', filter);
+  searchInput.addEventListener('input', () => {
+    filter();
+    suggest();
+  });
+  searchInput.addEventListener('blur', () => setTimeout(() => document.activeElement !== searchInput && closeAc(), 150));
   searchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && searchInput.value) {
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !ac.hidden && acItems.length) {
+      e.preventDefault();
       e.stopPropagation();
-      searchInput.value = '';
-      filter();
+      acIndex = (acIndex + (e.key === 'ArrowDown' ? 1 : -1) + acItems.length) % acItems.length;
+      paintAc();
+    } else if (e.key === 'Enter' && !ac.hidden && acIndex >= 0) {
+      e.preventDefault();
+      pick(acIndex);
+    } else if (e.key === 'Backspace' && person && !searchInput.value) {
+      clearPerson();
+    } else if (e.key === 'Escape') {
+      if (!ac.hidden) {
+        e.preventDefault(); // un champ de recherche s'efface aussi sur Échap : ici, on ferme seulement
+        closeAc();
+      } else if (searchInput.value) {
+        searchInput.value = '';
+        filter();
+      } else if (person) clearPerson();
+      else return;
+      e.stopPropagation();
     }
   });
   let expandedMore = false; // « Afficher plus » cliqué (téléphone)

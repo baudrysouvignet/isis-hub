@@ -312,3 +312,53 @@ test('examens signalés : un jeton par séance, stable sur tous les appareils, s
   const cred = await sync.credentials(a);
   assert.ok(!cred.id.includes(t1) && cred.auth.slice(0, 22) !== t1);
 });
+
+test('notes : une évaluation renommée par l’étudiant, rien que pour lui', () => {
+  const N = createGrades(DEF, { saved: { values: VALUES }, today: '2026-11-16' });
+  N.renameEval(N.EV.e1, 'Oral de présentation');
+  assert.equal(N.EV.e1.label, 'Oral de présentation');
+  const dump = N.dump();
+  assert.deepEqual(dump.labels, { e1: 'Oral de présentation' });
+  const again = createGrades(DEF, { saved: dump, today: '2026-11-16' });
+  assert.equal(again.EV.e1.label, 'Oral de présentation');
+  assert.equal(DEF.semesters[0].ues[3].matieres[1].evals[0].label, 'Oral', 'la maquette ne change pas');
+  again.renameEval(again.EV.e1, '  ');
+  assert.equal(again.EV.e1.label, 'Oral', 'nom vide : retour au nom de la maquette');
+  assert.deepEqual(again.dump().labels, {});
+});
+
+test('notes : évaluation retirée de la maquette, la note saisie reste en note personnelle', () => {
+  const before = createGrades(DEF, { saved: { values: VALUES }, today: '2026-11-16' });
+  assert.equal(before.migrated, true, 'enregistrement sans « meta » : à réécrire une fois');
+  const saved = before.dump();
+  assert.deepEqual(saved.meta.c1, { mat: 'cyber', label: 'TP', coef: 1, date: '' });
+  assert.equal(createGrades(DEF, { saved, today: '2026-11-16' }).migrated, false);
+  // L'administration retire « TP » (c1) de Cyber.
+  const def = structuredClone(DEF);
+  const cyber = def.semesters[0].ues[1].matieres[0];
+  cyber.evals = cyber.evals.filter((e) => e.id !== 'c1');
+  const after = createGrades(def, { saved, today: '2026-11-16' });
+  assert.equal(after.migrated, true);
+  assert.equal(after.EV.c1.extra, true);
+  assert.equal(after.EV.c1.label, 'TP');
+  assert.equal(after.real.c1, 9);
+  assert.equal(after.avgM(after.MAT.cyber), 9, 'la moyenne de la matière compte toujours la note');
+  const kept = after.dump();
+  assert.equal(kept.values.c1, undefined);
+  assert.deepEqual(kept.extra.find((x) => x.id === 'c1'), { id: 'c1', mat: 'cyber', label: 'TP', coef: 1, date: '', value: 9 });
+});
+
+test('simulation : calculer avec les vraies notes n’efface ni les notes simulées ni les ajouts', () => {
+  const N = createGrades(DEF, { saved: { values: VALUES }, today: '2026-11-16' });
+  N.simOn = true;
+  const e = N.addEval({ id: 'sim1', mat: 'cyber', label: 'Projet', coef: 1 }, true);
+  N.sim[e.id] = 20;
+  N.sim.c2 = 12;
+  const withSim = N.avgM(N.MAT.cyber);
+  assert.equal(N.withReal(() => N.avgM(N.MAT.cyber)), 9, 'vraies notes seules');
+  assert.equal(N.simOn, true);
+  assert.equal(N.avgM(N.MAT.cyber), withSim, 'la simulation est intacte');
+  assert.ok(N.EV.sim1);
+  N.simOn = false; // quitter la simulation, elle, efface tout
+  assert.ok(!N.EV.sim1);
+});

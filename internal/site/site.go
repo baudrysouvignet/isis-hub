@@ -147,7 +147,10 @@ func (s *Site) Headers(h http.Header) {
 	h.Set("Referrer-Policy", "no-referrer")
 	h.Set("Cross-Origin-Opener-Policy", "same-origin")
 	h.Set("Cross-Origin-Resource-Policy", "same-origin")
-	h.Set("Cross-Origin-Embedder-Policy", "require-corp")
+	// Pas de Cross-Origin-Embedder-Policy : elle ne sert qu'à l'isolement entre origines
+	// (SharedArrayBuffer), dont la page n'a pas besoin, et la CSP ne laisse de toute façon rien
+	// charger d'ailleurs. Avec elle, Chrome et Safari n'affichaient plus les PDF joints aux mails
+	// (leur lecteur intégré est refusé dans un cadre isolé).
 	h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), "+
 		"interest-cohort=(), browsing-topics=()")
 	if s.hsts {

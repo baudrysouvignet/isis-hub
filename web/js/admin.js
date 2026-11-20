@@ -384,7 +384,7 @@ const svg = (tag, attrs = {}, ...kids) => {
   el.append(...kids.filter(Boolean));
   return el;
 };
-const st = { data: null, period: '30', metric: 'visitors', cls: '' };
+const st = { data: null, period: '30', metric: 'visitors', cls: '', day: '' }; // day : jour choisi sur le graphique
 
 function hbars(box, entries, labels = {}) {
   const total = entries.reduce((n, [, v]) => n + v, 0);
@@ -415,7 +415,7 @@ function niceStep(max) {
   return Math.max(1, (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p);
 }
 
-function lineChart(box, rows, unit, markDate) {
+function lineChart(box, rows, unit, markDate, selDate = '', onPick = null) {
   const W = 720;
   const H = 220;
   const L = 34;
@@ -447,13 +447,23 @@ function lineChart(box, rows, unit, markDate) {
   const dots = shown.length > 60 ? [] : shown.map(([r, i]) => svg('circle', { cx: x(i), cy: y(r.v), r: 3, class: 'st-dot' }));
   // Une zone de survol par jour : la valeur se lit à la souris comme au doigt.
   const slot = (W - L - R) / Math.max(1, rows.length - 1);
-  const hits = rows.map((r, i) => svg('rect', { x: x(i) - slot / 2, y: T, width: Math.max(2, slot), height: H - T - B, class: 'st-hit' }, tip(r)));
+  // Un clic (ou Entrée) sur un jour : les répartitions dessous montrent ce jour seul.
+  const hits = rows.map((r, i) => {
+    const hit = svg('rect', { x: x(i) - slot / 2, y: T, width: Math.max(2, slot), height: H - T - B, class: `st-hit${r.date === selDate ? ' is-sel' : ''}`, tabindex: 0, role: 'button', 'aria-label': `${dayFmt.format(atNoon(r.date))} : voir la répartition de ce jour` }, tip(r));
+    if (onPick) {
+      hit.addEventListener('click', () => onPick(r.date));
+      hit.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onPick(r.date)));
+    }
+    return hit;
+  });
+  const sel = rows.findIndex((r) => r.date === selDate);
   box.replaceChildren(
     svg(
       'svg',
       { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `${unit} par jour` },
       ...grid,
       mark > 0 ? svg('line', { x1: x(mark), x2: x(mark), y1: T, y2: H - B, class: 'st-mark' }) : null,
+      sel >= 0 ? svg('line', { x1: x(sel), x2: x(sel), y1: T, y2: H - B, class: 'st-sel' }) : null,
       ref ? svg('polyline', { points: ref, class: 'st-ref' }) : null,
       area ? svg('path', { d: area, class: 'st-area' }) : null,
       pts.length ? svg('polyline', { points: pts.join(' '), class: 'st-line' }) : null,
@@ -493,7 +503,11 @@ function renderStats() {
   const drawn = byAccount
     ? rows.map((r, i) => ({ ...r, v: r.date >= since ? r.v : null, ref: st.cls ? undefined : days[i].unique ?? 0 }))
     : rows;
-  lineChart($('[data-st-chart]'), drawn, unit, before ? since : '');
+  if (st.day && !days.some((d) => d.date === st.day)) st.day = '';
+  lineChart($('[data-st-chart]'), drawn, unit, before ? since : '', st.day, (date) => {
+    st.day = st.day === date ? '' : date;
+    renderStats();
+  });
   const note = $('[data-st-note]');
   note.hidden = !byAccount;
   note.textContent = before
@@ -509,16 +523,26 @@ function renderStats() {
     wn[wd] += 1;
   }
   bars($('[data-st-week]'), WEEK.map((label, i) => ({ value: wn[i] ? wsum[i] / wn[i] : 0, label, title: `Moyenne du ${label.toLowerCase()}.` })));
+  // Répartitions : sur la période, ou sur le jour choisi en cliquant sur le graphique.
+  const scope = st.day ? days.filter((d) => d.date === st.day) : days;
   const add = (key) => {
     const out = {};
-    for (const d of days) for (const [k, v] of Object.entries(d[key] ?? {})) out[k] = (out[k] ?? 0) + v;
+    for (const d of scope) for (const [k, v] of Object.entries(d[key] ?? {})) out[k] = (out[k] ?? 0) + v;
     return Object.entries(out);
   };
+  const dayBar = $('[data-st-day]');
+  dayBar.replaceChildren(
+    st.day
+      ? h('span', {}, 'Répartitions du ', h('b', { text: dayFmt.format(atNoon(st.day)) }), ' ')
+      : h('span', { text: 'Répartitions sur toute la période. Clique sur un jour du graphique pour voir le sien.' }),
+    st.day ? h('button.btn.btn--sm.btn--ghost', { type: 'button', text: 'Toute la période', on: { click: () => ((st.day = ''), renderStats()) } }) : '',
+  );
+  dayBar.classList.toggle('is-day', Boolean(st.day));
   hbars($('[data-st-classes]'), st.cls ? add('classes').filter(([k]) => k === st.cls) : add('classes'));
   hbars($('[data-st-devices]'), add('devices'), DEVICES);
   hbars($('[data-st-modes]'), add('modes'), APP_MODES);
   $('[data-st-since]').textContent =
-    `Répartitions : visiteurs distincts de chaque jour, additionnés sur la période${st.cls ? ' ; appareils et modes restent toutes classes confondues (jamais croisés avec la classe)' : ''}. Dernier jour : ${today ? dayFmt.format(atNoon(today)) : '–'}.`;
+    `Répartitions : visiteurs distincts ${st.day ? 'du jour choisi' : 'de chaque jour, additionnés sur la période'}${st.cls ? ' ; appareils et modes restent toutes classes confondues (jamais croisés avec la classe)' : ''}. Dernier jour : ${today ? dayFmt.format(atNoon(today)) : '–'}.`;
   $('[data-st-metric]').disabled = Boolean(st.cls);
 }
 

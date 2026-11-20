@@ -57,10 +57,13 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
   // ------------------------------------------------------------ données
 
   const savedFor = (p) => UD.get('notes')?.[p] ?? null;
-  function save() {
+  function store() {
     const all = { ...(UD.get('notes') ?? {}) };
     all[promo] = { ...N.dump(), current: N.currentSem().id };
     UD.set('notes', all);
+  }
+  function save() {
+    store();
     listeners.forEach((fn) => fn());
   }
   function build() {
@@ -72,6 +75,9 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
     N = createGrades(def, { saved: savedFor(promo), current: savedFor(promo)?.current, today: D.todayKey(), year: `${promo.split(':')[0]} · ${y}-${y + 1}` });
     if (adeExams) N.setAdeExams(adeExams);
     if (!N.semById(semId)) semId = N.currentSem().id;
+    // Enregistrement d'avant cette version, ou évaluation retirée par l'administration : réécrit
+    // une fois (jamais avant la lecture du serveur, qui pourrait avoir plus récent).
+    if (N.migrated && UD.isReady()) store();
   }
 
   /**
@@ -210,9 +216,10 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
     const a = access();
     if (a !== 'ok') return renderGate(a);
     if (!N) return renderEmptyTile();
+    // La tuile montre toujours les vraies notes. Pas « N.simOn = false » : cela efface toute la
+    // simulation (notes simulées ajoutées comprises), qui disparaissait au premier ajout.
+    if (N.simOn) return N.withReal(renderTile);
     const S = N.currentSem();
-    const wasSim = N.simOn;
-    if (wasSim) N.simOn = false; // la tuile montre toujours les vraies notes
     const st = N.semState(S);
     $('[data-nt-sem]', nTile).hidden = false;
     $('[data-nt-sem]', nTile).textContent = S.short;
@@ -267,7 +274,6 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
     add.append(icon('plus', 'ic ic--sm'), 'Note');
     foot.append(next, add);
     tileBody.replaceChildren(open, foot);
-    if (wasSim) N.simOn = true;
   }
 
   // ------------------------------------------------------------ vue complète
@@ -808,10 +814,12 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
       vIn.value = fN(N.val(e));
       $$('[data-coef]', nadd).forEach((b) => (b.disabled = !e.extra));
       nadd.classList.toggle('is-slot', !e.extra);
-      label.disabled = !e.extra;
+      label.disabled = N.simOn && !e.extra; // renommer est personnel : pas en simulation
     } else {
       label.disabled = false;
-      const first = o.slot || N.evalsOf(N.MAT[matId]).find((x) => !N.has(N.val(x)) && !x.extra)?.id || null;
+      // En simulation, les évaluations prévues se remplissent dans leurs cases : « + » ajoute une
+      // note simulée de plus.
+      const first = o.slot || (N.simOn ? null : N.evalsOf(N.MAT[matId]).find((x) => !N.has(N.val(x)) && !x.extra)?.id) || null;
       pickSlot(first);
     }
     preview();
@@ -821,7 +829,7 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
   selM.addEventListener('change', () => {
     slot = null;
     fillSlots();
-    const f = N.evalsOf(N.MAT[selM.value]).find((x) => !N.has(N.val(x)) && !x.extra)?.id || null;
+    const f = N.simOn ? null : N.evalsOf(N.MAT[selM.value]).find((x) => !N.has(N.val(x)) && !x.extra)?.id || null;
     pickSlot(f);
     if (!f) {
       label.value = '';
@@ -838,8 +846,10 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
     }
     vIn.focus();
   });
+  // Évaluation de la maquette choisie : changer l'intitulé la renomme (pour l'étudiant seulement).
+  // En simulation, rien n'est enregistré : un autre intitulé ajoute une note simulée à part.
   label.addEventListener('input', () => {
-    if (slot && N.EV[slot] && label.value !== N.EV[slot].label) pickSlot(null);
+    if (N.simOn && slot && N.EV[slot] && label.value !== N.EV[slot].label) pickSlot(null);
   });
   [vIn, outIn].forEach((i) =>
     i.addEventListener('input', () => {
@@ -858,6 +868,16 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
   form.addEventListener('submit', (ev) => {
     ev.preventDefault();
     const v = candidate();
+    // Évaluation de la maquette renommée sans note (pas encore passée) : seul le nom change.
+    const named = !N.simOn && (editId || (slot && !proposalById(slot))) && N.EV[editId || slot];
+    if (v === null && named && !named.extra && !vIn.value.trim() && label.value.trim() !== named.label) {
+      N.renameEval(named, label.value);
+      save();
+      addM.close();
+      renderAll();
+      toast(`Renommée : ${named.label}`);
+      return;
+    }
     if (v === null) {
       err.hidden = false;
       vIn.setAttribute('aria-invalid', 'true');
@@ -874,8 +894,11 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
       if (e.extra) {
         e.label = label.value.trim().slice(0, 40) || e.label;
         e.coef = coef;
-      }
-    } else if (slot && !proposalById(slot)) target[slot] = v;
+      } else if (!N.simOn) N.renameEval(e, label.value);
+    } else if (slot && !proposalById(slot)) {
+      target[slot] = v;
+      if (!N.simOn) N.renameEval(N.EV[slot], label.value);
+    }
     else {
       const prop = proposalById(slot);
       const e = N.addEval({ id: `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, mat: M.id, label: label.value.trim() || 'Note', coef, date: prop?.date ?? D.todayKey() }, N.simOn);

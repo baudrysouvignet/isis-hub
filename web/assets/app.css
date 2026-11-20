@@ -637,6 +637,8 @@ button.ng:active { transform: scale(.97); }
 .stepper { display: inline-flex; align-items: center; gap: 4px; height: 56px; padding: 0 6px; border-radius: 12px; border: 1px solid var(--line-2); }
 .stepper output { min-width: 2.5ch; text-align: center; font: 720 18px/1 var(--font); font-variant-numeric: tabular-nums; }
 .nadd.is-slot .stepper { background: var(--sunken); border-color: transparent; }
+.nadd-label-h { display: none; margin-top: 6px; font: 500 12px/1.4 var(--font); color: var(--text-3); }
+.nadd.is-slot:not(.is-sim) .nadd-label-h { display: block; }
 .nadd-preview { display: grid; gap: 6px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); min-height: 48px; }
 .nadd-hint { font: 500 13px/1.45 var(--font); color: var(--text-3); }
 .nadd-pr { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto 56px; align-items: center; gap: 8px; font: 550 13.5px/1.2 var(--font); font-variant-numeric: tabular-nums; }
@@ -730,7 +732,8 @@ button.ng:active { transform: scale(.97); }
 }
 .tile--mail.is-expanded .mail-list { flex: 1; max-height: none; }
 .tile--mail.is-expanded .mail-showmore { display: none !important; }
-.tile--mail.is-expanded .mail-list > li { display: list-item !important; }
+/* :not([hidden]) : les mails écartés par la recherche restent cachés en plein écran */
+.tile--mail.is-expanded .mail-list > li:not([hidden]) { display: list-item !important; }
 .tile--mail.is-expanded .mail-row { padding-top: 12px; padding-bottom: 12px; }
 .mail-row.is-active { background: var(--brand-soft); }
 .mail-row.is-active .mail-from, .mail-row.is-active .mail-subj { color: var(--text); }
@@ -738,6 +741,10 @@ button.ng:active { transform: scale(.97); }
 .mail-split .tile--mail.is-expanded { padding-right: 0; }
 .mail-split .tile--mail.is-expanded > :not(.mail-pane) { width: calc(var(--mlw) - 37px); }
 .mail-split .tile--mail.is-expanded .mail-list { margin-right: 0; }
+/* Le conteneur de la liste est en display: contents : sans ces largeurs, la liste (et ses dates,
+   à droite) passait sous le mail ouvert. La liste déborde de 10 px à gauche (margin -10px). */
+.mail-split .tile--mail.is-expanded .tile-slot > .mail-list { width: calc(var(--mlw) - 27px); }
+.mail-split .tile--mail.is-expanded .tile-slot > :not(.mail-list) { width: calc(var(--mlw) - 37px); }
 .mail-split .tile--mail.is-expanded .mail-pane {
   position: absolute; top: 0; right: 0; bottom: 0; left: var(--mlw);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center;
@@ -966,6 +973,25 @@ button.ng:active { transform: scale(.97); }
 .mail-split .tile--mail.is-expanded .mail-fab { right: auto; left: calc(var(--mlw) - 52px - 24px); }
 .tile--mail.is-expanded .mail-filters { flex: none; }
 .ac-recent { margin-left: auto; color: var(--text-3); display: inline-grid; place-items: center; }
+/* Recherche dans les mails : suggestions (texte, puis personnes) et filtre par personne */
+.msearch { position: relative; flex: none; }
+.msearch-ac { left: 0; right: 0; top: 42px; z-index: 20; max-height: min(360px, 60dvh); }
+.ac-ic { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--sunken); color: var(--text-2); }
+.msearch-chip {
+  display: inline-flex; align-items: center; gap: 2px; flex: none; max-width: 55%; height: 26px; margin-left: -4px; padding: 0 2px 0 10px;
+  border-radius: 999px; background: var(--brand-soft); color: var(--brand); font: 650 12.5px/1 var(--font);
+}
+.msearch-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msearch-chip button { display: grid; place-items: center; flex: none; width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent; color: inherit; font: 600 15px/1 var(--font); }
+.msearch-chip button:hover { background: color-mix(in srgb, var(--brand) 14%, transparent); }
+/* Emploi du temps : repère discret « j'ai écrit une note sur ce cours », à gauche de Moodle */
+.ev-corner { position: absolute; top: 6px; right: 6px; z-index: 3; display: flex; align-items: center; gap: 3px; }
+.ev-corner .ev-mdl { position: static; }
+.ev-memo { display: inline-grid; place-items: center; width: 20px; height: 24px; color: var(--text-3); }
+.ev-memo .ic { width: 13px; height: 13px; }
+.ev.has-memo:not(.has-mdl) .ev-top { padding-right: 24px; }
+.ev.has-memo.has-mdl .ev-top { padding-right: 64px; }
+@container ev (min-width: 330px) { .ev.has-memo.has-mdl .ev-main { padding-right: 70px; } }
 
 /* Transparence : ce que nous gardons, en trois colonnes */
 .keep { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 10px; }
@@ -1234,6 +1260,11 @@ details[open] > .gr-sum .gr-chev { transform: rotate(90deg); }
 .st-mark { stroke: var(--text-3); stroke-width: 1.5; stroke-dasharray: 4 4; }
 .st-hit { fill: transparent; }
 .st-hit:hover { fill: var(--brand); opacity: .08; }
+.st-hit { cursor: pointer; outline: none; }
+.st-hit:focus-visible, .st-hit.is-sel { fill: var(--brand); opacity: .12; }
+.st-sel { stroke: var(--brand); stroke-width: 1.5; }
+.st-day { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 32px; margin: 10px 0 2px; font: 500 13px/1.4 var(--font); color: var(--text-3); }
+.st-day.is-day { color: var(--text); }
 .st-note { margin-top: 0; }
 .st-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; }
 .st-hbars { display: grid; gap: 8px; padding-top: 8px; }

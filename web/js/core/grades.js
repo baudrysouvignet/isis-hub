@@ -37,7 +37,10 @@ export const cleanGrade = (v) => (typeof v === 'number' && Number.isFinite(v) &&
 
 /**
  * Carnet de notes d'une classe. `def` : maquette publiée par l'administration ;
- * `saved` : { values: { idÉval: note }, extra: [{ id, mat, label, coef, date, value }] }.
+ * `saved` : { values: { idÉval: note }, extra: [{ id, mat, label, coef, date, value }],
+ *   meta: { idÉval: { mat, label, coef, date } }, labels: { idÉval: nom choisi par l'étudiant } }.
+ * `meta` décrit chaque note saisie sur une évaluation de la maquette : si l'administration retire
+ * cette évaluation, la note reste, comme note personnelle de la même matière.
  */
 export function createGrades(def, { saved = null, current = null, today = new Date().toISOString().slice(0, 10), year = '' } = {}) {
   const G = structuredClone(def);
@@ -61,6 +64,7 @@ export function createGrades(def, { saved = null, current = null, today = new Da
         M.evals = M.evals ?? [];
         M.evals.forEach((e) => {
           e.mat = M.id;
+          e.tpl = e.label; // intitulé de la maquette (l'étudiant peut en choisir un autre)
           EV[e.id] = e;
         });
       });
@@ -94,12 +98,36 @@ export function createGrades(def, { saved = null, current = null, today = new Da
     delete real[e.id];
     delete sim[e.id];
   }
+  // Vrai si ce qui est enregistré doit être réécrit : notes d'avant `meta`, ou notes d'une
+  // évaluation retirée de la maquette, devenues personnelles.
+  let migrated = false;
   if (saved) {
-    for (const [id, v] of Object.entries(saved.values ?? {})) if (EV[id] && !EV[id].extra) real[id] = cleanGrade(v);
+    const meta = saved.meta && typeof saved.meta === 'object' ? saved.meta : {};
+    for (const [id, v] of Object.entries(saved.values ?? {})) {
+      if (EV[id] && !EV[id].extra) {
+        real[id] = cleanGrade(v);
+        if (!meta[id]) migrated = true;
+      } else if (!EV[id] && meta[id] && cleanGrade(v) !== null) {
+        // Évaluation retirée de la maquette : la note saisie reste, en note personnelle.
+        const e = addEval({ ...meta[id], id });
+        if (e) {
+          real[e.id] = cleanGrade(v);
+          migrated = true;
+        }
+      }
+    }
+    for (const [id, l] of Object.entries(saved.labels ?? {})) {
+      if (EV[id] && !EV[id].extra && typeof l === 'string' && l.trim()) EV[id].label = l.trim().slice(0, 40);
+    }
     for (const x of (saved.extra ?? []).slice(0, 400)) {
       const e = addEval(x);
       if (e) real[e.id] = cleanGrade(x.value);
     }
+  }
+  /** Nouvel intitulé d'une évaluation ; vide : celui de la maquette. Seul l'étudiant le voit. */
+  function renameEval(e, label) {
+    const l = String(label ?? '').trim().slice(0, 40);
+    e.label = l || (e.extra ? e.label : e.tpl);
   }
   /** Ce qui est enregistré (jamais les simulations). */
   function dump() {
@@ -107,8 +135,16 @@ export function createGrades(def, { saved = null, current = null, today = new Da
       .filter((e) => e.extra && !e.sim)
       .map((e) => ({ id: e.id, mat: e.mat, label: e.label, coef: e.coef, date: e.date, value: real[e.id] ?? null }));
     const values = {};
-    for (const [k, v] of Object.entries(real)) if (EV[k] && !EV[k].extra && v !== null && v !== undefined) values[k] = v;
-    return { values, extra };
+    const meta = {};
+    for (const [k, v] of Object.entries(real)) {
+      const e = EV[k];
+      if (!e || e.extra || v === null || v === undefined) continue;
+      values[k] = v;
+      meta[k] = { mat: e.mat, label: e.label, coef: e.coef, date: e.date || '' };
+    }
+    const labels = {};
+    for (const e of Object.values(EV)) if (!e.extra && e.label !== e.tpl) labels[e.id] = e.label;
+    return { values, extra, meta, labels };
   }
 
   // ---------------------------------------------------------------- calculs
@@ -353,6 +389,16 @@ export function createGrades(def, { saved = null, current = null, today = new Da
           .forEach(removeEval);
       }
     },
+    /** Calcule fn() avec les vraies notes, sans rien effacer de la simulation en cours. */
+    withReal(fn) {
+      const was = simOn;
+      simOn = false;
+      try {
+        return fn();
+      } finally {
+        simOn = was;
+      }
+    },
     clearSim() {
       Object.keys(sim).forEach((k) => delete sim[k]);
       Object.values(EV)
@@ -390,6 +436,8 @@ export function createGrades(def, { saved = null, current = null, today = new Da
     yearState,
     addEval,
     removeEval,
+    renameEval,
+    migrated,
     dump,
   };
 }

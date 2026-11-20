@@ -33,6 +33,7 @@ import { watchUpdates } from './core/update.js';
 import { initMailPrefs, resetMailPrefs } from './core/mailprefs.js';
 import * as UD from './core/userdata.js';
 import { isEval, loadSignals, onSignals, withdrawVotes } from './core/evals.js';
+import { onMemosChange } from './core/memos.js';
 import { deriveSecret } from './net/sync.js';
 import { createNotes } from './ui/notes.js';
 import { setupFeedback } from './ui/feedback.js';
@@ -505,6 +506,9 @@ onSignals(() => schedule?.rerender());
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && state.screen === 'dash') loadSignals(state.promo);
 });
+
+// Note de cours écrite ou effacée (ici ou sur un autre appareil) : le repère 📝 suit.
+onMemosChange(() => schedule?.rerender());
 
 // Classe changée sur un autre appareil (ou retrouvée dans la sauvegarde) : appliquée ici aussi.
 UD.onUserData((touched) => {

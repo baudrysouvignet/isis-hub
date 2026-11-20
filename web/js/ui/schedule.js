@@ -6,6 +6,7 @@ import * as D from '../core/dates.js';
 import { prefs } from '../core/store.js';
 import { fetchSchedule } from '../portals/ade.js';
 import { isEval, signalOf } from '../core/evals.js';
+import { hasMemo } from '../core/memos.js';
 import { hasMenu } from './crous.js';
 
 // Créneau du Resto U' affiché chaque jour de cours (lundi – vendredi).
@@ -148,6 +149,7 @@ export function createSchedule({ app, matcher, onData, onOpen, onLunch }) {
     const kind = (ev.kind ?? 'autre').toLowerCase();
     const exam = ev.exam || isEval(ev); // repère personnel « examen » : même affichage qu'un examen ADE
     const signal = !exam && signalOf(ev); // signal de la classe : à part, jamais présenté comme sûr
+    const memo = hasMemo(ev); // l'étudiant a écrit une note sur ce cours
     const el = h(
       'article.ev',
       { class: `ev--${ev.kind ? kind : 'cm'}`, data: { start: ev.startMin, end: ev.endMin } },
@@ -182,14 +184,17 @@ export function createSchedule({ app, matcher, onData, onOpen, onLunch }) {
     el.prepend(
       h('button.ev-hit', {
         type: 'button',
-        attrs: { 'aria-label': `Détails : ${ev.title}, ${ev.time}, salle ${ev.room || 'inconnue'}${ev.teacher ? `, ${ev.teacher}` : ''}` },
+        attrs: { 'aria-label': `Détails : ${ev.title}, ${ev.time}, salle ${ev.room || 'inconnue'}${ev.teacher ? `, ${ev.teacher}` : ''}${memo ? ', tu as une note sur ce cours' : ''}` },
         on: { click: () => onOpen?.(ev) },
       }),
     );
+    // En haut à droite : un petit crayon si l'étudiant a écrit une note sur ce cours, puis Moodle.
     const chip = moodleChip(ev);
-    if (chip) {
-      el.classList.add('has-mdl');
-      el.prepend(chip);
+    const mark = memo && h('span.ev-memo', { title: 'Tu as écrit une note sur ce cours', attrs: { 'aria-hidden': 'true' } }, icon('pen', 'ic ic--xs'));
+    if (chip || mark) {
+      el.classList.toggle('has-mdl', Boolean(chip));
+      el.classList.toggle('has-memo', Boolean(mark));
+      el.prepend(h('div.ev-corner', {}, mark, chip));
     }
     return el;
   }
