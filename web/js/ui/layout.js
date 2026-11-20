@@ -214,11 +214,19 @@ export function setupBento() {
 
 // ----------------------------------------------------------- fiches modales
 
+// Tant qu'une fiche est ouverte, la page derrière ne défile plus (sinon, sur téléphone, glisser sur
+// le fond ou sur l'en-tête de la fiche fait défiler le tableau de bord). Classe à part de
+// lockScroll(), que le lecteur de mail, les notes et l'agenda plein écran gèrent eux-mêmes : fermer
+// une fiche ouverte par-dessus eux ne libère pas leur blocage.
+const syncModalLock = () =>
+  document.documentElement.classList.toggle('is-modal', Boolean(document.querySelector('dialog[open]')));
+
 export function modal(dialog, { onOpen, onClose } = {}) {
   const open = () => {
     if (dialog.open) return;
     closeMenus();
     dialog.showModal();
+    syncModalLock();
     dialog.classList.remove('is-leaving');
     restartClass(dialog, 'is-entering');
     onOpen?.();
@@ -242,6 +250,7 @@ export function modal(dialog, { onOpen, onClose } = {}) {
     e.preventDefault();
     close();
   });
+  dialog.addEventListener('close', syncModalLock); // toute fermeture, même sans passer par close()
   dialog.addEventListener('click', (e) => {
     if (e.target === dialog) close();
   });

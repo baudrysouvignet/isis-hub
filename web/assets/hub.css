@@ -964,6 +964,9 @@ a:hover > .btn-arrow, .btn:hover > .btn-arrow { transform: translate(2px, -2px);
   background: var(--surface); color: var(--text); box-shadow: var(--shadow-3);
 }
 dialog.sheet:not([open]) { display: none; }
+/* Fiche ouverte : la page derrière ne défile pas, et le défilement de la fiche ne s'y propage pas. */
+html.is-modal { overflow: hidden; }
+.sheet { overscroll-behavior: contain; }
 .sheet::backdrop { background: rgba(24, 22, 16, .34); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
 .sheet.is-entering { animation: sheetInRight .42s var(--ease) both; }
 .sheet.is-leaving { animation: sheetOutRight .26s var(--ease-io) both; }
