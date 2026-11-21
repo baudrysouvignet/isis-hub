@@ -12,7 +12,8 @@ import * as sync from '../net/sync.js';
 // memos : notes personnelles sur les cours (fiche d'une séance).
 // seen : déjà vu (visite guidée, installation, dernière version présentée), une fois par étudiant.
 // feedback : jetons « Mes propositions » (suivi des retours envoyés).
-export const SECTIONS = ['notes', 'evals', 'mail', 'profile', 'memos', 'seen', 'feedback'];
+// rendus : échéances Moodle masquées à la main (identifiant de l'événement → jour du masquage).
+export const SECTIONS = ['notes', 'evals', 'mail', 'profile', 'memos', 'seen', 'feedback', 'rendus'];
 
 let local = { sections: {} };
 let vault = null;

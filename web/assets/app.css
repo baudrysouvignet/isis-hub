@@ -1404,3 +1404,43 @@ a.dl-row:active { background: var(--press); }
   .tile--rendus .dl-all-label { display: none; }
   .tile--rendus .tile-link { padding: 8px; }
 }
+
+/* Moodle, tuile étroite (ordinateur, tablette) : toute la tuile défile. La recherche reste collée en
+   haut au-dessus de la liste ; en remontant, le cours du moment réapparaît. */
+@media (min-width: 760px) {
+  @container moodle (max-width: 620px) {
+    .tile--moodle .moodle-layout {
+      display: block; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+      margin: 0 -8px; padding: 0 8px 4px;
+    }
+    .tile--moodle .spotlight { margin-bottom: 12px; }
+    .tile--moodle .moodle-list { display: block; max-height: none; }
+    .tile--moodle .moodle-list .course-list { overflow: visible; }
+    .tile--moodle .moodle-searchbar { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+    .tile--moodle .moodle-searchbar::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: -10px; height: 10px; pointer-events: none;
+      background: linear-gradient(var(--surface), transparent);
+    }
+  }
+}
+
+/* Rendus : bouton « masquer » à droite de chaque ligne, visible au survol (toujours sur écran tactile). */
+.dl-wrap { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.dl-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px; }
+.dl-hide {
+  display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
+  border: 0; background: transparent; color: var(--text-3); cursor: pointer;
+  opacity: 0; transition: opacity var(--d-fast) var(--ease), background-color var(--d-fast) var(--ease);
+}
+.dl-item:hover .dl-hide, .dl-hide:focus-visible { opacity: 1; }
+.dl-hide:hover { background: var(--hover); color: var(--text); }
+@media (hover: none) { .dl-hide { opacity: .6; } }
+.dl-item.is-hidden .dl-row { opacity: .5; }
+.dl-item.is-hidden .dl-hide { opacity: 1; color: var(--brand); }
+.dl-more-li { display: flex; justify-content: center; padding-top: 4px; }
+.dl-more {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px;
+  border: 0; background: transparent; color: var(--text-3); font: 600 12px/1 var(--font); cursor: pointer;
+}
+.dl-more:hover { background: var(--hover); color: var(--text); }
+.dl-wrap > .dl-more { align-self: center; margin-top: 8px; }

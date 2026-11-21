@@ -65,3 +65,8 @@ test('Moodle et Rendus démarrent ensemble : une seule ouverture de session', as
   await Promise.all([moodle.connect(), moodle.connect()]);
   assert.equal(opened, 1);
 });
+
+test('un retard de plus d’une semaine n’est plus affiché', () => {
+  const out = toDeadlines([ev(1, S - 6 * 86400), ev(2, S - 8 * 86400)], [], NOW);
+  assert.deepEqual(out.map((d) => d.id), [1]);
+});

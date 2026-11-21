@@ -164,6 +164,7 @@ export const searchUrl = (query) => `${HOSTS.moodle}/course/search.php?search=${
 // ------------------------------------------------------------------ rendus (devoirs, tests…)
 
 const SAFE_URL = (u) => (typeof u === 'string' && u.startsWith(`${HOSTS.moodle}/`) ? u : '');
+const LATE_KEPT = 7 * 864e5; // retards gardés une semaine
 const DONE_TYPES = new Set(['due']); // échéance d'un devoir : sans action, c'est qu'il est rendu
 
 /**
@@ -171,6 +172,7 @@ const DONE_TYPES = new Set(['due']); // échéance d'un devoir : sans action, c'
  * - `todo` : les événements « à faire » (le calendrier n'y met que ce qui reste à rendre, retards compris) ;
  * - `upcoming` : les prochains événements, rendus compris. Un devoir (assign, « due ») présent ici
  *   mais sans action est déjà rendu : Moodle retire l'action dès la remise.
+ * Les retards de plus d'une semaine sont écartés : passé ce délai, ce n'est plus « à rendre ».
  * Rend [{ id, name, course, courseUrl, at (ms), url, kind, status: 'todo' | 'late' | 'done', actionable }].
  */
 export function toDeadlines(todo = [], upcoming = [], now = Date.now()) {
@@ -198,18 +200,18 @@ export function toDeadlines(todo = [], upcoming = [], now = Date.now()) {
     if (e.action && e.isactionevent !== false) add(e, 'todo');
     else if (e.modulename === 'assign' && DONE_TYPES.has(e.eventtype)) add(e, 'done');
   }
-  return [...out.values()].sort((a, b) => a.at - b.at);
+  return [...out.values()].filter((d) => d.status !== 'late' || now - d.at <= LATE_KEPT).sort((a, b) => a.at - b.at);
 }
 
 /**
- * Prochains rendus : ce qui reste à rendre (jusqu'à 30 jours de retard) et les devoirs déjà rendus
+ * Prochains rendus : ce qui reste à rendre (jusqu'à une semaine de retard) et les devoirs déjà rendus
  * des prochaines semaines. Deux lectures du calendrier, comme le tableau de bord de Moodle.
  * Cache 10 min ; `force` pour relire.
  */
 export function deadlines({ force = false } = {}) {
   return cached('moodle:deadlines', HOUR / 6, async () => {
     const now = Date.now();
-    const from = Math.floor(now / 1000) - 30 * 86400;
+    const from = Math.floor((now - LATE_KEPT) / 1000);
     const [todo, upcoming] = await Promise.all([
       call('core_calendar_get_action_events_by_timesort', { timesortfrom: from, limitnum: 50, limittononsuspendedevents: true }),
       call('core_calendar_get_calendar_upcoming_view', { courseid: 1 }).catch(() => ({ events: [] })),

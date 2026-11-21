@@ -106,6 +106,29 @@ export function createMoodle({ matcher, schedule, onSessionLost, onLogin }) {
     $(`[data-course="${found.course.id}"] .course`, tile)?.classList.add('is-match');
   }
 
+  /**
+   * Après un moment sans y toucher, la tuile remonte toute seule : le cours du moment redevient
+   * visible. Jamais pendant une recherche, ni sous le pointeur ou le clavier.
+   */
+  const IDLE_TOP = 45_000;
+  let idleTimer = 0;
+  let scroller = null; // la zone qui défile (la mise en page du moment)
+  function arm() {
+    clearTimeout(idleTimer);
+    if (!scroller?.isConnected || scroller.scrollTop < 2) return;
+    idleTimer = setTimeout(() => {
+      if (!scroller?.isConnected) return;
+      if (tile.matches(':hover') || tile.contains(document.activeElement) || search?.value) return arm();
+      scroller.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }, IDLE_TOP);
+  }
+  tile.addEventListener('pointerleave', arm);
+  tile.addEventListener('focusout', arm);
+  function follow(layout) {
+    scroller = layout;
+    layout.addEventListener('scroll', arm, { passive: true });
+  }
+
   function filter() {
     const q = normalize(search.value);
     let n = 0;
@@ -130,8 +153,16 @@ export function createMoodle({ matcher, schedule, onSessionLost, onLogin }) {
     search = $('input', searchLabel);
     emptyLi = h('li.course-empty', { hidden: true, data: { courseEmpty: '' } });
     listEl = h('ul.course-list', { data: { courseList: '' } }, ...courses.map(courseItem), emptyLi);
-    slot.replaceChildren(h('div.moodle-layout', {}, spot, h('div.moodle-list', {}, searchLabel, listEl)));
+    // Tuile étroite : toute la tuile défile, la recherche reste collée en haut au-dessus de la liste,
+    // et le cours du moment réapparaît en remontant (voir follow()).
+    const layout = h('div.moodle-layout', {}, spot, h('div.moodle-list', {}, h('div.moodle-searchbar', {}, searchLabel), listEl));
+    slot.replaceChildren(layout);
+    follow(layout);
     search.addEventListener('input', filter);
+    // En cherchant, la liste prend toute la hauteur : le cours du moment passe au-dessus.
+    search.addEventListener('focus', () => {
+      if (layout.scrollHeight > layout.clientHeight + 4) layout.scrollTo({ top: Math.max(layout.scrollTop, spot.hidden ? 0 : spot.offsetHeight), behavior: 'smooth' });
+    });
     search.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') $$('li[data-course]', listEl).find((li) => !li.hidden)?.querySelector('a').click();
       if (e.key === 'Escape' && search.value) {
