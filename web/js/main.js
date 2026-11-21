@@ -20,6 +20,7 @@ import { createPromo } from './ui/promo.js';
 import { createSchedule } from './ui/schedule.js';
 import { createMails } from './ui/mails.js';
 import { createMoodle } from './ui/moodle.js';
+import { createDeadlines } from './ui/deadlines.js';
 import { setupMenus, setupBento, setupIcal, anyMenuOpen, closeMenus, modal } from './ui/layout.js';
 import { createComposer } from './ui/composer.js';
 import { createCourseSheet } from './ui/course.js';
@@ -253,6 +254,7 @@ let dashboardReady = false;
 let install;
 let changelog;
 let bento;
+let rendus;
 
 function setupDashboard() {
   if (dashboardReady) return;
@@ -332,6 +334,7 @@ function setupDashboard() {
   changelog = setupChangelog();
   $$('[data-compose]').forEach((b) => b.addEventListener('click', () => composer.open()));
   courses = createMoodle({ matcher, schedule, onSessionLost: sessionLost, onLogin: openLogin });
+  rendus = createDeadlines({ onSessionLost: sessionLost, onLogin: openLogin });
   setupMenus();
   bento = setupBento();
   fetchContent().then((content) => {
@@ -389,10 +392,12 @@ async function enterDashboard(promoChanged = true) {
       .catch(() => {});
     mails.load();
     courses.load();
+    rendus.load();
     welcome();
   } else {
     mails.showSignedOut(false);
     courses.showSignedOut(false);
+  rendus.showSignedOut(false);
   }
 }
 
@@ -418,6 +423,7 @@ function sessionLost() {
   renderHeader();
   mails.showSignedOut(true);
   courses.showSignedOut(true);
+  rendus.showSignedOut(true);
   notes?.refresh(); // les notes demandent d'être connecté
   // Connexion infinie : reprise sur place (identifiant + passkey), sans passer par l'écran de connexion.
   if (!infinite.offerResume()) toast('Ta session universitaire a expiré : reconnecte-toi pour retrouver mails et Moodle.');
@@ -455,6 +461,7 @@ async function logout() {
   renderHeader();
   mails.showSignedOut(false);
   courses.showSignedOut(false);
+  rendus.showSignedOut(false);
   notes?.refresh();
   show('login');
 }

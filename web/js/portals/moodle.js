@@ -40,7 +40,15 @@ const loggedIn = (at) => loginListeners.forEach((fn) => {
   } catch {}
 });
 
-export async function connect() {
+// Une seule ouverture de session à la fois : les tuiles Moodle et Rendus démarrent ensemble, et deux
+// passages par le CAS donneraient deux alertes « Nouvelle connexion ».
+let connecting = null;
+export function connect() {
+  connecting ??= openSession().finally(() => (connecting = null));
+  return connecting;
+}
+
+async function openSession() {
   const at = Date.now();
   const mine = epoch;
   const first = await http(`${HOSTS.moodle}/my/`);
@@ -152,3 +160,60 @@ export function grades(courseId, { force = false } = {}) {
 export const gradesUrl = (courseId) => `${HOSTS.moodle}/grade/report/user/index.php?id=${courseId}`;
 
 export const searchUrl = (query) => `${HOSTS.moodle}/course/search.php?search=${encodeURIComponent(query)}`;
+
+// ------------------------------------------------------------------ rendus (devoirs, tests…)
+
+const SAFE_URL = (u) => (typeof u === 'string' && u.startsWith(`${HOSTS.moodle}/`) ? u : '');
+const DONE_TYPES = new Set(['due']); // échéance d'un devoir : sans action, c'est qu'il est rendu
+
+/**
+ * Fusionne les deux lectures du calendrier Moodle en une liste d'échéances :
+ * - `todo` : les événements « à faire » (le calendrier n'y met que ce qui reste à rendre, retards compris) ;
+ * - `upcoming` : les prochains événements, rendus compris. Un devoir (assign, « due ») présent ici
+ *   mais sans action est déjà rendu : Moodle retire l'action dès la remise.
+ * Rend [{ id, name, course, courseUrl, at (ms), url, kind, status: 'todo' | 'late' | 'done', actionable }].
+ */
+export function toDeadlines(todo = [], upcoming = [], now = Date.now()) {
+  const out = new Map();
+  const add = (e, status) => {
+    if (!e?.id || !e.modulename || out.has(e.id)) return;
+    const at = Number(e.timesort ?? e.timestart) * 1000;
+    if (!Number.isFinite(at) || at <= 0) return;
+    const late = status !== 'done' && at < now;
+    out.set(e.id, {
+      id: e.id,
+      name: decode(e.activityname || e.name || ''),
+      course: decode(e.course?.fullnamedisplay || e.course?.fullname || ''),
+      courseUrl: SAFE_URL(e.course?.viewurl),
+      at,
+      url: SAFE_URL(e.action?.url) || SAFE_URL(e.url) || SAFE_URL(e.viewurl),
+      kind: e.modulename,
+      status: status === 'done' ? 'done' : late ? 'late' : 'todo',
+      actionable: e.action ? e.action.actionable !== false : false,
+    });
+  };
+  for (const e of todo) if (e?.action) add(e, 'todo');
+  for (const e of upcoming) {
+    if (!e?.modulename) continue;
+    if (e.action && e.isactionevent !== false) add(e, 'todo');
+    else if (e.modulename === 'assign' && DONE_TYPES.has(e.eventtype)) add(e, 'done');
+  }
+  return [...out.values()].sort((a, b) => a.at - b.at);
+}
+
+/**
+ * Prochains rendus : ce qui reste à rendre (jusqu'à 30 jours de retard) et les devoirs déjà rendus
+ * des prochaines semaines. Deux lectures du calendrier, comme le tableau de bord de Moodle.
+ * Cache 10 min ; `force` pour relire.
+ */
+export function deadlines({ force = false } = {}) {
+  return cached('moodle:deadlines', HOUR / 6, async () => {
+    const now = Date.now();
+    const from = Math.floor(now / 1000) - 30 * 86400;
+    const [todo, upcoming] = await Promise.all([
+      call('core_calendar_get_action_events_by_timesort', { timesortfrom: from, limitnum: 50, limittononsuspendedevents: true }),
+      call('core_calendar_get_calendar_upcoming_view', { courseid: 1 }).catch(() => ({ events: [] })),
+    ]);
+    return toDeadlines(todo?.events, upcoming?.events, now);
+  }, { force });
+}

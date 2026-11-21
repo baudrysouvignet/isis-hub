@@ -1327,3 +1327,80 @@ details[open] > .gr-sum .gr-chev { transform: rotate(90deg); }
   .sheet--center.is-entering { animation: rise .32s var(--ease) both; }
   .sheet--center.is-leaving { animation: fade .2s var(--ease-io) reverse both; }
 }
+
+/* ------------------------------------------------------------------ Prochains rendus */
+.tile--rendus { display: flex; flex-direction: column; min-height: 0; }
+.tile--rendus .tile-head { flex-wrap: nowrap; }
+.tile--rendus .tile-title h2 { overflow: hidden; text-overflow: ellipsis; }
+.tile--rendus .empty { padding: 24px 16px; }
+.empty--ok .empty-ic { background: var(--ok-soft); color: var(--ok); box-shadow: none; }
+.chip--late { background: var(--exam-soft); color: var(--exam); }
+.chip--ok { background: var(--ok-soft); color: var(--ok); }
+.skel-dl { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; align-items: center; }
+.skel-dl > .skel--block { height: 46px; }
+.skel-dl .skel-stack { gap: 7px; }
+
+.dl-list {
+  list-style: none; margin: 0 -6px; padding: 0 6px 2px; display: grid; gap: 4px; align-content: start;
+  flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin;
+}
+.dl-row {
+  position: relative; display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  padding: 7px 8px 7px 7px; border-radius: 13px; color: inherit; text-decoration: none;
+  transition: background-color var(--d-fast) var(--ease);
+}
+a.dl-row:hover { background: var(--hover); }
+a.dl-row:active { background: var(--press); }
+.dl-date {
+  position: relative; display: grid; place-content: center; justify-items: center; gap: 2px;
+  width: 42px; height: 46px; border-radius: 11px;
+  background: var(--sunken); color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.dl-day { font: 720 17px/1 var(--font); letter-spacing: -.02em; }
+.dl-mon { font: 600 10px/1 var(--font); text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); }
+.dl-check {
+  position: absolute; right: -5px; top: -5px; display: grid; place-items: center;
+  width: 19px; height: 19px; border-radius: 999px;
+  background: var(--ok); color: #fff; box-shadow: 0 0 0 2.5px var(--surface);
+}
+.dl-check .ic { width: 12px; height: 12px; stroke-width: 2.4; }
+.dl-main { display: grid; gap: 3px; min-width: 0; }
+.dl-name { font: 620 13.5px/1.3 var(--font); letter-spacing: -.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-sub { font: 500 11.5px/1.3 var(--font); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-state {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px;
+  font: 650 11px/1 var(--font); white-space: nowrap; font-variant-numeric: tabular-nums;
+  background: var(--sunken); color: var(--text-2);
+}
+.dl-state .ic { stroke-width: 2.2; }
+.dl-state.is-soon { background: var(--td-soft); color: var(--td); }
+.dl-state.is-near { background: var(--brand-soft); color: var(--brand); }
+.dl-state.is-late { background: var(--exam-soft); color: var(--exam); }
+.dl-state.is-done { background: var(--ok-soft); color: var(--ok); }
+
+/* Ce qui presse attire l'œil ; ce qui est rendu s'efface un peu, coche verte en évidence. */
+.dl-item.is-soon .dl-date { background: var(--td-soft); }
+.dl-item.is-soon .dl-day { color: var(--td); }
+.dl-item.is-late .dl-date { background: var(--exam-soft); }
+.dl-item.is-late .dl-day { color: var(--exam); }
+.dl-item.is-done .dl-date { background: var(--ok-soft); }
+.dl-item.is-done .dl-day, .dl-item.is-done .dl-mon { color: var(--ok); }
+.dl-item.is-done .dl-name { color: var(--text-2); font-weight: 560; }
+.dl-foot {
+  display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 8px 10px; border-radius: 10px;
+  background: var(--ok-soft); color: var(--ok); font: 600 12px/1.3 var(--font);
+}
+
+/* Tuile étroite (bureau, rangée à trois) : la pastille passe sous le titre. */
+@container rendus (max-width: 380px) {
+  .dl-row { grid-template-columns: 42px minmax(0, 1fr); row-gap: 5px; }
+  .dl-state { grid-column: 2; justify-self: start; height: 20px; margin-top: -2px; }
+  .dl-date { grid-row: span 2; }
+}
+.tile--rendus { container: rendus / inline-size; }
+@media (max-width: 759.98px) { .dl-list { overflow: visible; } }
+@container rendus (max-width: 440px) {
+  .tile--rendus .dl-all-label { display: none; }
+  .tile--rendus .tile-link { padding: 8px; }
+}

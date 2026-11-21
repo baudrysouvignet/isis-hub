@@ -61,6 +61,14 @@ export function setupMenus() {
 
 const desktopMQ = matchMedia('(min-width: 1180px)');
 
+// Rangée Notes · Moodle · Rendus : largeurs selon les tuiles visibles, toujours 12 colonnes en tout.
+const ROW = { 'notes,moodle,rendus': [4, 4, 4], 'notes,moodle': [4, 8], 'notes,rendus': [6, 6], 'moodle,rendus': [7, 5] };
+function rowSizes(ids, hidden, rh) {
+  const shown = ids.filter((id) => !hidden[id]);
+  const widths = ROW[shown.join(',')] ?? [12];
+  return Object.fromEntries(ids.map((id) => [id, [shown.includes(id) ? widths[shown.indexOf(id)] : 12, rh]]));
+}
+
 /** Largeur (sur 12 colonnes) et hauteur (rangées de 64 px) selon les tuiles visibles : jamais de trou. */
 function sizesFor(hidden) {
   const on = (id) => !hidden[id];
@@ -68,12 +76,18 @@ function sizesFor(hidden) {
     return {
       edt: [on('mail') ? 8 : 12, 11],
       mail: [on('edt') ? 4 : 12, 11],
-      notes: [on('moodle') ? 4 : 12, 5],
-      moodle: [on('notes') ? 8 : 12, 5],
+      ...rowSizes(['notes', 'moodle', 'rendus'], hidden, 5),
       links: [12, 1],
     };
   }
-  return { edt: [12, 11], mail: [on('notes') ? 6 : 12, 9], notes: [on('mail') ? 6 : 12, 9], moodle: [12, 7], links: [12, 1] };
+  return {
+    edt: [12, 11],
+    mail: [on('notes') ? 6 : 12, 9],
+    notes: [on('mail') ? 6 : 12, 9],
+    moodle: [on('rendus') ? 6 : 12, 7],
+    rendus: [on('moodle') ? 6 : 12, 7],
+    links: [12, 1],
+  };
 }
 
 export function setupBento() {
