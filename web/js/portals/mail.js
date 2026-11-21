@@ -4,8 +4,11 @@
 // Lire un mail dans ISIS Hub le lit VRAIMENT dans la boîte : le drapeau \Seen est posé sur le
 // serveur, donc le mail apparaît lu partout (webmail, téléphone, client de messagerie).
 
-import { HOSTS, NotSignedIn } from './config.js';
+import { HOSTS, NotSignedIn, PortalDown, notSignedInOrDown } from './config.js';
 import { http } from '../net/http.js';
+import { casSessionAlive } from './cas.js';
+
+const lost = (detail) => notSignedInOrDown('messagerie', detail, casSessionAlive);
 
 let session = null; // { sid, domain, userId, defaultEmail, formatedName }
 let inbox = null; // { uid }
@@ -27,6 +30,10 @@ export const reset = () => {
 async function readSessionInfos() {
   const res = await http(`${HOSTS.mail}/session-infos`);
   if (new URL(res.url).origin !== HOSTS.mail) return null; // renvoyé vers le formulaire du CAS
+  // Messagerie en panne ou en maintenance (ex. HTTP 502 « Welcome to BlueMind ») : ce n'est pas
+  // une session expirée. Avant, cette page d'erreur valait « Session expirée » et effaçait tout,
+  // en boucle après chaque reconnexion.
+  if (res.status >= 500) throw new PortalDown('messagerie', `HTTP ${res.status}`);
   try {
     const infos = await res.json();
     return infos.sid ? infos : null;
@@ -44,7 +51,7 @@ export function connect() {
   const attempt = (async () => {
     let infos = await readSessionInfos();
     if (infos === undefined) infos = await readSessionInfos();
-    if (!infos) throw new NotSignedIn('messagerie');
+    if (!infos) throw await lost(infos === undefined ? 'réponse inattendue' : '');
     if (mine === epoch) session = infos; // ouverte avant une déconnexion : ne remplace rien
     return { email: infos.defaultEmail ?? '', name: infos.formatedName ?? '', login: infos.login ?? '' };
   })();
@@ -79,7 +86,7 @@ async function api(path, { method, body, bytes, raw = false } = {}, retry = true
   if (res.status === 401 || res.status === 403 || elsewhere || html) {
     session = null;
     if (retry) return api(path, { method, body, bytes, raw }, false);
-    throw new NotSignedIn('messagerie');
+    throw await lost(`HTTP ${res.status}`);
   }
   if (!res.ok) {
     // Message d'erreur de BlueMind (JSON { message, errorCode }) : utile au diagnostic, sans contenu.

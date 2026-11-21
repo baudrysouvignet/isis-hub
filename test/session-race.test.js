@@ -69,7 +69,12 @@ test('cookies : après un effacement, une réponse en retard ne remet pas l’an
 
 test('messagerie : après une déconnexion, l’ouverture de session d’avant n’est plus réutilisée', async () => {
   const calls = [];
-  useTransport((url, init) => new Promise((resolve) => calls.push({ url, init, resolve })));
+  useTransport((url, init) =>
+    // Vérification auprès du CAS (avant toute « session expirée ») : la session neuve est valable.
+    init?.redirect === 'manual'
+      ? Promise.resolve({ status: 302, ok: false, url, location: 'https://ent.univ-jfc.fr/uPortal/Login?ticket=ST-1-x', text: async () => '' })
+      : new Promise((resolve) => calls.push({ url, init, resolve })),
+  );
   const json = (url, body) => ({ status: 200, ok: true, url, redirected: false, json: async () => body, text: async () => JSON.stringify(body) });
 
   const stale = mail.connect(); // lancée avant la perte de session, encore en route
@@ -81,9 +86,10 @@ test('messagerie : après une déconnexion, l’ouverture de session d’avant n
 
   calls[1].resolve(json(`${HOSTS.mail}/session-infos`, { sid: 'sid-neuf', domain: 'univ-jfc.fr', userId: 'u1' }));
   await fresh;
-  // L'ancienne aboutit sur le formulaire du CAS : elle échoue, sans toucher à la session neuve.
+  // L'ancienne aboutit sur le formulaire du CAS : elle échoue, sans toucher à la session neuve
+  // (le CAS confirme la session neuve : ce n'est pas une « session expirée »).
   calls[0].resolve({ status: 200, ok: true, url: `${HOSTS.cas}/cas/login?service=x`, redirected: true, json: async () => ({}), text: async () => '<html>' });
-  await assert.rejects(stale, NotSignedIn);
+  await assert.rejects(stale, (e) => !(e instanceof NotSignedIn));
 
   const next = mail.listInbox();
   next.catch(() => {});

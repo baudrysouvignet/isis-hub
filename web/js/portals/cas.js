@@ -20,6 +20,7 @@ export const hasCasSession = (jar) => jar.has(CAS_HOST, 'TGC');
  * fonction que dans la requête chiffrée de bout en bout adressée à auth.univ-jfc.fr.
  */
 export async function casLogin(jar, username, password) {
+  aliveCheck = null;
   jar.clear(CAS_HOST);
   const form = await (await http(LOGIN_URL)).text();
   const execution = /<input[^>]*name="execution"[^>]*value="([^"]+)"/.exec(form)?.[1];
@@ -39,12 +40,37 @@ export async function casLogin(jar, username, password) {
 
 /** Ferme la session côté université, puis oublie tous les cookies. */
 export async function casLogout(jar) {
+  aliveCheck = null;
   try {
     if (hasCasSession(jar)) await http(`${HOSTS.cas}/cas/logout`);
   } finally {
     jar.clear();
   }
 }
+
+/**
+ * La session universitaire (CAS) est-elle encore valable ? Avant de déclarer « Session expirée »
+ * parce qu'un portail (messagerie, Moodle) ne donne pas de session, on le demande au CAS : s'il
+ * délivre encore un ticket, c'est le portail qui va mal (maintenance, panne), pas la session.
+ * Le ticket demandé (pour l'ENT) n'est ni lu ni envoyé nulle part : il expire tout seul.
+ * Rend true, false, ou null si le CAS ne répond pas. Seul « true » est gardé (30 s) : un « false »
+ * gardé ferait croire la session perdue juste après une reconnexion.
+ */
+let aliveCheck = null;
+export function casSessionAlive() {
+  if (aliveCheck && Date.now() - aliveCheck.at < 30_000) return aliveCheck.result;
+  const result = http(`${LOGIN_URL}?service=${encodeURIComponent(ENT_SERVICE)}`, { redirect: 'manual' })
+    .then((res) => {
+      if (res.location && /[?&]ticket=ST-/.test(res.location)) return true;
+      if (res.status === 200) return false; // formulaire de connexion : plus de session
+      return null;
+    })
+    .catch(() => null);
+  aliveCheck = { at: Date.now(), result };
+  result.then((r) => r !== true && aliveCheck?.result === result && (aliveCheck = null));
+  return result;
+}
+export const forgetCasCheck = () => (aliveCheck = null);
 
 // Service pour lequel le ticket d'identification de l'administrateur est demandé : l'ENT, déjà
 // enregistré auprès du CAS (le serveur ISIS Hub ne l'est pas). Même valeur que ENTService côté serveur.

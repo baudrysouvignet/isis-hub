@@ -1,8 +1,12 @@
 // Moodle : la session s'ouvre par le bouton CAS officiel de Moodle (SSO), puis on lit la clé
 // `sesskey` dans /my/ et on appelle l'API AJAX, exactement comme le fait le site de Moodle.
 
-import { HOSTS, NotSignedIn } from './config.js';
+import { HOSTS, PortalDown, notSignedInOrDown } from './config.js';
 import { http } from '../net/http.js';
+import { casSessionAlive } from './cas.js';
+
+// « Session expirée » seulement si le CAS le confirme ; sinon Moodle est en panne (voir config.js).
+const lost = (detail) => notSignedInOrDown('Moodle', detail, casSessionAlive);
 import { cached } from '../net/cache.js';
 import { parse } from './sanitize.js';
 
@@ -40,6 +44,7 @@ export async function connect() {
   const at = Date.now();
   const mine = epoch;
   const first = await http(`${HOSTS.moodle}/my/`);
+  if (first.status >= 500) throw new PortalDown('Moodle', `HTTP ${first.status}`); // maintenance, panne
   let found = readSession(await first.text());
   if (found && first.redirected) loggedIn(at); // Moodle est passé par le CAS : c'est une connexion
   if (!found) {
@@ -47,7 +52,7 @@ export async function connect() {
     found = readSession(afterSso) || readSession(await page('/my/'));
     if (found) loggedIn(at);
   }
-  if (!found) throw new NotSignedIn('Moodle');
+  if (!found) throw await lost('');
   if (mine === epoch) session = found; // ouverte avant une déconnexion : ne remplace rien
   return found;
 }
@@ -72,7 +77,7 @@ async function call(methodname, args, retry = true) {
   if (/invalidsesskey|requirelogin|servicerequireslogin/.test(code)) {
     session = null;
     if (retry) return call(methodname, args, false);
-    throw new NotSignedIn('Moodle');
+    throw await lost(code);
   }
   throw new Error(out.exception?.message || `Moodle : ${methodname} a échoué`);
 }
@@ -124,7 +129,7 @@ export function grades(courseId, { force = false } = {}) {
   return cached(`moodle:grades:${courseId}`, HOUR / 2, async () => {
     if (!session) await connect();
     const res = await http(`${HOSTS.moodle}/grade/report/user/index.php?id=${encodeURIComponent(courseId)}`);
-    if (new URL(res.url).pathname.startsWith('/login')) throw new NotSignedIn('Moodle');
+    if (new URL(res.url).pathname.startsWith('/login')) throw await lost('');
     const doc = parse(await res.text());
     const out = [];
     for (const row of doc.querySelectorAll('table.user-grade tr')) {
