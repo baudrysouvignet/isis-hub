@@ -6,6 +6,17 @@
 
 export const CHANGELOG = [
   {
+    version: '1.1.3',
+    date: '2026-11-21',
+    title: 'Plus de déconnexion quand la messagerie est en panne',
+    quiet: true, // correctif : au journal, sans pop-up
+    short: ['Messagerie ou Moodle en panne : tu restes connecté, seule la tuile concernée l’indique.'],
+    details: [
+      'Pendant une panne ou une maintenance de la messagerie, ISIS Hub affichait « Session expirée » en boucle, même juste après Face ID ou Touch ID. Une panne d’un portail n’est plus prise pour une fin de session : la tuile indique « indisponible pour le moment » avec « Réessayer ».',
+      '« Session expirée » n’apparaît plus que si le service d’authentification de l’université confirme que la session est finie.',
+    ],
+  },
+  {
     version: '1.1.2',
     date: '2026-11-20',
     title: 'Recherche par personne, notes renommées',
