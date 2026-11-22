@@ -3,15 +3,28 @@
 //   details : le détail complet (page « Journal des versions » du compte)
 // Les petits correctifs ne vont que dans le détail. Rien sur l'administration : le journal est public.
 //   quiet : version de correctifs, au journal seulement, jamais dans la pop-up « Nouveautés »
-//   launch : grande version, présentée par son écran d'arrivée (index.html, dialog[data-launch])
-//            à la place de la pop-up « Nouveautés »
+//   launch : l'écran « nouvelle version » (index.html, dialog[data-launch]), pour CHAQUE version
+//            non `quiet` désormais : un visuel (template[data-launch-art-tpl=<art>]), un titre, une
+//            phrase, 3 étapes au plus, et le bouton « Accéder » (go.to : où il mène, voir main.js).
+//            Boutons : Accéder, Quitter, Voir le changelog.
 
 export const CHANGELOG = [
   {
     version: '1.2.0',
     date: '2026-11-22',
     title: 'Moodle dans ISIS Hub',
-    launch: true,
+    launch: {
+      art: 'moodle',
+      title: 'Moodle, maintenant dans ISIS Hub',
+      sub: 'Tes cours, leurs fichiers et tes inscriptions, sans quitter le Hub.',
+      steps: [
+        ['Ouvre un cours', 'Touche un cours sur la tuile Moodle ou dans l’emploi du temps : il s’ouvre ici, tout déplié.'],
+        ['Lis et télécharge', 'Un PDF ou une image s’affiche d’un geste ; un dossier entier se récupère en .zip.'],
+        ['Inscris-toi', '« Ma classe » liste tous les cours de ton semestre. Sur « Pas inscrit », un bouton et c’est fait.'],
+      ],
+      privacy: 'Tout est lu depuis ta page, par le tunnel chiffré : le serveur d’ISIS Hub ne voit rien de tes cours.',
+      go: { label: 'Accéder à mes cours', to: 'moodle' },
+    },
     short: [
       'Moodle s’ouvre dans le Hub : tes cours, tout déplié, sans quitter la page.',
       'Aperçu des PDF et des images d’un geste, téléchargement direct, dossiers en .zip.',

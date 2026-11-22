@@ -333,8 +333,9 @@ function setupDashboard() {
   document.addEventListener('visibilitychange', () => Date.now() - lastCrous > 5 * 60_000 && refreshCrous());
   setupMailRules({ onRuleAdded: () => mails.applyRulesNow() });
   install = setupInstall();
-  // Écran d'arrivée de la v1.2.0 : « Ouvrir mes cours » ouvre l'accueil Moodle du Hub.
-  changelog = setupChangelog({ onLaunch: () => moodleView?.openHome(null) });
+  // Écran « nouvelle version » : où mène « Accéder » (launch.go.to dans core/changelog.js).
+  const launchTargets = { moodle: () => moodleView?.openHome(null) };
+  changelog = setupChangelog({ onLaunch: (to) => launchTargets[to]?.() });
   $$('[data-compose]').forEach((b) => b.addEventListener('click', () => composer.open()));
   moodleView = createMoodleView({
     app,

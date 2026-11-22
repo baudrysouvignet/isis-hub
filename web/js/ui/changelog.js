@@ -14,19 +14,49 @@ const tag = (v) => (v.startsWith('0.') ? `bêta v${v}` : `v${v}`);
 export function setupChangelog({ onLaunch } = {}) {
   const newsDialog = $('dialog[data-news]');
   const launchDialog = $('dialog[data-launch]');
-  let go = false;
+  let go = null; // destination du bouton « Accéder », suivie une fois la fenêtre fermée
+  let current = null;
   const launch = modal(launchDialog, {
     onOpen: () => requestAnimationFrame(() => (launchDialog.scrollTop = 0)),
     onClose() {
       markSeen('changelog', LATEST);
-      if (go) onLaunch?.();
-      go = false;
+      const to = go;
+      go = null;
+      if (to === 'log') openLog();
+      else if (to) onLaunch?.(to);
     },
   });
   $('[data-launch-go]', launchDialog).addEventListener('click', () => {
-    go = true;
+    go = current?.launch.go?.to ?? null;
     launch.close();
   });
+  $('[data-launch-log]', launchDialog).addEventListener('click', () => {
+    go = 'log';
+    launch.close();
+  });
+
+  /** Écran « nouvelle version » rempli depuis le journal (texte seulement, visuel cloné d'un modèle). */
+  function openLaunch(entry) {
+    const L = entry.launch;
+    current = entry;
+    $('[data-launch-chip]', launchDialog).textContent = `Nouveau · ${tag(entry.version)}`;
+    const tpl = $(`template[data-launch-art-tpl="${L.art}"]`);
+    $('[data-launch-art]', launchDialog).replaceChildren(tpl ? tpl.content.cloneNode(true) : '');
+    $('[data-launch-title]', launchDialog).textContent = L.title;
+    $('[data-launch-sub]', launchDialog).textContent = L.sub ?? '';
+    $('[data-launch-steps]', launchDialog).replaceChildren(
+      ...(L.steps ?? []).slice(0, 3).map(([t, d], i) =>
+        h('li', {}, h('span.launch-n', { text: String(i + 1) }), h('div', {}, h('h3', { text: t }), h('p', { text: d })))),
+    );
+    const priv = $('[data-launch-privacy]', launchDialog);
+    priv.hidden = !L.privacy;
+    $('span', priv).textContent = L.privacy ?? '';
+    const goBtn = $('[data-launch-go]', launchDialog);
+    goBtn.hidden = !L.go;
+    $('[data-launch-go-label]', goBtn).textContent = L.go?.label ?? 'Accéder';
+    launch.open();
+  }
+
   const logDialog = $('dialog[data-changelog]');
   const news = modal(newsDialog, { onClose: () => markSeen('changelog', LATEST) });
   const log = modal(logDialog, { onClose: () => markSeen('changelog', LATEST) });
@@ -77,8 +107,8 @@ export function setupChangelog({ onLaunch } = {}) {
         if (tourActive() || document.querySelector('dialog[open]')) return;
         clearInterval(wait);
         if (seen('changelog') === LATEST) return;
-        // Grande version (écran d'arrivée) : présentée seule ; le reste est au journal.
-        if (entries[0].launch && launchDialog) launch.open();
+        // Écran « nouvelle version » de la plus récente ; les précédentes sont dans le changelog.
+        if (entries[0].launch && launchDialog) openLaunch(entries[0]);
         else openNews(entries);
       }, 800);
     },

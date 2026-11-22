@@ -1555,6 +1555,7 @@ dialog.launch:not([open]) { display: none; }
 .launch-privacy .ic { flex: none; margin-top: 1px; color: var(--ok); }
 .launch-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 24px 22px; }
 .launch-actions .btn--primary { gap: 8px; }
+.launch-actions .launch-log { margin-right: auto; }
 
 @keyframes launchIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes laFloat { 50% { translate: 0 -4px; } }
@@ -1562,7 +1563,7 @@ dialog.launch:not([open]) { display: none; }
 @media (max-height: 820px) {
   .launch-hero { padding-top: 18px; padding-bottom: 20px; }
   .launch-art { height: 124px; margin-top: 12px; }
-  .la-card > .la-sec:last-child { display: none; }
+  .la-card > .la-sec:last-child, .la-card > .la-row + .la-row { display: none; }
   .la-card--back { height: 104px; }
   .launch-hero h2 { margin-top: 12px; }
   .launch-steps li { padding: 8px 6px; }
@@ -1577,11 +1578,20 @@ dialog.launch:not([open]) { display: none; }
   .launch .sheet-grab { display: block; position: absolute; top: 8px; left: 50%; translate: -50% 0; z-index: 1; width: 40px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, .5); margin: 0; }
   .launch-hero { padding: 24px 20px 22px; }
   .launch-hero h2 { font-size: 24px; }
-  .launch-art { height: 138px; }
+  .launch-art { height: 116px; margin-top: 12px; }
+  .la-card > .la-sec:last-child, .la-card > .la-row + .la-row { display: none; }
+  .la-pill { bottom: 6px; }
+  .la-card--back { height: 98px; }
+  .launch-hero h2 { margin-top: 12px; }
+  .launch-steps li { padding: 8px 4px; }
   .launch-steps { padding: 12px 14px 2px; }
   .launch-privacy { margin: 6px 18px 0; }
   .launch-actions { padding: 14px 18px calc(18px + env(safe-area-inset-bottom)); }
+  .launch-actions { flex-wrap: wrap; position: sticky; bottom: 0; z-index: 1; background: var(--surface); border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+  .launch-actions .btn { min-height: 44px; }
   .launch-actions .btn { flex: 1; justify-content: center; }
+  .launch-actions .btn--primary { order: -1; flex-basis: 100%; }
+  .launch-actions .launch-log { margin-right: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .launch.is-entering { animation-name: fade !important; }
