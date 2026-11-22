@@ -11,8 +11,22 @@ const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long'
 const when = (iso) => dateFmt.format(new Date(`${iso}T12:00:00`));
 const tag = (v) => (v.startsWith('0.') ? `bêta v${v}` : `v${v}`);
 
-export function setupChangelog() {
+export function setupChangelog({ onLaunch } = {}) {
   const newsDialog = $('dialog[data-news]');
+  const launchDialog = $('dialog[data-launch]');
+  let go = false;
+  const launch = modal(launchDialog, {
+    onOpen: () => requestAnimationFrame(() => (launchDialog.scrollTop = 0)),
+    onClose() {
+      markSeen('changelog', LATEST);
+      if (go) onLaunch?.();
+      go = false;
+    },
+  });
+  $('[data-launch-go]', launchDialog).addEventListener('click', () => {
+    go = true;
+    launch.close();
+  });
   const logDialog = $('dialog[data-changelog]');
   const news = modal(newsDialog, { onClose: () => markSeen('changelog', LATEST) });
   const log = modal(logDialog, { onClose: () => markSeen('changelog', LATEST) });
@@ -63,7 +77,9 @@ export function setupChangelog() {
         if (tourActive() || document.querySelector('dialog[open]')) return;
         clearInterval(wait);
         if (seen('changelog') === LATEST) return;
-        openNews(entries);
+        // Grande version (écran d'arrivée) : présentée seule ; le reste est au journal.
+        if (entries[0].launch && launchDialog) launch.open();
+        else openNews(entries);
       }, 800);
     },
   };

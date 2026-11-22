@@ -3,8 +3,30 @@
 //   details : le détail complet (page « Journal des versions » du compte)
 // Les petits correctifs ne vont que dans le détail. Rien sur l'administration : le journal est public.
 //   quiet : version de correctifs, au journal seulement, jamais dans la pop-up « Nouveautés »
+//   launch : grande version, présentée par son écran d'arrivée (index.html, dialog[data-launch])
+//            à la place de la pop-up « Nouveautés »
 
 export const CHANGELOG = [
+  {
+    version: '1.2.0',
+    date: '2026-11-22',
+    title: 'Moodle dans ISIS Hub',
+    launch: true,
+    short: [
+      'Moodle s’ouvre dans le Hub : tes cours, tout déplié, sans quitter la page.',
+      'Aperçu des PDF et des images d’un geste, téléchargement direct, dossiers en .zip.',
+      '« Ma classe » : tous les cours de ton semestre, et l’inscription en un bouton.',
+    ],
+    details: [
+      'Moodle dans le Hub : la tuile Moodle, l’emploi du temps, les rendus et les liens des enseignants ouvrent maintenant la page du cours dans ISIS Hub, plutôt que Moodle dans un autre onglet.',
+      'Page d’un cours : toutes les parties dépliées, un sommaire qui suit la lecture, les rendus à faire en tête, les devoirs et tests avec leur date limite et leur note, les nouveautés depuis ta dernière visite.',
+      'Fichiers : aperçu des PDF et des images dans le Hub, téléchargement direct, dossier entier en .zip. Les liens déposés par les enseignants mènent directement au site visé.',
+      'Accueil Moodle : recherche dans tous tes cours, le cours du moment, « Ma classe » (tous les cours du semestre de ta classe, S1 à S10, avec « Pas inscrit » sur ceux que tu ne suis pas), puis « Mes autres cours » et le catalogue des cours ISIS.',
+      'Inscription : en un bouton pour les cours ouverts, avec la clé donnée par l’enseignant sinon ; pour les autres, un mail à l’enseignant. Le mail « Bienvenue sur … » envoyé par Moodle après une inscription faite dans le Hub part à la corbeille, sans bruit.',
+      'Safari : les PDF s’affichent dans le Hub.',
+      'Tout est lu depuis ta page, par le tunnel chiffré : le serveur d’ISIS Hub ne voit ni tes cours ni tes fichiers. Seuls les numéros des éléments déjà vus sont gardés, chiffrés, pour signaler les nouveautés.',
+    ],
+  },
   {
     version: '1.1.4',
     date: '2026-11-22',
