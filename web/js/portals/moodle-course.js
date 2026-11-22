@@ -411,6 +411,18 @@ export async function fetchFile(ref) {
 
 // ------------------------------------------------------------------ catalogue et inscription
 
+/**
+ * Semestres d'une classe (deux par année : FIE1 → S1 et S2, FIA4 → S7 et S8) et celui en cours
+ * (août → janvier : impair ; février → juillet : pair).
+ */
+export function semestersOf(promo, date = new Date()) {
+  const n = Number(/(\d)/.exec(promo ?? '')?.[1]);
+  if (!n) return null;
+  const m = date.getMonth();
+  const odd = m >= 7 || m === 0;
+  return { list: [2 * n - 1, 2 * n], current: odd ? 2 * n - 1 : 2 * n };
+}
+
 const CAT_ROOT_RE = /informatique pour la sant/i;
 
 /** « cycle Ingénieur FIE3, 1ère année, semestre 5 », « ISIS-FIA4-SEMESTRE7 » → { promo, semester }. */

@@ -449,3 +449,12 @@ ol.mc-list { padding-left: 24px; }
 .mc-enrol-btn.is-busy, .mc-keyform .btn.is-busy { opacity: .7; }
 /* Le bouton du titre déborde de 10 px de chaque côté (marges négatives) : il a droit à cette place. */
 .mc-switch { max-width: calc(100% + 20px); }
+
+/* « Ma classe » : tous les cours du semestre, suivis ou non */
+.mh-class .mh-list-h { flex-wrap: wrap; }
+.mh-sems { display: flex; gap: 6px; margin-left: auto; overflow-x: auto; scrollbar-width: none; }
+.mh-sems::-webkit-scrollbar { display: none; }
+.mh-class-sum { margin: -2px 4px 10px; font: 500 13px/1.4 var(--font); color: var(--text-3); }
+.mh-class .mh-other-load { padding: 14px 4px; }
+.mh-sig .npill .ic { margin-left: -2px; }
+@container mc (max-width: 640px) { .mh-sems { margin-left: 0; width: 100%; } }

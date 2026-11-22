@@ -340,6 +340,7 @@ function setupDashboard() {
     schedule,
     matcher,
     notes,
+    promo: () => state.promo,
     isSignedIn: () => state.signedIn,
     onSessionLost: sessionLost,
     onEnrolled: () => courses.load(),

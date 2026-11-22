@@ -37,3 +37,11 @@ test('seules les adresses de Moodle sont demandées par le tunnel', () => {
 test('styles retirés avant analyse', () => {
   assert.equal(stripStyles('<p style="color:red">a</p><style>p{}</style>'), '<p>a</p>');
 });
+
+test('semestres de la classe : deux par année, celui en cours selon le mois', async () => {
+  const { semestersOf } = await import('../web/js/portals/moodle-course.js');
+  assert.deepEqual(semestersOf('FIA4', new Date(2026, 10, 22)), { list: [7, 8], current: 7 });
+  assert.deepEqual(semestersOf('FIA4', new Date(2027, 0, 10)), { list: [7, 8], current: 7 });
+  assert.deepEqual(semestersOf('FIE1', new Date(2027, 2, 1)), { list: [1, 2], current: 2 });
+  assert.equal(semestersOf(''), null);
+});

@@ -8,6 +8,7 @@
 import { $, $$, h, icon, toast, restartClass, clipFrom, lockScroll, motionOK, isTyping, EASE, EASE_IO } from '../core/dom.js';
 import * as moodle from '../portals/moodle.js';
 import * as MC from '../portals/moodle-course.js';
+import { semestersOf } from '../portals/moodle-course.js';
 import { HOSTS, NotSignedIn } from '../portals/config.js';
 import { normalize, codeOfCourse } from '../portals/match.js';
 import { rich, loadImages, linksOnly, plainText } from './moodle-rich.js';
@@ -122,7 +123,7 @@ function setSeen(courseId, ids) {
 
 // ------------------------------------------------------------------ vue
 
-export function createMoodleView({ app, schedule, matcher, notes, isSignedIn, onSessionLost, onEnrolled, onWrite, beforeOpen }) {
+export function createMoodleView({ app, schedule, matcher, notes, promo, isSignedIn, onSessionLost, onEnrolled, onWrite, beforeOpen }) {
   const viewer = createAttachmentViewer();
   const bento = $('.bento');
 
@@ -165,6 +166,7 @@ export function createMoodleView({ app, schedule, matcher, notes, isSignedIn, on
   let spy = null;
   let catFilter = 'Tous';
   let homeOtherOpen = false;
+  let semShown = null; // semestre affiché dans « Ma classe »
   let token = 0;
 
   const now = () => Date.now();
@@ -885,18 +887,18 @@ export function createMoodleView({ app, schedule, matcher, notes, isSignedIn, on
     if (card) loadImages(card);
   }
 
-  function homeRow(c) {
+  function homeRow(c, inClass = false) {
     const ns = nextSession(c.id);
     const nn = newCount(c.id);
     const late = lateOf(c.id);
     const sub = h('span.mh-row-s');
     if (ns) sub.append(ns.live ? h('span.live-dot') : icon('clock', 'ic ic--xs'), ns.live ? ns.txt : ns.txt.split(' · ')[0]);
     else sub.append(codeOf(c) || semOf(c.category) || c.category || 'Moodle');
-    const sig = h('span.mh-sig', {}, late ? pill('fail', `${late} en retard`) : null, nn ? h('span.mh-newdot', {}, h('span.mh-newdot-d'), `${nn} nouveau${nn > 1 ? 'x' : ''}`) : null);
+    const sig = h('span.mh-sig', {}, late ? pill('fail', `${late} en retard`) : null, nn ? h('span.mh-newdot', {}, h('span.mh-newdot-d'), `${nn} nouveau${nn > 1 ? 'x' : ''}`) : null, inClass ? h('span.npill.npill--ok', {}, icon('check', 'ic ic--xs'), 'Inscrit') : null);
     const name = cleanName(c.fullname);
     return h(
       'li',
-      { data: { row: c.id } },
+      { data: inClass ? {} : { row: c.id } },
       h('button.mh-row', { type: 'button', data: { mcCourse: c.id }, attrs: { 'aria-label': `${name}${ns ? `, ${ns.live ? 'en cours' : `prochaine séance ${ns.txt}`}` : ''}${late ? `, ${late} en retard` : ''}${nn ? `, ${nn} nouveautés` : ''}` } }, h('span.mh-av', { class: pat(c.id), text: avatarText(c), attrs: { 'aria-hidden': 'true' } }), h('span.mc-it-t', {}, h('b', { text: name }), sub), sig, icon('chevRight', 'ic ic--sm mh-chev')),
     );
   }
@@ -906,10 +908,46 @@ export function createMoodleView({ app, schedule, matcher, notes, isSignedIn, on
     if (li && c) li.replaceWith(homeRow(c));
   }
 
-  function catRow(c) {
+  function catRow(c, inClass = false) {
     const name = cleanName(c.fullname);
     const [k, lab] = c.self ? ['ok', 'Inscription libre'] : ['none', 'Sur demande'];
-    return h('li', {}, h('button.mh-row.mh-row--other', { type: 'button', data: { mcCourse: c.id }, attrs: { 'aria-label': `${name}, ${catLabel(c)}, pas inscrit, ${lab}${c.guest ? ', accès invité possible' : ''}` } }, h('span.mh-av.mh-av--ghost', { class: pat(c.id), text: avatarText(c), attrs: { 'aria-hidden': 'true' } }), h('span.mc-it-t', {}, h('b', { text: name }), h('span.mh-row-s', { text: `${catLabel(c)}${c.guest ? ' · accès invité' : ''}` })), h('span.mh-sig', {}, pill(k, lab)), icon('chevRight', 'ic ic--sm mh-chev')));
+    return h('li', {}, h('button.mh-row.mh-row--other', { type: 'button', data: { mcCourse: c.id }, attrs: { 'aria-label': `${name}, ${catLabel(c)}, pas inscrit, ${lab}${c.guest ? ', accès invité possible' : ''}` } }, h('span.mh-av.mh-av--ghost', { class: pat(c.id), text: avatarText(c), attrs: { 'aria-hidden': 'true' } }), h('span.mc-it-t', {}, h('b', { text: name }), h('span.mh-row-s', { text: `${inClass ? c.teachers?.slice(0, 2).join(', ') || 'Pas inscrit' : catLabel(c)}${c.guest ? ' · accès invité' : ''}` })), h('span.mh-sig', {}, pill(k, lab)), icon('chevRight', 'ic ic--sm mh-chev')));
+  }
+
+  /** « Ma classe » : tous les cours du semestre de la classe, suivis ou non (pour s'y inscrire). */
+  function classSection() {
+    const myPromo = promo?.();
+    const sems = semestersOf(myPromo);
+    if (!sems) return null;
+    if (!sems.list.includes(semShown)) semShown = sems.current;
+    const body = h('div.mh-class-b');
+    const box = h(
+      'section.mh-class',
+      { id: 'mh-class', attrs: { 'aria-labelledby': 'mh-class-t' } },
+      h(
+        'header.mh-list-h',
+        {},
+        h('h2', { id: 'mh-class-t', text: `Ma classe · ${myPromo}` }),
+        h('div.mh-sems', { attrs: { role: 'group', 'aria-label': 'Semestre' } }, ...sems.list.map((n) => h('button.mc-chip', { type: 'button', class: n === semShown ? 'is-on' : '', data: { semPick: n }, text: `Semestre ${n}${n === sems.current ? ' · en cours' : ''}`, attrs: { 'aria-pressed': String(n === semShown) } }))),
+      ),
+      body,
+    );
+    const fill = () => {
+      const list = (catalogList ?? [])
+        .filter((c) => c.promo === myPromo && c.semester === semShown)
+        .sort((a, b) => isEnrolled(b.id) - isEnrolled(a.id) || normalize(cleanName(a.fullname)).localeCompare(normalize(cleanName(b.fullname)), 'fr'));
+      const mine = list.filter((c) => isEnrolled(c.id)).length;
+      body.replaceChildren(
+        h('p.mh-class-sum', { text: list.length ? `${list.length} cours · ${mine ? `inscrit à ${mine}` : 'inscrit à aucun'}${list.length - mine ? ` · ${list.length - mine} où tu peux demander ou faire ton inscription` : ''}` : `Aucun cours trouvé sur Moodle pour le semestre ${semShown}.` }),
+        list.length ? h('ul.mh-rows', {}, ...list.map((c) => (isEnrolled(c.id) ? homeRow(enrolledById.get(c.id), true) : catRow(c, true)))) : null,
+      );
+    };
+    if (catalogList) fill();
+    else {
+      body.replaceChildren(h('p.mh-now-calm.mh-other-load', {}, h('span.spinner'), 'Lecture des cours de ta classe sur Moodle…'));
+      loadCatalog().then(() => box.isConnected && fill(), (err) => box.isConnected && body.replaceChildren(h('p.mh-now-calm.mh-other-load', {}, icon('alert', 'ic ic--sm'), `Liste indisponible : ${err.message}`)));
+    }
+    return box;
   }
 
   function catalogSection() {
@@ -957,6 +995,8 @@ export function createMoodleView({ app, schedule, matcher, notes, isSignedIn, on
         list.length ? h('ul.mh-rows', {}, ...list.map(homeRow)) : h('p.mh-now-calm', { text: 'Tu n’es inscrit à aucun cours pour l’instant.' }),
       ),
     );
+    const cls = classSection();
+    if (cls) out.push(cls);
     out.push(catalogSection());
     out.push(h('p.nv-priv.mc-priv', {}, icon('check', 'ic ic--xs'), 'Lu en direct sur Moodle, à travers le tunnel chiffré. Rien n’est copié chez ISIS Hub.'));
     homeBody.replaceChildren(...out);
@@ -1370,6 +1410,13 @@ export function createMoodleView({ app, schedule, matcher, notes, isSignedIn, on
     if (en) return enrol(en.dataset.mcEnrol, '', en);
     const gu = t.closest('[data-mc-guest]');
     if (gu) return renderPreview(gu.dataset.mcGuest, { guest: true });
+    const sp = t.closest('[data-sem-pick]');
+    if (sp) {
+      semShown = Number(sp.dataset.semPick);
+      $('#mh-class', homeBody)?.replaceWith(classSection());
+      $(`#mh-class [data-sem-pick="${semShown}"]`, homeBody)?.focus();
+      return;
+    }
     const cf = t.closest('[data-cat-filter]');
     if (cf) {
       catFilter = cf.dataset.catFilter;
