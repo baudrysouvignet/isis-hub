@@ -54,7 +54,7 @@ export function relLabel(t, now = Date.now()) {
 /** « FIA4-1-ISI-3 - Développement mobile » → « Développement mobile ». */
 export const cleanName = (n) =>
   String(n || '')
-    .replace(/^(?:[A-Z0-9][\w.]*(?:-[\w.]+)*|FI[AE]\s?\d)\s+-\s+|^[A-Z]{1,5}\d[\w.]*(?:-[\w.]+){2,}\s+(?=\S)/, '')
+    .replace(/^(?:[A-Z]{1,5}\d[\w.]*(?:-[\w.]+)*|FI[AE]\s?\d)\s+-\s+|^[A-Z]{1,5}\d[\w.]*(?:-[\w.]+){2,}\s+(?=\S)/, '')
     .trim() || String(n || '');
 // Code du cours (« FIA4-1-ISI-3 »), seulement s'il a la forme d'un code.
 const CODE_RE = /^[A-Z]{1,5}\d[\w.]*(?:-[\w.]+){1,5}$/i;
@@ -986,17 +986,28 @@ export function createMoodleView({ app, schedule, matcher, notes, promo, isSigne
     const out = [slot];
     const nc = nowCard();
     if (nc) out.push(nc);
-    const list = sorted();
-    out.push(
-      h(
-        'section.mh-list',
-        { attrs: { 'aria-labelledby': 'mh-list-t' } },
-        h('header.mh-list-h', {}, h('h2', { id: 'mh-list-t', text: 'Mes cours' }), h('span.mc-count', { text: String(list.length) })),
-        list.length ? h('ul.mh-rows', {}, ...list.map(homeRow)) : h('p.mh-now-calm', { text: 'Tu n’es inscrit à aucun cours pour l’instant.' }),
-      ),
-    );
+    // D'abord « Ma classe » (cours du semestre, suivis ou non), puis les cours suivis hors de la classe.
     const cls = classSection();
+    const myPromo = promo?.();
+    const sems = semestersOf(myPromo);
+    const inClass = (c) => {
+      const { promo: p, semester } = MC.promoOfCategory(c.category);
+      return Boolean(sems) && p === myPromo && sems.list.includes(semester);
+    };
     if (cls) out.push(cls);
+    const list = sorted().filter((c) => !cls || !inClass(c));
+    if (!cls || list.length) {
+      const label = cls ? 'Mes autres cours' : 'Mes cours';
+      out.push(
+        h(
+          'section.mh-list',
+          { attrs: { 'aria-labelledby': 'mh-list-t' } },
+          h('header.mh-list-h', {}, h('h2', { id: 'mh-list-t', text: label }), h('span.mc-count', { text: String(list.length) })),
+          cls ? h('p.mh-class-sum', { text: 'Les cours où tu es inscrit en dehors de ta classe : autres promos, années précédentes, transversaux.' }) : null,
+          list.length ? h('ul.mh-rows', {}, ...list.map((c) => homeRow(c))) : h('p.mh-now-calm', { text: 'Tu n’es inscrit à aucun cours pour l’instant.' }),
+        ),
+      );
+    }
     out.push(catalogSection());
     out.push(h('p.nv-priv.mc-priv', {}, icon('check', 'ic ic--xs'), 'Lu en direct sur Moodle, à travers le tunnel chiffré. Rien n’est copié chez ISIS Hub.'));
     homeBody.replaceChildren(...out);
