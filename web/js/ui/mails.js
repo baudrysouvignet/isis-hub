@@ -247,15 +247,18 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, lo
    * corbeille (récupérable). Critères stricts dans core/loginalerts.js ; toute autre alerte reste.
    */
   async function trashLoginAlerts(list) {
-    if (!loginAlerts?.pending() || !MP.loginAlertsOn()) return [];
-    const found = await loginAlerts.find(list, (m) => mail.fetchBody(m));
+    const logins = loginAlerts?.pendingLogin() && MP.loginAlertsOn();
+    if (!logins && !loginAlerts?.pendingEnrol()) return [];
+    const found = await loginAlerts.find(list, (m) => mail.fetchBody(m), { logins });
     if (!found.length) return [];
     await mail.setSeen(found, true).catch(() => {});
     await mail.moveTo(found, 'trash');
     loginAlerts.consume(found);
-    toast(
-      found.length > 1
-        ? `${found.length} alertes Moodle de tes connexions à ISIS Hub mises à la corbeille.`
+    // « Bienvenue sur <cours> » après une inscription faite dans le Hub : à la corbeille, sans message.
+    const alerts = found.filter((m) => !loginAlerts.isWelcome(m));
+    if (alerts.length) toast(
+      alerts.length > 1
+        ? `${alerts.length} alertes Moodle de tes connexions à ISIS Hub mises à la corbeille.`
         : 'Alerte Moodle « Nouvelle connexion » de ta connexion à ISIS Hub mise à la corbeille.',
       'trash',
     );
@@ -279,10 +282,10 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, lo
   let alertTimer = 0;
   function watchLoginAlerts() {
     clearTimeout(alertTimer);
-    const delays = [12_000, 15_000, 20_000, 30_000];
+    const delays = [12_000, 15_000, 20_000, 30_000, 60_000, 120_000, 240_000];
     let i = 0;
     const tick = async () => {
-      if (!loginAlerts?.pending() || !MP.loginAlertsOn()) return;
+      if (!(loginAlerts?.pendingLogin() && MP.loginAlertsOn()) && !loginAlerts?.pendingEnrol()) return;
       try {
         const res = await mail.listInbox('inbox');
         const found = await trashLoginAlerts(await mail.getMails(res.ids.slice(0, 8), 'inbox'));

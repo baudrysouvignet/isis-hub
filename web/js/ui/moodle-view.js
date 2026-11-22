@@ -804,11 +804,12 @@ export function createMoodleView({ app, schedule, matcher, notes, promo, isSigne
       button.disabled = true;
       button.classList.add('is-busy');
     }
+    const at = Date.now(); // avant la demande : le mail de bienvenue arrive après
     try {
       await MC.selfEnrol(Number(id), key);
       await loadEnrolled(true);
       toast(`Inscrit à « ${nameOf(id)} ». Il est dans Mes cours.`, 'check');
-      onEnrolled?.();
+      onEnrolled?.({ name: enrolledById.get(Number(id))?.fullname ?? '', at });
       INDEX = null;
       await openCourse(Number(id), { hist: false, animate: false });
       try {

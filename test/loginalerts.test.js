@@ -92,3 +92,30 @@ test('alerte de connexion : la fenêtre se ferme d’elle-même', () => {
   tick(WINDOW_MS + 1);
   assert.equal(la.pending(), false);
 });
+
+test('mail « Bienvenue sur <cours> » d’une inscription faite dans le Hub : seul celui-là', async () => {
+  const { createLoginAlerts, ENROL_MS } = await import('../web/js/core/loginalerts.js');
+  let t = Date.UTC(2026, 10, 22, 15, 13);
+  const la = createLoginAlerts({ now: () => t, userAgent: '' });
+  const mk = (subject, at, address = 'ne.pas.repondre@univ-jfc.fr') => ({ subject, date: new Date(at), from: { address } });
+  const body = (name) => async () => ({ content: `<p>Bonjour Baudry, vous êtes inscrit au cours ${name}</p><p>Vous lisez ceci dans un courriel ?</p>` });
+  assert.equal(la.pendingEnrol(), false);
+  la.noteEnrol('FIA4-1-LA-3 - Sociologie de la santé', t);
+  assert.equal(la.pendingEnrol(), true);
+  const good = mk('Bienvenue sur FIA4-1-LA-3 - Sociologie de la santé', t + 20_000);
+  const other = mk('Bienvenue sur FIE4-1-DI-5 - Anglais', t + 20_000); // inscription faite ailleurs
+  const fake = mk('Bienvenue sur FIA4-1-LA-3 - Sociologie de la santé', t + 20_000, 'x@gmail.com');
+  const late = mk('Bienvenue sur FIA4-1-LA-3 - Sociologie de la santé', t + ENROL_MS + 120_000);
+  t += 30_000;
+  let found = await la.find([other, fake, late, good], body('FIA4-1-LA-3 - Sociologie de la santé'), { logins: false });
+  assert.deepEqual(found, [good]);
+  assert.equal(la.isWelcome(good), true);
+  // contenu qui ne cite pas le cours : gardé
+  la.noteEnrol('FIE4-1-DI-5 - Anglais', t);
+  found = await la.find([mk('Bienvenue sur FIE4-1-DI-5 - Anglais', t + 5_000)], async () => ({ content: 'autre chose' }));
+  assert.deepEqual(found, []);
+  // un seul mail par inscription
+  la.consume([good]);
+  found = await la.find([mk('Bienvenue sur FIA4-1-LA-3 - Sociologie de la santé', t)], body('FIA4-1-LA-3 - Sociologie de la santé'));
+  assert.deepEqual(found, []);
+});

@@ -343,7 +343,14 @@ function setupDashboard() {
     promo: () => state.promo,
     isSignedIn: () => state.signedIn,
     onSessionLost: sessionLost,
-    onEnrolled: () => courses.load(),
+    onEnrolled: ({ name, at } = {}) => {
+      courses.load();
+      // Mail « Bienvenue sur <cours> » de cette inscription : mis à la corbeille en silence (core/loginalerts.js).
+      if (name) {
+        loginAlerts.noteEnrol(name, at);
+        mails?.watchLoginAlerts();
+      }
+    },
     onWrite: ({ name, subject }) => composer.open({ subject, body: 'Bonjour,\n\n', focusRecipient: name }),
     beforeOpen: () => {
       mails.close();
