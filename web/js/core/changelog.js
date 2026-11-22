@@ -6,6 +6,24 @@
 
 export const CHANGELOG = [
   {
+    version: '1.1.4',
+    date: '2026-11-22',
+    title: 'Prochains rendus Moodle',
+    short: [
+      'Nouvelle tuile « Prochains rendus » : tes devoirs Moodle avec leur date limite, une coche verte quand c’est rendu.',
+      'Emploi du temps : un repère sur les jours où un rendu est attendu.',
+      'Moodle : la tuile défile d’un bloc, la recherche reste en haut.',
+    ],
+    details: [
+      'Prochains rendus : les échéances Moodle (devoirs, tests…) à côté de la tuile Moodle, avec la date, la matière et le temps restant (« Demain, 23 h 59 », « Dans 3 j »). Les devoirs déjà rendus portent une coche verte ; les retards sont en rouge.',
+      'Un retard de plus d’une semaine n’est plus affiché.',
+      'Un rendu affiché par erreur se masque d’un clic (au survol de la ligne). Les rendus masqués restent en bas de la tuile, dans « Masqués », et se réaffichent d’un clic. Ce choix est gardé chiffré, sur tous tes appareils.',
+      'Emploi du temps : un petit badge sur les jours où un rendu est attendu (coche verte si tout est rendu) ; la pastille à côté de la date mène à la tuile Rendus.',
+      'Moodle : toute la tuile défile, la recherche reste collée en haut ; le cours du moment réapparaît en remontant, et la tuile remonte seule après un moment sans y toucher.',
+      'Les rendus sont lus dans Moodle depuis ta page, comme le reste : le serveur d’ISIS Hub n’en voit rien.',
+    ],
+  },
+  {
     version: '1.1.3',
     date: '2026-11-21',
     title: 'Plus de déconnexion quand la messagerie est en panne',
