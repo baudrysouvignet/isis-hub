@@ -8,6 +8,7 @@ import { fetchSchedule } from '../portals/ade.js';
 import { isEval, signalOf } from '../core/evals.js';
 import { hasMemo } from '../core/memos.js';
 import { hasMenu } from './crous.js';
+import { rendusOn, rendusWeek, onRendus, openRendus } from '../core/rendus.js';
 
 // Créneau du Resto U' affiché chaque jour de cours (lundi – vendredi).
 const LUNCH = { startMin: 12 * 60 + 30, endMin: 13 * 60 + 30 };
@@ -252,6 +253,7 @@ export function createSchedule({ app, matcher, onData, onOpen, onLunch }) {
     const week = tile.dataset.view === 'week';
     $('[data-nav="-1"]', tile).setAttribute('aria-label', week ? 'Semaine précédente' : 'Jour précédent');
     $('[data-nav="1"]', tile).setAttribute('aria-label', week ? 'Semaine suivante' : 'Jour suivant');
+    paintRendus(); // le jour ou la semaine affichés ont changé
   }
 
   /** Nombre de jours affichés côte à côte en vue jour (1, 2 ou 3 selon la largeur de la tuile). */
@@ -341,9 +343,48 @@ export function createSchedule({ app, matcher, onData, onOpen, onLunch }) {
       }, () => (text.textContent = `Aucun cours de ${promo} cette semaine.`));
     }
     if (dir) restartClass(body, dir > 0 ? 'week-in-right' : 'week-in-left');
+    paintRendus();
     renderSync();
     tick();
   }
+
+  // ------------------------------------------------------- rendus Moodle
+
+  // Repère discret : « 2 » en orange sur l'en-tête d'un jour où il reste à rendre, coche verte si
+  // tout est rendu ; à côté de la date, une pastille lisible qui mène à la tuile Rendus.
+  const rendusChip = h('button.day-rendus', { type: 'button', hidden: true });
+  $('.edt-date', tile).append(rendusChip);
+  const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
+  function rendusText({ open, done }) {
+    if (open) return `${plural(open, 'rendu', 'rendus')} à faire`;
+    return done ? `${plural(done, 'rendu', 'rendus')}, fait${done > 1 ? 's' : ''}` : '';
+  }
+  function paintRendus() {
+    heads.forEach((head, i) => {
+      const day = D.addDays(monday, i);
+      const r = rendusOn(day);
+      let mark = $('.dh-rendus', head);
+      if (!r.open && !r.done) return mark?.remove();
+      if (!mark) {
+        mark = h('span.dh-rendus', { on: { click: () => openRendus(mark.dataset.day) } });
+        head.append(mark);
+      }
+      mark.dataset.day = day;
+      mark.classList.toggle('is-done', !r.open);
+      mark.title = `Moodle : ${rendusText(r)}`;
+      mark.replaceChildren(icon(r.open ? 'task' : 'check', 'ic ic--xs'), r.open ? String(r.open) : '');
+    });
+    const week = tile.dataset.view === 'week';
+    const day = D.addDays(monday, active);
+    const r = week ? rendusWeek(monday) : rendusOn(day);
+    rendusChip.hidden = !r.open && !r.done;
+    if (rendusChip.hidden) return;
+    rendusChip.classList.toggle('is-done', !r.open);
+    rendusChip.replaceChildren(icon(r.open ? 'task' : 'check', 'ic ic--xs'), `${rendusText(r)}${week ? ' cette semaine' : ''}`);
+    rendusChip.setAttribute('aria-label', `Moodle : ${rendusText(r)}${week ? ' cette semaine' : ''}. Voir les rendus`);
+    rendusChip.onclick = () => openRendus(week ? monday : day, week ? 7 : 1);
+  }
+  onRendus(paintRendus);
 
   function renderSync() {
     const at = fetchedAt.get(chunkOf(monday));

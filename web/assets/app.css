@@ -1444,3 +1444,27 @@ a.dl-row:active { background: var(--press); }
 }
 .dl-more:hover { background: var(--hover); color: var(--text); }
 .dl-wrap > .dl-more { align-self: center; margin-top: 8px; }
+
+/* Emploi du temps : rendus Moodle du jour. Pastille à côté de la date, badge dans l'en-tête des jours. */
+.day-rendus {
+  align-self: center; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px;
+  border: 0; border-radius: 999px; cursor: pointer;
+  background: var(--td-soft); color: var(--td); font: 650 12px/1 var(--font); white-space: nowrap;
+  transition: filter var(--d-fast) var(--ease);
+}
+.day-rendus:hover { filter: brightness(.96); }
+.day-rendus .ic { stroke-width: 2; }
+.day-rendus.is-done { background: var(--ok-soft); color: var(--ok); }
+.edt-date .day-rendus[hidden] { display: none; }
+.cal-dh { position: relative; }
+.dh-rendus {
+  align-self: center; display: inline-flex; align-items: center; gap: 2px; height: 18px; padding: 0 5px;
+  margin-top: -6px; border-radius: 999px; cursor: pointer;
+  background: var(--td-soft); color: var(--td); font: 700 10.5px/1 var(--font); font-variant-numeric: tabular-nums;
+}
+.dh-rendus .ic { width: 11px; height: 11px; stroke-width: 2.2; }
+.dh-rendus.is-done { background: var(--ok-soft); color: var(--ok); padding: 0 3px; }
+/* Venue d'un badge de l'emploi du temps : les rendus du jour s'allument un instant. */
+.dl-item.is-flash .dl-row { animation: dl-flash 1.6s var(--ease); }
+@keyframes dl-flash { 0%, 40% { background: var(--brand-soft); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .dl-item.is-flash .dl-row { animation: none; background: var(--brand-soft); } }

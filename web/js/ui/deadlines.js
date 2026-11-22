@@ -4,6 +4,7 @@
 
 import { $, $$, h, icon, toast } from '../core/dom.js';
 import * as UD from '../core/userdata.js';
+import { setRendus, onOpenRendus } from '../core/rendus.js';
 import * as D from '../core/dates.js';
 import * as moodle from '../portals/moodle.js';
 import { HOSTS, NotSignedIn } from '../portals/config.js';
@@ -47,6 +48,7 @@ export function createDeadlines({ onSessionLost, onLogin }) {
     generation++;
     items = null;
     countChip.hidden = true;
+    setRendus([]); // l'emploi du temps n'affiche plus rien
     allLink.hidden = true;
   }
 
@@ -105,7 +107,7 @@ export function createDeadlines({ onSessionLost, onLogin }) {
       },
       icon(hidden ? 'eye' : 'eyeOff', 'ic ic--sm'),
     );
-    return h('li.dl-item', { class: `is-${b.tone}${hidden ? ' is-hidden' : ''}` }, inner, toggle);
+    return h('li.dl-item', { class: `is-${b.tone}${hidden ? ' is-hidden' : ''}`, data: { day: key } }, inner, toggle);
   }
 
   function render() {
@@ -116,6 +118,7 @@ export function createDeadlines({ onSessionLost, onLogin }) {
     const shown = current.filter((i) => !hidden[i.id]);
     const masked = current.filter((i) => hidden[i.id]);
     if (!masked.length) showHidden = false;
+    setRendus(shown); // repères sur les jours de l'emploi du temps
     const open = shown.filter((i) => i.status !== 'done');
     const late = open.filter((i) => i.at < now).length;
     countChip.textContent = open.length ? `${open.length} à rendre` : 'À jour';
@@ -181,6 +184,22 @@ export function createDeadlines({ onSessionLost, onLogin }) {
     if (document.visibilityState !== 'visible' || !items || Date.now() - last < 10 * 60_000) return;
     last = Date.now();
     load();
+  });
+
+  // Badge d'un jour touché dans l'emploi du temps : la tuile vient à l'écran, ses rendus s'allument.
+  onOpenRendus((day, days) => {
+    const last = D.addDays(day, days - 1);
+    const rows = $$('.dl-item', slot).filter((li) => li.dataset.day >= day && li.dataset.day <= last);
+    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Un seul défilement : deux à la suite, le second annule le premier.
+    (rows[0] ?? tile).scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'center' });
+    rows.forEach((li) => {
+      li.classList.remove('is-flash');
+      void li.offsetWidth;
+      li.classList.add('is-flash');
+      setTimeout(() => li.classList.remove('is-flash'), 1700);
+    });
+    rows[0]?.querySelector('.dl-row')?.focus({ preventScroll: true });
   });
 
   return { load: (o) => ((last = Date.now()), load(o)), showSignedOut };
