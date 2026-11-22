@@ -32,6 +32,9 @@ const detours = new Map();
 let libcurl;
 let engine;
 
+/** Valeur d'en-tête sans caractère hors ASCII (encodés comme dans une adresse). */
+export const asciiHeader = (v) => (typeof v === 'string' && /[^\x00-\x7f]/.test(v) ? v.replace(/[^\x00-\x7f]/gu, (c) => encodeURIComponent(c)) : v);
+
 async function load() {
   ({ libcurl } = await import('../../vendor/libcurl/libcurl.mjs'));
   await libcurl.load_wasm(new URL('../../vendor/libcurl/libcurl.wasm', import.meta.url).href);
@@ -64,9 +67,19 @@ async function load() {
   };
   const v = libcurl.version;
   stats.engine = { curl: v?.curl, ssl: v?.ssl, lib: v?.lib };
+  // Un en-tête de réponse en UTF-8 (nom de fichier accentué déposé sur Moodle, par exemple
+  // « Content-Disposition: filename="Présentation.pdf" ») n'est pas accepté par l'objet Response du
+  // navigateur : libcurl.js échouerait sans jamais répondre. Ses caractères non ASCII sont donc
+  // encodés (%C3%A9…) avant ; une adresse (Location) reste ainsi valable. libcurl.js n'est pas modifié.
+  class Session extends libcurl.HTTPSession {
+    static create_response(data, info) {
+      if (Array.isArray(info?.headers)) info.headers = info.headers.map(([k, v]) => [k, asciiHeader(v)]);
+      return super.create_response(data, info);
+    }
+  }
   // Une seule session pour toute la vie de la page ; ses cookies intégrés sont désactivés
   // (gérés par session.js, qui sait les persister chiffrés et les cloisonner par portail).
-  return new libcurl.HTTPSession({ enable_cookies: false });
+  return new Session({ enable_cookies: false });
 }
 
 export const ready = () =>

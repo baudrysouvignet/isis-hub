@@ -2,6 +2,7 @@
 // à rendre mis en avant, et une coche verte pour ce qui est déjà rendu. Lu directement dans Moodle
 // depuis la page, comme le reste : le serveur d'ISIS Hub n'en voit rien.
 
+import { courseIdOf, cmIdOf } from '../portals/moodle-course.js';
 import { $, $$, h, icon, toast } from '../core/dom.js';
 import * as UD from '../core/userdata.js';
 import { setRendus, onOpenRendus } from '../core/rendus.js';
@@ -29,6 +30,14 @@ function setHidden(id, on) {
 }
 
 const KIND = { assign: 'Devoir', quiz: 'Test', workshop: 'Atelier', forum: 'Forum', lesson: 'Leçon', choice: 'Sondage', h5pactivity: 'H5P', scorm: 'SCORM', data: 'Base de données', feedback: 'Questionnaire' };
+
+// Un clic ouvre le cours dans le Hub, directement sur le devoir (ui/moodle-view.js) ;
+// Ctrl/Cmd + clic garde le lien Moodle.
+function inHub(item) {
+  const course = courseIdOf(item.courseUrl);
+  const cm = cmIdOf(item.url);
+  return course ? { moodleCourse: course, ...(cm ? { moodleItem: `mc-i-${cm}` } : {}) } : {};
+}
 
 export function createDeadlines({ onSessionLost, onLogin }) {
   const tile = $('.tile--rendus');
@@ -85,7 +94,7 @@ export function createDeadlines({ onSessionLost, onLogin }) {
       state,
     ];
     const inner = item.url
-      ? h('a.dl-row', { href: item.url, target: '_blank', rel: 'noopener', attrs: { 'aria-label': label } }, ...body)
+      ? h('a.dl-row', { href: item.url, target: '_blank', rel: 'noopener', data: inHub(item), attrs: { 'aria-label': label } }, ...body)
       : h('div.dl-row', { attrs: { 'aria-label': label, role: 'group' } }, ...body);
     const hidden = Boolean(hiddenMap()[item.id]);
     const toggle = h(

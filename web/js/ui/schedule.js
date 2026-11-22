@@ -113,10 +113,11 @@ export function createSchedule({ app, matcher, onData, onOpen, onLunch }) {
     const found = matcher.get(ev);
     if (!found) return null;
     const { course, approx } = found;
-    const label = `Ouvrir sur Moodle${approx ? ' (correspondance approximative)' : ''} : ${course.fullname}`;
+    const label = `Ouvrir le cours Moodle${approx ? ' (correspondance approximative)' : ''} : ${course.fullname}`;
+    // Ouvre le cours dans le Hub (ui/moodle-view.js) ; Ctrl/Cmd + clic garde le lien Moodle.
     return h(
       'a.ev-mdl',
-      { class: approx ? 'is-approx' : '', href: course.url, target: '_blank', rel: 'noopener', title: label, attrs: { 'aria-label': label } },
+      { class: approx ? 'is-approx' : '', href: course.url, target: '_blank', rel: 'noopener', title: label, data: { moodleCourse: course.id }, attrs: { 'aria-label': label } },
       icon('book', 'ic ic--xs'),
       approx && h('span', { text: '≈', attrs: { 'aria-hidden': 'true' } }),
       icon('ext', 'ic ic--xs mdl-arrow'),

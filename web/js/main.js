@@ -20,6 +20,7 @@ import { createPromo } from './ui/promo.js';
 import { createSchedule } from './ui/schedule.js';
 import { createMails } from './ui/mails.js';
 import { createMoodle } from './ui/moodle.js';
+import { createMoodleView } from './ui/moodle-view.js';
 import { createDeadlines } from './ui/deadlines.js';
 import { setupMenus, setupBento, setupIcal, anyMenuOpen, closeMenus, modal } from './ui/layout.js';
 import { createComposer } from './ui/composer.js';
@@ -255,6 +256,7 @@ let install;
 let changelog;
 let bento;
 let rendus;
+let moodleView;
 
 function setupDashboard() {
   if (dashboardReady) return;
@@ -333,7 +335,22 @@ function setupDashboard() {
   install = setupInstall();
   changelog = setupChangelog();
   $$('[data-compose]').forEach((b) => b.addEventListener('click', () => composer.open()));
-  courses = createMoodle({ matcher, schedule, onSessionLost: sessionLost, onLogin: openLogin });
+  moodleView = createMoodleView({
+    app,
+    schedule,
+    matcher,
+    notes,
+    isSignedIn: () => state.signedIn,
+    onSessionLost: sessionLost,
+    onEnrolled: () => courses.load(),
+    onWrite: ({ name, subject }) => composer.open({ subject, body: 'Bonjour,\n\n', focusRecipient: name }),
+    beforeOpen: () => {
+      mails.close();
+      notes.close();
+      if (schedule.isExpanded()) schedule.collapse();
+    },
+  });
+  courses = createMoodle({ matcher, schedule, onSessionLost: sessionLost, onLogin: openLogin, onCourses: (list) => moodleView.setEnrolled(list) });
   rendus = createDeadlines({ onSessionLost: sessionLost, onLogin: openLogin });
   setupMenus();
   bento = setupBento();
@@ -417,6 +434,7 @@ function sessionLost() {
   vault.clear();
   clearCache();
   moodle.reset();
+  moodleView?.reset();
   mail.reset();
   matcher.clear();
   schedule.rerender();
@@ -452,6 +470,7 @@ async function logout() {
   notes?.load(state.promo, state.choice);
   clearCache();
   moodle.reset();
+  moodleView?.reset();
   mail.reset();
   matcher.clear();
   schedule?.rerender();
@@ -503,6 +522,7 @@ document.addEventListener('keydown', (e) => {
   if (anyMenuOpen()) return closeMenus();
   if (document.querySelector('dialog[open]') || tourActive()) return; // géré par « cancel » du dialog
   if (composer?.isOpen()) return; // géré par le compositeur
+  if (moodleView?.isOpen()) return moodleView.close();
   if (mails?.isOpen()) return mails.close();
   if (notes?.isOpen()) return notes.close();
   if (schedule?.isExpanded()) schedule.collapse();
@@ -531,6 +551,7 @@ watchUpdates({
       composer?.isOpen() ||
         mails?.isOpen() ||
         notes?.isOpen() ||
+        moodleView?.isOpen() ||
         document.querySelector('dialog[open]') ||
         tourActive() ||
         (state.screen === 'login' && [...document.querySelectorAll('[data-screen="login"] input')].some((i) => i.value)),

@@ -13,6 +13,8 @@ export function setRendus(items) {
   changeListeners.forEach((fn) => fn());
 }
 export const onRendus = (fn) => changeListeners.add(fn);
+/** Tous les rendus connus (déjà sans les masqués ni les vieux retards). */
+export const rendusList = () => list;
 
 /** Rendus d'un jour (« AAAA-MM-JJ ») : { open, done, items }. */
 export function rendusOn(day) {

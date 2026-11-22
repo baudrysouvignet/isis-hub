@@ -132,7 +132,10 @@ func New(root fs.FS, opt Options) (*Site, error) {
 		"base-uri 'none'",
 		"form-action 'none'",
 		"frame-ancestors 'none'",
-		"object-src 'none'",
+		// blob: seulement : Safari affiche un PDF dans un cadre avec son module PDF, soumis à
+		// object-src (Chrome, non). Ce sont les mêmes PDF que frame-src blob: : créés par la page
+		// elle-même après vérification de leurs premiers octets. Aucune adresse extérieure.
+		"object-src blob:",
 		"require-trusted-types-for 'script'",
 		"trusted-types hub-mail-parser",
 	}, "; ")

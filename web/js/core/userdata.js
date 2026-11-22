@@ -13,7 +13,8 @@ import * as sync from '../net/sync.js';
 // seen : déjà vu (visite guidée, installation, dernière version présentée), une fois par étudiant.
 // feedback : jetons « Mes propositions » (suivi des retours envoyés).
 // rendus : échéances Moodle masquées à la main (identifiant de l'événement → jour du masquage).
-export const SECTIONS = ['notes', 'evals', 'mail', 'profile', 'memos', 'seen', 'feedback', 'rendus'];
+// cours : éléments des cours Moodle déjà vus (identifiants seulement), pour signaler les nouveautés.
+export const SECTIONS = ['notes', 'evals', 'mail', 'profile', 'memos', 'seen', 'feedback', 'rendus', 'cours'];
 
 let local = { sections: {} };
 let vault = null;

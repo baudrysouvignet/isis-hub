@@ -28,11 +28,13 @@ export function createCourseSheet({ notes, schedule, matcher, isSignedIn, onWrit
     const box = $('[data-cs-moodle]', dialog);
     if (found) {
       box.replaceChildren(
-        h('a.sheet-foot-link', { href: found.course.url, target: '_blank', rel: 'noopener' }, `${found.approx ? '≈ ' : ''}${found.course.fullname}`, icon('ext', 'ic ic--xs')),
+        h('a.sheet-foot-link', { href: found.course.url, target: '_blank', rel: 'noopener', data: { moodleCourse: found.course.id } }, `${found.approx ? '≈ ' : ''}${found.course.fullname}`, icon('chevRight', 'ic ic--xs')),
       );
     } else {
       box.replaceChildren(
-        h('a.sheet-foot-link', { href: moodle.searchUrl(ev.code ? `FI${ev.code}` : ev.title), target: '_blank', rel: 'noopener' }, isSignedIn() ? 'Pas d’espace trouvé · chercher sur Moodle' : 'Chercher sur Moodle', icon('ext', 'ic ic--xs')),
+        isSignedIn()
+          ? h('a.sheet-foot-link', { href: moodle.searchUrl(ev.code ? `FI${ev.code}` : ev.title), target: '_blank', rel: 'noopener', data: { moodleHome: '', moodleQuery: ev.title } }, 'Pas d’espace trouvé · chercher dans les cours', icon('search', 'ic ic--xs'))
+          : h('a.sheet-foot-link', { href: moodle.searchUrl(ev.code ? `FI${ev.code}` : ev.title), target: '_blank', rel: 'noopener' }, 'Chercher sur Moodle', icon('ext', 'ic ic--xs')),
       );
     }
     return found;

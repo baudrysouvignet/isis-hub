@@ -48,6 +48,12 @@ export function connect() {
   return connecting;
 }
 
+/** Session ouverte (sans repasser par le CAS si elle l'est déjà). */
+export async function ensureSession() {
+  if (!session) await connect();
+  return session;
+}
+
 async function openSession() {
   const at = Date.now();
   const mine = epoch;

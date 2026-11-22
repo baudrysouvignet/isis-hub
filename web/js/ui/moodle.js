@@ -7,11 +7,12 @@ import * as moodle from '../portals/moodle.js';
 import { normalize } from '../portals/match.js';
 import { NotSignedIn } from '../portals/config.js';
 
-export function createMoodle({ matcher, schedule, onSessionLost, onLogin }) {
+export function createMoodle({ matcher, schedule, onSessionLost, onLogin, onCourses }) {
   const tile = $('.tile--moodle');
   const slot = $('[data-slot="moodle"]', tile);
   const countChip = $('[data-course-count]', tile);
   const autoChip = $('[data-moodle-auto]', tile);
+  const expandBtn = $('[data-moodle-home]', tile);
 
   let courses = [];
   let generation = 0;
@@ -27,6 +28,7 @@ export function createMoodle({ matcher, schedule, onSessionLost, onLogin }) {
     generation++;
     courses = [];
     countChip.hidden = autoChip.hidden = true;
+    if (expandBtn) expandBtn.hidden = true;
     spot = listEl = search = null;
   }
 
@@ -61,10 +63,11 @@ export function createMoodle({ matcher, schedule, onSessionLost, onLogin }) {
       { data: { course: c.id } },
       h(
         'a.course',
-        { href: c.url, target: '_blank', rel: 'noopener' },
+        // Un clic ouvre le cours dans le Hub (ui/moodle-view.js) ; Ctrl/Cmd + clic garde le lien Moodle.
+        { href: c.url, target: '_blank', rel: 'noopener', data: { moodleCourse: c.id } },
         h('span.course-ic', {}, icon('book', 'ic ic--sm')),
         h('span', {}, h('span.course-name', { text: c.fullname }), h('span.course-sub', { text: sub })),
-        icon('ext', 'ic ic--sm btn-arrow'),
+        icon('chevRight', 'ic ic--sm btn-arrow'),
       ),
     );
   }
@@ -103,6 +106,7 @@ export function createMoodle({ matcher, schedule, onSessionLost, onLogin }) {
       .filter(Boolean)
       .join(' · ');
     spot.href = found.course.url;
+    spot.dataset.moodleCourse = found.course.id;
     $(`[data-course="${found.course.id}"] .course`, tile)?.classList.add('is-match');
   }
 
@@ -144,6 +148,7 @@ export function createMoodle({ matcher, schedule, onSessionLost, onLogin }) {
   function render() {
     countChip.textContent = `${courses.length} cours`;
     countChip.hidden = false;
+    if (expandBtn) expandBtn.hidden = false;
     if (!courses.length) {
       slot.replaceChildren(empty('', 'book', 'Aucun cours Moodle', 'Tu n’es inscrit à aucun cours pour l’instant.'));
       return;
@@ -186,6 +191,7 @@ export function createMoodle({ matcher, schedule, onSessionLost, onLogin }) {
       courses = list.sort((a, b) => rank(a) - rank(b) || a.fullname.localeCompare(b.fullname, 'fr'));
       matcher.setEnrolled(courses);
       render();
+      onCourses?.(courses);
       schedule.rerender();
       matcher.resolve(schedule.upcoming(new Date(), 21), renderSpot);
     } catch (error) {
