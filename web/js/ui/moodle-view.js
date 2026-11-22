@@ -54,7 +54,7 @@ export function relLabel(t, now = Date.now()) {
 /** « FIA4-1-ISI-3 - Développement mobile » → « Développement mobile ». */
 export const cleanName = (n) =>
   String(n || '')
-    .replace(/^(?:[A-Z0-9][\w.]*(?:-[\w.]+)*|FI[AE]\s?\d)\s+-\s+/, '')
+    .replace(/^(?:[A-Z0-9][\w.]*(?:-[\w.]+)*|FI[AE]\s?\d)\s+-\s+|^[A-Z]{1,5}\d[\w.]*(?:-[\w.]+){2,}\s+(?=\S)/, '')
     .trim() || String(n || '');
 // Code du cours (« FIA4-1-ISI-3 »), seulement s'il a la forme d'un code.
 const CODE_RE = /^[A-Z]{1,5}\d[\w.]*(?:-[\w.]+){1,5}$/i;
@@ -894,7 +894,7 @@ export function createMoodleView({ app, schedule, matcher, notes, promo, isSigne
     const sub = h('span.mh-row-s');
     if (ns) sub.append(ns.live ? h('span.live-dot') : icon('clock', 'ic ic--xs'), ns.live ? ns.txt : ns.txt.split(' · ')[0]);
     else sub.append(codeOf(c) || semOf(c.category) || c.category || 'Moodle');
-    const sig = h('span.mh-sig', {}, late ? pill('fail', `${late} en retard`) : null, nn ? h('span.mh-newdot', {}, h('span.mh-newdot-d'), `${nn} nouveau${nn > 1 ? 'x' : ''}`) : null, inClass ? h('span.npill.npill--ok', {}, icon('check', 'ic ic--xs'), 'Inscrit') : null);
+    const sig = h('span.mh-sig', {}, late ? pill('fail', `${late} en retard`) : null, nn ? h('span.mh-newdot', {}, h('span.mh-newdot-d'), `${nn} nouveau${nn > 1 ? 'x' : ''}`) : null);
     const name = cleanName(c.fullname);
     return h(
       'li',
@@ -911,7 +911,7 @@ export function createMoodleView({ app, schedule, matcher, notes, promo, isSigne
   function catRow(c, inClass = false) {
     const name = cleanName(c.fullname);
     const [k, lab] = c.self ? ['ok', 'Inscription libre'] : ['none', 'Sur demande'];
-    return h('li', {}, h('button.mh-row.mh-row--other', { type: 'button', data: { mcCourse: c.id }, attrs: { 'aria-label': `${name}, ${catLabel(c)}, pas inscrit, ${lab}${c.guest ? ', accès invité possible' : ''}` } }, h('span.mh-av.mh-av--ghost', { class: pat(c.id), text: avatarText(c), attrs: { 'aria-hidden': 'true' } }), h('span.mc-it-t', {}, h('b', { text: name }), h('span.mh-row-s', { text: `${inClass ? c.teachers?.slice(0, 2).join(', ') || 'Pas inscrit' : catLabel(c)}${c.guest ? ' · accès invité' : ''}` })), h('span.mh-sig', {}, pill(k, lab)), icon('chevRight', 'ic ic--sm mh-chev')));
+    return h('li', {}, h('button.mh-row.mh-row--other', { type: 'button', data: { mcCourse: c.id }, attrs: { 'aria-label': `${name}, ${catLabel(c)}, pas inscrit, ${lab}${c.guest ? ', accès invité possible' : ''}` } }, h('span.mh-av.mh-av--ghost', { class: pat(c.id), text: avatarText(c), attrs: { 'aria-hidden': 'true' } }), h('span.mc-it-t', {}, h('b', { text: name }), h('span.mh-row-s', { text: `${inClass ? [lab, ...(c.teachers ?? []).slice(0, 2)].join(' · ') : catLabel(c)}${c.guest ? ' · accès invité' : ''}` })), h('span.mh-sig', {}, inClass ? pill('warn', 'Pas inscrit') : pill(k, lab)), icon('chevRight', 'ic ic--sm mh-chev')));
   }
 
   /** « Ma classe » : tous les cours du semestre de la classe, suivis ou non (pour s'y inscrire). */
