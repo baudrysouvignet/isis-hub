@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-// Personnes sur la photo : adresses de l'université seulement, mail d'accord groupé au plus tous
-// les deux jours et une seule fois par carte, accord ou refus dans le jeu, adresse effacée dès le
-// mail parti.
+// Personnes sur la photo, indiquées par l'administration à la validation : la carte attend leur
+// accord et passe au jury d'elle-même à la dernière réponse ; mail groupé au plus tous les deux
+// jours (sauf envoi forcé), une seule fois par carte ; adresse effacée dès le mail parti.
 func TestConsentFlow(t *testing.T) {
 	dir := t.TempDir()
 	clk := &clock{t: time.Date(2026, 11, 24, 9, 0, 0, 0, Paris)}
@@ -36,30 +36,34 @@ func TestConsentFlow(t *testing.T) {
 	lea.must("POST", "/api/tcg/mail", map[string]any{"email": "lea@gmail.com"}, 400)
 	lea.must("POST", "/api/tcg/mail", map[string]any{"email": "Lea.Martin@etud.univ-jfc.fr"}, 200)
 	lea.must("POST", "/api/tcg/mail", map[string]any{"email": "autre@univ-jfc.fr"}, 409) // un compte garde son adresse
+	hugo.must("POST", "/api/tcg/mail", map[string]any{"email": "hugo.b@etud.univ-jfc.fr"}, 200)
 
 	photo := func(n uint8) ([]byte, []byte) { return jpegSeed(t, 960, 720, n), jpegSeed(t, 320, 240, n) }
-	p1, t1 := photo(1)
-	if code, _ := ines.proposeWith("Hors université", p1, t1, true, "x@gmail.com"); code != 400 {
-		t.Fatal("adresse hors université acceptée")
+	propose := func(p *api, title string, n uint8) string {
+		img, th := photo(n)
+		if code, out := p.proposeWith(title, img, th, true, ""); code != 201 {
+			t.Fatalf("proposition : %d %v", code, out)
+		}
+		return p.state().Proposals[0].ID
 	}
-	if code, _ := ines.proposeWith("Trop de monde", p1, t1, true, "a@univ-jfc.fr b@univ-jfc.fr c@univ-jfc.fr d@univ-jfc.fr e@univ-jfc.fr f@univ-jfc.fr"); code != 400 {
-		t.Fatal("6 personnes acceptées")
-	}
-	// Léa, Hugo et l'autrice elle-même (d'accord d'office), avec un doublon ignoré.
-	ines.must("POST", "/api/tcg/propose", nil, 400) // (corps vide)
-	if code, out := ines.proposeWith("Au foyer", p1, t1, true, "lea.martin@etud.univ-jfc.fr, hugo.b@etud.univ-jfc.fr; LEA.MARTIN@etud.univ-jfc.fr ines.x@etud.univ-jfc.fr"); code != 201 {
-		t.Fatalf("proposition avec personnes : %d %v", code, out)
-	}
-	card := ines.state().Proposals[0].ID
+	card := propose(ines, "Au foyer", 1)
+	alone := propose(hugo, "Le néon", 2)
 
-	// Rien à envoyer tant que la carte n'est pas validée ; rien à montrer non plus.
-	if m := admin.must("GET", "/api/tcg/admin/mailing", nil, 200); len(m["targets"].([]any)) != 0 {
-		t.Fatal("mail prévu pour une carte pas encore validée")
+	// Sans personne indiquée : validée tout de suite. Adresses hors université refusées.
+	admin.must("POST", "/api/tcg/admin/card/"+alone, map[string]any{"action": "validate"}, 200)
+	if p := hugo.state().Proposals[0]; p.Status != StatusAccepted {
+		t.Fatalf("validation sans personne : %s", p.Status)
 	}
-	if len(lea.state().Appear) != 0 {
-		t.Fatal("carte en attente montrée à la personne indiquée")
+	admin.must("POST", "/api/tcg/admin/card/"+card, map[string]any{"action": "validate", "people": "x@gmail.com"}, 400)
+	// Léa, Hugo et l'autrice elle-même (d'accord d'office), avec un doublon ignoré.
+	admin.must("POST", "/api/tcg/admin/card/"+card, map[string]any{"action": "validate", "people": "lea.martin@etud.univ-jfc.fr, hugo.b@etud.univ-jfc.fr; LEA.MARTIN@etud.univ-jfc.fr ines.x@etud.univ-jfc.fr"}, 200)
+	if p := ines.state().Proposals[0]; p.Status != StatusConsent || p.Consent == nil || p.Consent.OK != 1 || p.Consent.Total != 3 {
+		t.Fatalf("en attente d'accord, vue de l'autrice : %+v", p)
 	}
-	admin.must("POST", "/api/tcg/admin/card/"+card, map[string]any{"action": "validate"}, 200)
+	if len(lea.state().Appear) != 1 {
+		t.Fatal("carte absente de « Mes apparitions »")
+	}
+
 	m := admin.must("GET", "/api/tcg/admin/mailing", nil, 200)
 	targets := m["targets"].([]any)
 	if len(targets) != 2 || m["open"] != true {
@@ -67,11 +71,7 @@ func TestConsentFlow(t *testing.T) {
 	}
 	var keys []string
 	for _, x := range targets {
-		tg := x.(map[string]any)
-		if !strings.HasSuffix(tg["email"].(string), "@etud.univ-jfc.fr") {
-			t.Fatalf("adresse : %v", tg)
-		}
-		keys = append(keys, tg["key"].(string))
+		keys = append(keys, x.(map[string]any)["key"].(string))
 	}
 	svc.Game.Flush()
 	raw, _ := os.ReadFile(filepath.Join(dir, "tcg.json"))
@@ -81,56 +81,61 @@ func TestConsentFlow(t *testing.T) {
 	if out := admin.must("POST", "/api/tcg/admin/mailing/sent", map[string]any{"keys": keys}, 200); out["marked"] != float64(2) {
 		t.Fatalf("marquées : %v", out)
 	}
-	// Envoyées : plus jamais proposées pour cette carte.
 	if m := admin.must("GET", "/api/tcg/admin/mailing", nil, 200); len(m["targets"].([]any)) != 0 || m["waiting"] != float64(2) {
 		t.Fatalf("après envoi : %v", m)
 	}
 
-	// Nouvelle carte avec Léa le lendemain : elle attend le prochain envoi (deux jours après le premier).
+	// Une nouvelle personne le lendemain : attend deux jours… sauf envoi forcé.
 	clk.add(26 * time.Hour)
-	p2, t2 := photo(2)
-	if code, _ := hugo.proposeWith("En amphi", p2, t2, true, "lea.martin@etud.univ-jfc.fr"); code != 201 {
-		t.Fatal("deuxième carte")
+	admin.must("POST", "/api/tcg/admin/card/"+alone, map[string]any{"action": "people", "people": "lea.martin@etud.univ-jfc.fr"}, 200)
+	if p := hugo.state().Proposals[0]; p.Status != StatusConsent {
+		t.Fatalf("personne ajoutée à une carte validée : %s", p.Status)
 	}
-	admin.must("POST", "/api/tcg/admin/card/"+hugo.state().Proposals[0].ID, map[string]any{"action": "validate"}, 200)
 	m = admin.must("GET", "/api/tcg/admin/mailing", nil, 200)
 	if m["open"] != false || len(m["targets"].([]any)) != 1 {
 		t.Fatalf("envoi trop tôt permis : %v", m)
 	}
 	key := m["targets"].([]any)[0].(map[string]any)["key"].(string)
 	admin.must("POST", "/api/tcg/admin/mailing/sent", map[string]any{"keys": []string{key}}, 409)
-	clk.add(23 * time.Hour)
-	admin.must("POST", "/api/tcg/admin/mailing/sent", map[string]any{"keys": []string{key}}, 200)
+	admin.must("POST", "/api/tcg/admin/mailing/sent", map[string]any{"keys": []string{key}, "force": true}, 200)
 
-	// Réponses : Léa accepte la première et refuse la seconde ; Hugo ne répond pas.
-	ap := lea.state().Appear
-	if len(ap) != 2 || ap[0].Answer != "" || ap[0].Img == "" {
-		t.Fatalf("mes apparitions : %+v", ap)
-	}
+	// Réponses : Léa accepte « Au foyer », Hugo aussi → la carte passe au jury d'elle-même.
 	lea.must("POST", "/api/tcg/consent", map[string]any{"card": card, "ok": true}, 200)
-	second := hugo.state().Proposals[0].ID
-	lea.must("POST", "/api/tcg/consent", map[string]any{"card": second, "ok": false}, 200)
-	lea.must("POST", "/api/tcg/consent", map[string]any{"card": second, "ok": true}, 409)  // refus définitif
-	ines.must("POST", "/api/tcg/consent", map[string]any{"card": second, "ok": true}, 404) // pas indiquée
-	for _, p := range hugo.state().Proposals {
-		if p.ID == second && (p.Status != StatusBlocked || !strings.Contains(p.Message, "accord")) {
-			t.Fatalf("carte refusée : %+v", p)
+	if p := ines.state().Proposals[0]; p.Status != StatusConsent {
+		t.Fatal("validée avant la dernière réponse")
+	}
+	hugo.must("POST", "/api/tcg/consent", map[string]any{"card": card, "ok": true}, 200)
+	if p := ines.state().Proposals[0]; p.Status != StatusAccepted {
+		t.Fatalf("après le dernier accord : %s", p.Status)
+	}
+	// Léa refuse « Le néon » : la carte n'est pas bloquée, elle attend la décision de l'administration.
+	lea.must("POST", "/api/tcg/consent", map[string]any{"card": alone, "ok": false}, 200)
+	lea.must("POST", "/api/tcg/consent", map[string]any{"card": alone, "ok": true}, 409)
+	ines.must("POST", "/api/tcg/consent", map[string]any{"card": alone, "ok": true}, 404) // pas indiquée
+	if p := hugo.state().Proposals[0]; p.Status != StatusConsent {
+		t.Fatalf("carte refusée : %s", p.Status)
+	}
+	var refused map[string]any
+	for _, x := range admin.must("GET", "/api/tcg/admin/cards?filter=consent", nil, 200)["list"].([]any) {
+		if c := x.(map[string]any); c["id"] == alone {
+			refused = c
 		}
 	}
-	found := false
-	for _, x := range admin.must("GET", "/api/tcg/admin/cards?filter=validated", nil, 200)["list"].([]any) {
-		c := x.(map[string]any)
-		if c["id"] != card {
-			continue
-		}
-		found = true
-		cs := c["consent"].(map[string]any)
-		if cs["total"] != float64(3) || cs["ok"] != float64(2) || cs["waiting"] != float64(1) {
-			t.Fatalf("indicateurs d'accord : %v", cs)
-		}
+	if refused == nil || refused["consent"].(map[string]any)["no"] != float64(1) {
+		t.Fatalf("indicateurs d'accord : %v", refused)
 	}
-	if !found {
-		t.Fatal("carte absente de l'administration")
+	// L'administration retire cette personne : la carte repart, sans être bloquée.
+	tags := refused["consent"].(map[string]any)["people"].([]any)
+	admin.must("POST", "/api/tcg/admin/card/"+alone, map[string]any{"action": "untag", "key": tags[0].(map[string]any)["key"]}, 200)
+	if p := hugo.state().Proposals[0]; p.Status != StatusAccepted {
+		t.Fatalf("après retrait de la personne : %s", p.Status)
+	}
+	// « Valider sans attendre » : une carte en attente passe au jury.
+	third := propose(ines, "En amphi", 3)
+	admin.must("POST", "/api/tcg/admin/card/"+third, map[string]any{"action": "validate", "people": "z@univ-jfc.fr"}, 200)
+	admin.must("POST", "/api/tcg/admin/card/"+third, map[string]any{"action": "force"}, 200)
+	if p := ines.state().Proposals[0]; p.Status != StatusAccepted {
+		t.Fatalf("validation forcée : %s", p.Status)
 	}
 }
 
@@ -184,5 +189,29 @@ func TestConsentWithdrawnOnPrintedCard(t *testing.T) {
 	}
 	if err := g.ModerateCard(id, Moderate{Action: "restore"}); err == nil {
 		t.Fatal("carte remise en jeu malgré le retrait d'accord")
+	}
+}
+
+// Un booster toutes les 24 heures, comptées depuis le dernier ouvert (pas à heure fixe).
+func TestBoosterEvery24h(t *testing.T) {
+	g, clk, players := liveGame(t)
+	clk.add(2 * time.Hour) // après la sortie de la vague
+	a := players[0]
+	if _, err := g.OpenBooster(a); err != nil {
+		t.Fatal(err)
+	}
+	clk.add(23*time.Hour + 59*time.Minute)
+	if v, _ := g.PlayerView(a); v.Me.BoosterReady {
+		t.Fatal("booster prêt avant 24 h")
+	}
+	if _, err := g.OpenBooster(a); err == nil {
+		t.Fatal("deuxième booster avant 24 h")
+	}
+	clk.add(time.Minute)
+	if v, _ := g.PlayerView(a); !v.Me.BoosterReady {
+		t.Fatal("booster pas prêt après 24 h")
+	}
+	if _, err := g.OpenBooster(a); err != nil {
+		t.Fatal(err)
 	}
 }

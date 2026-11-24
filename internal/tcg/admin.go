@@ -15,7 +15,7 @@ var BlockReasons = map[string]string{
 	"choquant":       "Contenu choquant ou illégal",
 	"illisible":      "Photo illisible",
 	"doublon":        "Doublon",
-	"personne":       "Refusée par une personne sur la photo",
+	"personne":       "Accord retiré par une personne sur la photo",
 	"autre":          "Autre",
 }
 
@@ -27,6 +27,8 @@ type Moderate struct {
 	Title   string `json:"title,omitempty"`
 	Desc    string `json:"desc,omitempty"`
 	Cat     string `json:"cat,omitempty"`
+	People  string `json:"people,omitempty"` // validate / people : adresses des personnes sur la photo
+	Key     string `json:"key,omitempty"`    // untag : personne à retirer de la carte
 }
 
 // ModerateCard applique la décision.
@@ -40,15 +42,70 @@ func (g *Game) ModerateCard(id string, m Moderate) error {
 	now := g.now()
 	switch m.Action {
 	case "validate":
+		// Validée par l'administration. Personnes indiquées sur la photo : la carte attend leur
+		// accord à toutes (« consent ») et passe au jury d'elle-même après la dernière réponse.
 		if c.Status != StatusPending && c.Status != StatusBlocked {
 			return userErr(http.StatusConflict, "Cette carte n’est pas à valider.")
 		}
 		if c.Purged {
 			return userErr(http.StatusConflict, "La photo de cette carte a déjà été effacée.")
 		}
-		c.Status, c.Decided, c.Reason, c.Message = StatusAccepted, now, "", ""
+		people, err := CleanPeople(m.People)
+		if err != nil {
+			return err
+		}
+		c.Tags = g.newTags(c.Author, people)
+		c.Status, c.Decided, c.Reason, c.Message = StatusConsent, now, "", ""
+		g.settleConsent(c)
+	case "people":
+		// Personnes ajoutées après coup (carte validée ou en jeu).
+		if c.Status != StatusConsent && c.Status != StatusAccepted && c.Status != StatusPrinted {
+			return userErr(http.StatusConflict, "Valide d’abord la carte.")
+		}
+		people, err := CleanPeople(m.People)
+		if err != nil {
+			return err
+		}
+		have := map[string]bool{}
+		for _, t := range c.Tags {
+			have[t.Key] = true
+		}
+		var fresh []string
+		for _, a := range people {
+			if !have[g.mailKey(a)] {
+				fresh = append(fresh, a)
+			}
+		}
+		if len(c.Tags)+len(fresh) > maxTags {
+			return userErr(http.StatusBadRequest, "%d personnes au plus par carte.", maxTags)
+		}
+		c.Tags = append(c.Tags, g.newTags(c.Author, fresh)...)
+		if c.Status == StatusAccepted {
+			c.Status = StatusConsent
+			g.forgetBallots(c.ID)
+		}
+		g.settleConsent(c)
+	case "untag":
+		// Ne plus attendre (ni demander) l'accord de cette personne, sans bloquer la carte.
+		kept := c.Tags[:0]
+		for _, t := range c.Tags {
+			if t.Key != m.Key {
+				kept = append(kept, t)
+			}
+		}
+		if len(kept) == len(c.Tags) {
+			return ErrNotFound
+		}
+		c.Tags = kept
+		g.settleConsent(c)
+	case "force":
+		// Valider sans attendre les réponses manquantes.
+		if c.Status != StatusConsent {
+			return userErr(http.StatusConflict, "Cette carte n’attend pas d’accord.")
+		}
+		c.Status, c.Decided = StatusAccepted, now
 	case "block":
-		if c.Status != StatusPending && c.Status != StatusAccepted {
+		if c.Status != StatusPending && c.Status != StatusAccepted && c.Status != StatusConsent {
 			return userErr(http.StatusConflict, "Seule une carte pas encore imprimée se bloque ; une carte en jeu se retire.")
 		}
 		if BlockReasons[m.Reason] == "" {
@@ -205,10 +262,10 @@ func (g *Game) adminCard(c *Card, img func(string) string) AdminCard {
 		Status: c.Status, Created: c.Created, Decided: c.Decided, Reason: c.Reason, Message: c.Message, Edited: c.Edited,
 		Wave: c.Wave, No: c.No, Rarity: c.Rarity, Run: c.Run, Issued: c.Issued, Jury: juryScore(c), JuryN: c.JuryVotes,
 	}
-	if c.Status == StatusPending || c.Status == StatusAccepted {
+	if c.Status == StatusPending || c.Status == StatusAccepted || c.Status == StatusConsent {
 		a.Flags = Flags(c.Title, c.Desc)
-		a.Consent = g.consentOf(c)
 	}
+	a.Consent = g.consentOf(c)
 	if w := g.wave(c.Wave); w != nil {
 		a.Total = len(w.Cards)
 	}
@@ -219,7 +276,7 @@ func (g *Game) adminCard(c *Card, img func(string) string) AdminCard {
 				continue
 			}
 			switch x.Status {
-			case StatusAccepted, StatusPrinted, StatusRemoved:
+			case StatusAccepted, StatusConsent, StatusPrinted, StatusRemoved:
 				a.Author.Validated++
 			case StatusBlocked:
 				a.Author.Blocked++
@@ -253,6 +310,8 @@ func (g *Game) AdminCards(filter string, img func(string) string) []AdminCard {
 		switch filter {
 		case "pending":
 			ok = c.Status == StatusPending
+		case "consent":
+			ok = c.Status == StatusConsent
 		case "validated":
 			ok = c.Status == StatusAccepted || c.Status == StatusPrinted
 		case "blocked":

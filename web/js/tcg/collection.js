@@ -158,7 +158,7 @@ function ghostSheet(ctx, c) {
     h('p.tk', { text: `Vague ${c.wave} · n° ${String(c.no).padStart(3, '0')}` }),
     h('h2.tdet-h', { text: 'Pas encore dans ta collection' }),
     rchip(c.rarity),
-    h('p.tdet-desc', { text: c.run > 0 ? `${plural(c.run, 'exemplaire numéroté', 'exemplaires numérotés')}, ${plural(Math.max(0, c.run - c.issued), 'encore à tirer', 'encore à tirer')}. Ouvre ton booster chaque jour, ou échange-la.` : 'Tirage illimité : elle finira par sortir d’un booster, ou échange-la.' }),
+    h('p.tdet-desc', { text: c.run > 0 ? `${plural(c.run, 'exemplaire numéroté', 'exemplaires numérotés')}, ${plural(Math.max(0, c.run - c.issued), 'encore à tirer', 'encore à tirer')}. Ouvre ton booster toutes les 24 h, ou échange-la.` : 'Tirage illimité : elle finira par sortir d’un booster, ou échange-la.' }),
     holders.length ? h('p.thelp', { text: `${holders.map((m) => m.pseudo).join(', ')} ${holders.length > 1 ? 'l’ont' : 'l’a'} : propose un échange.` }) : null,
     h('div.tdet-acts', {}, toggle),
   );

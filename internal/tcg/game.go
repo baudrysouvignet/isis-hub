@@ -184,6 +184,20 @@ func (g *Game) latestPrinted() *Wave {
 
 // ------------------------------------------------------------ booster du jour
 
+// boosterEvery : un booster toutes les 24 heures, comptées depuis le dernier ouvert.
+const boosterEvery = 24 * time.Hour
+
+// boosterNext : quand le prochain booster du joueur est prêt.
+func (g *Game) boosterNext(p *Player, now time.Time) time.Time {
+	if !p.BoosterAt.IsZero() {
+		return p.BoosterAt.Add(boosterEvery)
+	}
+	if p.Booster == DayKey(now) { // ouvert avant la règle des 24 h : prochain le lendemain matin
+		return nextBooster(now)
+	}
+	return time.Time{}
+}
+
 // OpenBooster ouvre le booster du jour : 5 cartes, plus rares au fil de leur rythme.
 func (g *Game) OpenBooster(pid string) ([]Pull, error) {
 	g.mu.Lock()
@@ -197,8 +211,8 @@ func (g *Game) OpenBooster(pid string) ([]Pull, error) {
 		return nil, userErr(http.StatusConflict, "Le jeu n’a pas encore commencé.")
 	}
 	day := DayKey(now)
-	if p.Booster == day {
-		return nil, userErr(http.StatusConflict, "Booster déjà ouvert aujourd’hui : le prochain arrive demain à %d h.", BoosterHour)
+	if next := g.boosterNext(p, now); now.Before(next) {
+		return nil, userErr(http.StatusConflict, "Booster déjà ouvert : le prochain arrive le %s.", next.In(Paris).Format("02/01 à 15h04"))
 	}
 	pulls := g.draw(now)
 	if len(pulls) == 0 {
@@ -224,7 +238,7 @@ func (g *Game) OpenBooster(pid string) ([]Pull, error) {
 			g.addFeed(FeedItem{Kind: kind, Player: pid, Card: c.ID, At: now})
 		}
 	}
-	p.Booster = day
+	p.Booster, p.BoosterAt = day, now
 	p.LastDraw = pulls
 	g.st.Boosters[day]++
 	g.dirty = true
@@ -357,7 +371,6 @@ func (g *Game) addFeed(f FeedItem) {
 // NewProposal : une carte proposée (images déjà enregistrées). Rend son identifiant.
 type NewProposal struct {
 	Title, Desc, Cat string
-	People           []string // adresses des personnes sur la photo (CleanPeople)
 	Img, Thumb       string
 	Bytes            int64
 }
@@ -458,7 +471,6 @@ func (g *Game) Propose(pid string, in NewProposal) (string, error) {
 		Title: title, Desc: desc, Cat: cat, Img: in.Img, Thumb: in.Thumb, Bytes: in.Bytes,
 		Status: StatusPending, Created: g.now(),
 	}
-	c.Tags = g.newTags(pid, in.People)
 	g.st.Cards[c.ID] = c
 	g.st.Used += in.Bytes
 	g.dirty = true

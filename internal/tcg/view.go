@@ -15,6 +15,12 @@ func ImgURL(name string) string {
 	return "api/tcg/img/" + name
 }
 
+// ConsentCount : « 1 / 2 d'accord », pour l'auteur (sans savoir qui).
+type ConsentCount struct {
+	OK    int `json:"ok"`
+	Total int `json:"total"`
+}
+
 // CardView : une carte imprimée, telle que la voit un joueur.
 type CardView struct {
 	ID      string `json:"id"`
@@ -142,22 +148,23 @@ func (g *Game) candidateView(c *Card) CardView {
 
 // ProposalView : une proposition du joueur, avec son statut.
 type ProposalView struct {
-	ID      string    `json:"id"`
-	Num     int       `json:"num"`
-	Title   string    `json:"title"`
-	Desc    string    `json:"desc"`
-	Cat     string    `json:"cat"`
-	Img     string    `json:"img,omitempty"`
-	Thumb   string    `json:"thumb,omitempty"`
-	Status  string    `json:"status"`
-	Reason  string    `json:"reason,omitempty"`
-	Message string    `json:"message,omitempty"`
-	Created time.Time `json:"created"`
-	Wave    int       `json:"wave,omitempty"`
-	Rarity  Rarity    `json:"rarity,omitempty"`
-	Issued  int       `json:"issued,omitempty"`
-	AtJury  bool      `json:"atJury,omitempty"`
-	JuryEnd time.Time `json:"juryEnd,omitzero"`
+	ID      string        `json:"id"`
+	Num     int           `json:"num"`
+	Title   string        `json:"title"`
+	Desc    string        `json:"desc"`
+	Cat     string        `json:"cat"`
+	Img     string        `json:"img,omitempty"`
+	Thumb   string        `json:"thumb,omitempty"`
+	Status  string        `json:"status"`
+	Reason  string        `json:"reason,omitempty"`
+	Message string        `json:"message,omitempty"`
+	Created time.Time     `json:"created"`
+	Wave    int           `json:"wave,omitempty"`
+	Rarity  Rarity        `json:"rarity,omitempty"`
+	Issued  int           `json:"issued,omitempty"`
+	AtJury  bool          `json:"atJury,omitempty"`
+	Consent *ConsentCount `json:"consent,omitempty"` // accords des personnes sur la photo (carte en attente)
+	JuryEnd time.Time     `json:"juryEnd,omitzero"`
 }
 
 // BallotView : un bulletin du jury.
@@ -280,15 +287,18 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 		Me: Me{
 			ID: p.ID, Pseudo: p.Pseudo, Initials: Initials(p.Pseudo), Muted: p.Muted, Created: p.Created,
 			MailLinked: p.MailKey != "", Admin: p.Admin,
-			ProposalsLeft: g.proposalsLeft(pid, now), NextBooster: nextBooster(now),
+			ProposalsLeft: g.proposalsLeft(pid, now), NextBooster: g.boosterNext(p, now),
 		},
 		Owned: map[string][]int{}, Wish: append([]string{}, p.Wish...), Feed: []FeedView{}, Matches: []MatchView{},
 		Trades: []TradeView{}, Invites: []InviteView{}, Proposals: []ProposalView{}, Cards: []CardView{},
 		Appear: g.appearances(p),
 	}
-	v.Me.BoosterReady = v.Phase == "live" && p.Booster != DayKey(now)
-	if p.Booster == DayKey(now) {
-		v.LastDraw = p.LastDraw
+	v.Me.BoosterReady = v.Phase == "live" && !now.Before(v.Me.NextBooster)
+	if !v.Me.BoosterReady {
+		v.LastDraw = p.LastDraw // tirage des dernières 24 h (« Revoir mon tirage »)
+	}
+	if v.Me.NextBooster.IsZero() {
+		v.Me.NextBooster = now
 	}
 	// Cartes en jeu (et celles retirées que le joueur possède encore).
 	for _, w := range g.st.Waves {
@@ -320,6 +330,15 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 		}
 		if c.Status == StatusAccepted && jw != nil {
 			pv.AtJury, pv.JuryEnd = true, jw.JuryUntil
+		}
+		if len(c.Tags) > 0 && c.Status == StatusConsent {
+			cc := &ConsentCount{Total: len(c.Tags)}
+			for _, t := range c.Tags {
+				if t.Answer == "ok" {
+					cc.OK++
+				}
+			}
+			pv.Consent = cc
 		}
 		v.Proposals = append(v.Proposals, pv)
 	}

@@ -2,11 +2,12 @@ package tcg
 
 // Personnes sur la photo.
 //
-// L'auteur indique, en proposant sa carte, les adresses universitaires des personnes visibles. Une
-// fois la carte validée, l'administrateur leur écrit depuis SA messagerie (ISIS Hub, dans sa page) :
-// un seul mail, tous les destinataires en copie cachée, au plus une fois tous les deux jours, et
-// chaque adresse ne reçoit ce mail qu'une fois par carte. Chacun ouvre le TCG (« Mes apparitions »)
-// et donne ou refuse son accord ; un refus retire la carte.
+// En validant une carte, l'administrateur indique les adresses universitaires des personnes
+// visibles. La carte attend alors leur accord (« consent ») et passe au jury d'elle-même après la
+// dernière réponse positive. Les mails partent de SA messagerie (ISIS Hub, dans sa page) : un seul
+// mail, tous les destinataires en copie cachée, au plus une fois tous les deux jours (sauf envoi
+// forcé), et chaque adresse ne le reçoit qu'une fois par carte. Chacun répond dans le TCG
+// (« Mes apparitions ») ; un refus garde la carte en attente, à la décision de l'administrateur.
 //
 // Le serveur ne garde que l'empreinte de l'adresse (HMAC) et, jusqu'au départ du mail seulement,
 // l'adresse chiffrée (AES-GCM, clé tirée de VAULT_PEPPER). Le serveur n'envoie aucun mail.
@@ -38,6 +39,7 @@ const (
 type Tag struct {
 	Key      string    `json:"key"`               // HMAC(adresse)
 	Enc      string    `json:"enc,omitempty"`     // adresse chiffrée, effacée dès le mail parti
+	Hint     string    `json:"hint,omitempty"`    // « le…@etud.univ-jfc.fr » : pour que l'administration s'y retrouve
 	Notified time.Time `json:"notified,omitzero"` // mail d'accord parti
 	Answer   string    `json:"answer,omitempty"`  // "ok" | "no"
 	At       time.Time `json:"at,omitzero"`
@@ -116,12 +118,22 @@ func (g *Game) newTags(author string, people []string) []Tag {
 	for _, a := range people {
 		k := g.mailKey(a)
 		if k == mine && mine != "" {
-			tags = append(tags, Tag{Key: k, Answer: "ok", At: now, By: author})
+			tags = append(tags, Tag{Key: k, Hint: mailHint(a), Answer: "ok", At: now, By: author})
 			continue
 		}
-		tags = append(tags, Tag{Key: k, Enc: g.sealMail(a)})
+		tags = append(tags, Tag{Key: k, Hint: mailHint(a), Enc: g.sealMail(a)})
 	}
 	return tags
+}
+
+// mailHint : début de l'adresse et domaine (« le…@etud.univ-jfc.fr »), jamais l'adresse entière.
+func mailHint(a string) string {
+	local, domain, _ := strings.Cut(a, "@")
+	r := []rune(local)
+	if len(r) > 2 {
+		r = r[:2]
+	}
+	return string(r) + "…@" + domain
 }
 
 // LinkMail : rattache au joueur l'adresse de sa messagerie (transmise par sa page). Une adresse ne
@@ -163,7 +175,23 @@ func (g *Game) LinkMail(pid, addr string) error {
 }
 
 // askable : carte dont on peut demander l'accord (validée par l'administration, pas encore écartée).
-func askable(c *Card) bool { return c.Status == StatusAccepted || c.Status == StatusPrinted }
+func askable(c *Card) bool {
+	return c.Status == StatusConsent || c.Status == StatusAccepted || c.Status == StatusPrinted
+}
+
+// settleConsent : carte en attente d'accord dont toutes les personnes ont dit oui (ou sans personne
+// indiquée) → validée, elle passe au jury.
+func (g *Game) settleConsent(c *Card) {
+	if c.Status != StatusConsent {
+		return
+	}
+	for _, t := range c.Tags {
+		if t.Answer != "ok" {
+			return
+		}
+	}
+	c.Status, c.Decided = StatusAccepted, g.now()
+}
 
 // AppearView : une carte où le joueur est indiqué.
 type AppearView struct {
@@ -234,7 +262,7 @@ func (g *Game) Consent(pid, id string, ok bool) error {
 		return ErrNotFound
 	}
 	if t.Answer == "no" {
-		return userErr(http.StatusConflict, "Tu as refusé cette carte : elle est retirée.")
+		return userErr(http.StatusConflict, "Tu as déjà refusé cette carte.")
 	}
 	if !askable(c) {
 		return userErr(http.StatusConflict, "Cette carte n’attend pas ton accord pour l’instant.")
@@ -243,14 +271,15 @@ func (g *Game) Consent(pid, id string, ok bool) error {
 	t.At, t.By, t.Enc = now, pid, ""
 	if ok {
 		t.Answer = "ok"
+		g.settleConsent(c) // dernière réponse : la carte passe au jury
 		g.dirty = true
 		return nil
 	}
 	t.Answer = "no"
 	switch c.Status {
 	case StatusAccepted:
-		c.Status, c.Decided, c.Reason = StatusBlocked, now, "personne"
-		c.Message = "Une personne présente sur la photo n’a pas donné son accord : la carte est retirée."
+		// Pas encore imprimée : elle sort du jury et reste en attente, à la décision de l'administration.
+		c.Status = StatusConsent
 		g.forgetBallots(c.ID)
 	case StatusPrinted:
 		// En jeu : ceux qui l'ont gardent leur exemplaire, devenu « Accord retiré » (ni photo ni texte).
@@ -262,33 +291,49 @@ func (g *Game) Consent(pid, id string, ok bool) error {
 
 // ConsentView : où en sont les accords d'une carte (administration).
 type ConsentView struct {
-	Total   int      `json:"total"`
-	OK      int      `json:"ok"`
-	No      int      `json:"no"`
-	Waiting int      `json:"waiting"` // prévenues, sans réponse
-	ToSend  int      `json:"toSend"`  // pas encore prévenues
-	By      []string `json:"by,omitempty"`
+	Total   int       `json:"total"`
+	OK      int       `json:"ok"`
+	No      int       `json:"no"`
+	Waiting int       `json:"waiting"` // prévenues, sans réponse
+	ToSend  int       `json:"toSend"`  // pas encore prévenues
+	By      []string  `json:"by,omitempty"`
+	People  []TagView `json:"people"`
+}
+
+// TagView : une personne indiquée, vue par l'administration (adresse abrégée, jamais entière).
+type TagView struct {
+	Key      string    `json:"key"`
+	Hint     string    `json:"hint"`
+	State    string    `json:"state"` // ok | no | waiting | toSend
+	By       string    `json:"by,omitempty"`
+	Notified time.Time `json:"notified,omitzero"`
 }
 
 func (g *Game) consentOf(c *Card) *ConsentView {
 	if len(c.Tags) == 0 {
 		return nil
 	}
-	v := &ConsentView{Total: len(c.Tags)}
+	v := &ConsentView{Total: len(c.Tags), People: []TagView{}}
 	for _, t := range c.Tags {
+		tv := TagView{Key: t.Key, Hint: t.Hint, By: g.pseudo(t.By), Notified: t.Notified}
 		switch {
 		case t.Answer == "ok":
 			v.OK++
-			if ps := g.pseudo(t.By); ps != "" {
-				v.By = append(v.By, ps)
+			tv.State = "ok"
+			if tv.By != "" {
+				v.By = append(v.By, tv.By)
 			}
 		case t.Answer == "no":
 			v.No++
+			tv.State = "no"
 		case !t.Notified.IsZero():
 			v.Waiting++
+			tv.State = "waiting"
 		default:
 			v.ToSend++
+			tv.State = "toSend"
 		}
+		v.People = append(v.People, tv)
 	}
 	return v
 }
@@ -359,14 +404,15 @@ func (g *Game) MailingState() MailingView {
 
 // MailingSent : le mail est parti pour ces adresses (l'administrateur l'a envoyé de sa messagerie).
 // Elles ne recevront plus ce mail pour ces cartes, et leur adresse en clair est effacée.
-func (g *Game) MailingSent(keys []string) (int, error) {
+// force : envoi demandé par l'administrateur avant la fin des deux jours.
+func (g *Game) MailingSent(keys []string, force bool) (int, error) {
 	if len(keys) == 0 || len(keys) > mailingChunk {
 		return 0, ErrInvalid
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := g.now()
-	if open, next := g.mailingOpen(now); !open {
+	if open, next := g.mailingOpen(now); !open && !force {
 		return 0, userErr(http.StatusConflict, "Un mail est déjà parti il y a moins de deux jours : prochain envoi le %s.", next.In(Paris).Format("02/01 à 15h04"))
 	}
 	want := map[string]bool{}
@@ -393,7 +439,7 @@ func (g *Game) MailingSent(keys []string) (int, error) {
 	if n == 0 {
 		return 0, nil
 	}
-	if g.st.Mailing.Start.IsZero() || now.Sub(g.st.Mailing.Start) >= mailingBatch {
+	if g.st.Mailing.Start.IsZero() || now.Sub(g.st.Mailing.Start) >= mailingBatch || force {
 		g.st.Mailing.Start = now
 	}
 	g.st.Mailing.Last = now

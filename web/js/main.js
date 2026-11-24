@@ -454,6 +454,8 @@ async function enterDashboard(promoChanged = true) {
   }
   // Lien vers le jeu : « #tcg », ou « #echange=K7Q2 » (QR code d'un échange en face à face).
   if (!tcg.handleHash() && state.signedIn) tcg.signedIn();
+  // Adresse de la messagerie : « Mes apparitions » et, pour l'administrateur, mails d'accord.
+  if (state.signedIn) loadUser().then(() => tcg.mailReady(), () => {});
 }
 
 function openLogin() {

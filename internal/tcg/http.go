@@ -387,16 +387,12 @@ func (s *Service) handlePropose(w http.ResponseWriter, r *http.Request, pid stri
 		return
 	}
 	defer r.MultipartForm.RemoveAll()
-	if r.FormValue("consentPeople") != "1" || r.FormValue("consentRights") != "1" {
-		fail(w, http.StatusBadRequest, "Coche les deux engagements sur la photo.")
+	// Les personnes sur la photo sont indiquées par l'administration à la validation (accord demandé).
+	if r.FormValue("consentRights") != "1" {
+		fail(w, http.StatusBadRequest, "Confirme que tu as le droit d’utiliser cette photo.")
 		return
 	}
 	title, desc, cat, err := CleanCardText(r.FormValue("title"), r.FormValue("desc"), r.FormValue("cat"))
-	if err != nil {
-		failErr(w, err)
-		return
-	}
-	people, err := CleanPeople(r.FormValue("people"))
 	if err != nil {
 		failErr(w, err)
 		return
@@ -443,7 +439,7 @@ func (s *Service) handlePropose(w http.ResponseWriter, r *http.Request, pid stri
 			return
 		}
 	}
-	id, err := s.Game.Propose(pid, NewProposal{Title: title, Desc: desc, Cat: cat, People: people, Img: img.Name, Thumb: thumb.Name, Bytes: int64(len(img.Data) + len(thumb.Data))})
+	id, err := s.Game.Propose(pid, NewProposal{Title: title, Desc: desc, Cat: cat, Img: img.Name, Thumb: thumb.Name, Bytes: int64(len(img.Data) + len(thumb.Data))})
 	if err != nil {
 		failErr(w, err)
 		return
@@ -538,10 +534,11 @@ func (s *Service) serveAdmin(w http.ResponseWriter, r *http.Request, action stri
 		reply(w, http.StatusOK, s.Game.MailingState())
 	case action == "mailing/sent":
 		var in struct {
-			Keys []string `json:"keys"`
+			Keys  []string `json:"keys"`
+			Force bool     `json:"force"`
 		}
 		if readJSON(8<<10, &in) {
-			n, err := s.Game.MailingSent(in.Keys)
+			n, err := s.Game.MailingSent(in.Keys, in.Force)
 			if err != nil {
 				failErr(w, err)
 				return

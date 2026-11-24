@@ -224,10 +224,6 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     const input = h('input', { type: 'checkbox', id });
     return [input, h('label.tcheck', {}, input, h('span.tcheck-box', {}, ic('check', 'ic ic--xs')), h('span', { text }))];
   };
-  // Personnes sur la photo : adresses de l'université, prévenues par mail une fois la carte validée.
-  const peopleIn = h('textarea.tinput.tcr-people', { id: 'tcr-people', rows: 2, maxLength: 400, placeholder: 'prenom.nom@etud.univ-jfc.fr, …', autocomplete: 'off', attrs: { spellcheck: 'false', autocapitalize: 'off' } });
-  const peopleHelp = h('p.thelp', { text: `Jusqu’à ${MAX_PEOPLE} adresses de l’université, séparées par des virgules. Une fois ta carte validée, chacun reçoit un mail pour donner son accord dans le TCG ; un refus retire la carte. Ton nom n’est pas dans le mail, et l’adresse est effacée dès le mail parti.` });
-  const [c1, l1] = check('tcr-c1', 'Les personnes reconnaissables sont indiquées ci-dessus ou d’accord pour apparaître sur une carte.');
   const [c2, l2] = check('tcr-c2', 'J’ai pris cette photo ou j’ai le droit de l’utiliser.');
   const err = h('p.terr', { hidden: true, attrs: { role: 'alert' } });
   const showErr = (msg) => {
@@ -260,8 +256,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     h('div.tfield', {}, h('div.tfield-top', {}, h('label.tlabel', { htmlFor: 'tcr-title', text: 'Titre' }), titleCount), titleIn),
     h('div.tfield', {}, h('div.tfield-top', {}, h('label.tlabel', { htmlFor: 'tcr-desc', text: 'Description' }), descCount), descIn, h('p.thelp', { text: '2 ou 3 phrases. Un mème, un moment, un truc : ce que tout le monde reconnaîtra.' })),
     h('div.tfield', {}, h('p.tlabel', { text: 'Catégorie' }), chips),
-    h('div.tfield', {}, h('label.tlabel', { htmlFor: 'tcr-people', text: 'Qui est sur la photo ? (facultatif)' }), peopleIn, peopleHelp),
-    l1,
+    h('p.thelp.tcr-people-note', {}, 'Quelqu’un est reconnaissable sur la photo ? Pas besoin de cocher quoi que ce soit : à la validation, l’équipe lui demande son accord, et la carte attend sa réponse.'),
     l2,
     err,
     submit,
@@ -282,9 +277,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     if (!photo) return showErr('Ajoute une photo.');
     if ([...draft.title].length < 2) return showErr('Donne un titre à ta carte.') || titleIn.focus();
     if ([...draft.desc].length < 4) return showErr('Écris deux ou trois phrases.') || descIn.focus();
-    const people = parsePeople(peopleIn.value);
-    if (people.error) return showErr(people.error) || peopleIn.focus();
-    if (!c1.checked || !c2.checked) return showErr('Coche les deux engagements sur la photo.');
+    if (!c2.checked) return showErr('Confirme que tu as le droit d’utiliser cette photo.');
     submit.disabled = true;
     submitLabel.textContent = 'Envoi…';
     try {
@@ -294,9 +287,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
       fd.append('title', draft.title);
       fd.append('desc', draft.desc);
       fd.append('cat', draft.cat);
-      fd.append('consentPeople', '1');
       fd.append('consentRights', '1');
-      if (people.list.length) fd.append('people', people.list.join(','));
       const ext = big.type === 'image/webp' ? 'webp' : 'jpg';
       fd.append('photo', big, `photo.${ext}`);
       fd.append('thumb', small, `vignette.${small.type === 'image/webp' ? 'webp' : 'jpg'}`);
@@ -323,18 +314,6 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
   return frag;
 }
 
-const MAX_PEOPLE = 5;
-const UNIV_MAIL = /^[a-z0-9][a-z0-9._%+-]{0,63}@([a-z0-9-]+\.)*univ-jfc\.fr$/;
-
-/** Adresses saisies (mêmes règles que le serveur) : { list } ou { error }. */
-export function parsePeople(raw) {
-  const list = [...new Set(raw.toLowerCase().split(/[\s,;]+/).filter(Boolean))];
-  const bad = list.find((a) => !UNIV_MAIL.test(a));
-  if (bad) return { error: `« ${bad} » : seules les adresses de l’université (…@univ-jfc.fr) sont acceptées.` };
-  if (list.length > MAX_PEOPLE) return { error: `${MAX_PEOPLE} personnes au plus par carte.` };
-  return { list };
-}
-
 /** « Mes propositions » et leur avancement : validation → jury → impression. */
 export function proposalsList(ctx, launch) {
   const st = ctx.st;
@@ -348,6 +327,7 @@ export function proposalsList(ctx, launch) {
   const status = {
     pending: ['review', 'clock', 'À valider'],
     accepted: ['accepted', 'check', 'Validée'],
+    consent: ['review', 'person', 'Accord'],
     jury: ['jury', 'jury', 'Au jury'],
     printed: ['printed', 'check', 'Imprimée'],
     blocked: ['refused', 'x', 'Bloquée'],
@@ -360,6 +340,9 @@ export function proposalsList(ctx, launch) {
     switch (key) {
       case 'pending':
         text = 'En attente de validation · un admin vérifie sous 48 h';
+        break;
+      case 'consent':
+        text = `Acceptée · en attente de l’accord des personnes sur la photo${p.consent ? ` (${p.consent.ok} / ${p.consent.total})` : ''}`;
         break;
       case 'jury':
         text = `Au jury cette semaine · jusqu’au ${dateShort(p.juryEnd)}`;
@@ -374,10 +357,10 @@ export function proposalsList(ctx, launch) {
         text = `Bloquée · ${(p.reason || 'motif').toLowerCase()}${p.message ? ` : « ${p.message} »` : ''}`;
         break;
       default:
-        text = 'Retirée du jeu après signalements';
+        text = p.reason === 'Accord retiré par une personne sur la photo' ? 'Retirée du jeu : une personne sur la photo a retiré son accord' : 'Retirée du jeu après signalements';
     }
     const it = h('div.tcr-it', {}, h('b', { text: p.title }), h('span', { text }));
-    if (['pending', 'accepted', 'jury', 'blocked'].includes(key)) {
+    if (['pending', 'consent', 'accepted', 'jury', 'blocked'].includes(key)) {
       const rm = h('button.tcr-rm', { type: 'button', text: 'Retirer' });
       rm.addEventListener('click', async () => {
         if (!confirm(`Retirer « ${p.title} » ? Elle ne sera pas imprimée.`)) return;

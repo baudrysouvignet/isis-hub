@@ -11,7 +11,8 @@ import { cardEl, ic, sheet, tbtn, dayLong, hourText, plural } from './ui.js';
 
 const LINK = 'accord'; // #tcg/accord
 
-export const consentLink = () => `${location.origin}${location.pathname}#tcg/${LINK}`;
+// Adresse du Hub (« / »), que l'on soit sur le Hub ou sur /admin.
+export const consentLink = () => `${new URL('.', location.href).href}#tcg/${LINK}`;
 
 /** Cartes sans réponse (pastille de l'accueil). */
 export const pendingAppear = (st) => (st?.appear ?? []).filter((a) => !a.answer && !a.retired);
@@ -84,12 +85,12 @@ export function mailText(senderName) {
     'Bonjour,',
     '',
     'Tu apparais sur la photo d’une ou plusieurs cartes du TCG de la promo, dans ISIS Hub.',
-    'Avant qu’elles entrent dans le jeu (ou pour qu’elles y restent), il nous faut ton accord.',
+    'Une carte n’entre dans le jeu qu’avec l’accord de chaque personne indiquée dessus : il nous faut le tien.',
     '',
     `Pour accepter ou refuser, connecte-toi à ISIS Hub, onglet TCG → « Mes apparitions » :`,
     consentLink(),
     '',
-    'Un refus retire la carte, sans dire qui a refusé. Tu ne recevras pas d’autre mail pour ces cartes.',
+    'Personne ne saura qui a refusé. Tu ne recevras pas d’autre mail pour ces cartes.',
     '',
     'Bonne journée,',
     senderName || 'L’équipe ISIS Hub',
@@ -97,6 +98,24 @@ export function mailText(senderName) {
 }
 
 export const MAIL_SUBJECT = 'TCG de la promo : tu apparais sur une carte, ton accord est demandé';
+
+/**
+ * Envoie le mail d'accord depuis la messagerie de l'administrateur : adressé à lui-même, les
+ * personnes en copie cachée, par lots de m.chunk ; chaque lot est marqué « prévenu » dès qu'il est
+ * parti (jamais renvoyé, même si la suite échoue). Rend le nombre de personnes prévenues.
+ * send({ to, bcc, subject, text }) : mail.send ; markSent(keys, force) : serveur.
+ */
+export async function sendConsentMails({ m, me, name, send, markSent, force = false, onProgress }) {
+  let sent = 0;
+  for (let i = 0; i < m.targets.length; i += m.chunk) {
+    const lot = m.targets.slice(i, i + m.chunk);
+    onProgress?.(sent, m.targets.length);
+    await send({ to: [{ address: me, name }], bcc: lot.map((t) => ({ address: t.email, name: '' })), subject: MAIL_SUBJECT, text: mailText(name) });
+    await markSent(lot.map((t) => t.key), force || i > 0);
+    sent += lot.length;
+  }
+  return sent;
+}
 
 /**
  * Fenêtre « Mails d'accord » : qui prévenir, quand, et l'envoi depuis la messagerie de
@@ -128,34 +147,31 @@ export async function openMailing(ctx) {
         h('details.tml-who', {}, h('summary', { text: 'Voir le mail' }), h('p.tml-subj', { text: MAIL_SUBJECT }), h('pre.tml-text', { text: mailText(ctx.userName()) })),
       );
     }
-    const send = tbtn(n ? `Envoyer depuis ma messagerie` : 'Rien à envoyer', 'send', 'tbtn--primary tbtn--lg', () => run(send));
-    send.disabled = !n || !m.open;
+    const send = tbtn(!n ? 'Rien à envoyer' : m.open ? 'Envoyer depuis ma messagerie' : 'Forcer l’envoi maintenant', 'send', m.open ? 'tbtn--primary tbtn--lg' : 'tbtn--ghost tbtn--lg', () => run(send, !m.open));
+    send.disabled = !n;
     parts.push(send);
+    if (n && m.open) parts.push(h('p.thelp', { text: 'Sinon, l’envoi se fait tout seul à ta prochaine visite du Hub, depuis ta messagerie.' }));
     body.replaceChildren(...parts);
   };
-  const run = async (btn) => {
+  const run = async (btn, force) => {
     const me = ctx.userEmail();
     if (!me) return toast('Ta messagerie n’est pas ouverte : ouvre tes mails dans le Hub, puis réessaie.', 'alert');
+    if (force && !confirm(`Forcer l’envoi maintenant, avant la fin des deux jours ? ${plural(m.targets.length, 'personne')} en copie cachée.`)) return;
     btn.disabled = true;
     const label = btn.querySelector('span');
-    let sent = 0;
     try {
-      for (let i = 0; i < m.targets.length; i += m.chunk) {
-        const lot = m.targets.slice(i, i + m.chunk);
-        label.textContent = `Envoi… ${sent} / ${m.targets.length}`;
-        await ctx.sendMail({
-          to: [{ address: me, name: ctx.userName() }],
-          bcc: lot.map((t) => ({ address: t.email, name: '' })),
-          subject: MAIL_SUBJECT,
-          text: mailText(ctx.userName()),
-        });
-        // Parti : marqué tout de suite, pour ne jamais renvoyer ce lot (même si la suite échoue).
-        await adminApi.mailingSent(lot.map((t) => t.key), ctx.adminSession);
-        sent += lot.length;
-      }
+      const sent = await sendConsentMails({
+        m,
+        me,
+        name: ctx.userName(),
+        send: ctx.sendMail,
+        markSent: (keys, f) => adminApi.mailingSent(keys, f, ctx.adminSession),
+        force,
+        onProgress: (n, total) => (label.textContent = `Envoi… ${n} / ${total}`),
+      });
       toast(`Mail envoyé à ${plural(sent, 'personne')}, en copie cachée.`, 'check');
     } catch (err) {
-      toast(`${sent ? `${plural(sent, 'personne')} prévenue${sent > 1 ? 's' : ''}, puis ` : ''}${err?.message || 'envoi impossible'}`, 'alert');
+      toast(err?.message || 'Envoi impossible pour l’instant.', 'alert');
     }
     try {
       m = await adminApi.mailing(ctx.adminSession);

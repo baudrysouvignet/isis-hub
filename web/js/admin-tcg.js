@@ -7,6 +7,9 @@
 
 import { $, $$, h, toast, isTyping } from './core/dom.js';
 import { cardEl, ic, rchip, RLABEL, RARITIES, CATS, ago, dayLong, hourText, plural } from './tcg/ui.js';
+import { peoplePicker } from './tcg/people.js';
+import { mailBridge } from './tcg/mailbridge.js';
+import { sendConsentMails, mailText, MAIL_SUBJECT } from './tcg/consent.js';
 
 const REASONS = {
   injure: ['Injurieux ou dénigrant', 'Ta carte vise ou rabaisse quelqu’un. Le TCG reste bienveillant : propose une autre version, on la validera avec plaisir.'],
@@ -20,6 +23,7 @@ const REASONS = {
 const REPORTS = { moque: 'Se moque de quelqu’un', reconnaissable: 'Personne reconnaissable sans accord', prive: 'Données privées', choquant: 'Contenu choquant', pasdrole: 'Pas drôle', autre: 'Autre' };
 const FILTERS = [
   ['pending', 'À valider', 'clock', 'tad-kpi--pending'],
+  ['consent', 'En attente d’accord', 'person', 'tad-kpi--consent'],
   ['reports', 'Signalées', 'flag', 'tad-kpi--reports'],
   ['validated', 'Validées', 'check', 'tad-kpi--validated'],
   ['blocked', 'Bloquées', 'x', 'tad-kpi--blocked'],
@@ -62,11 +66,12 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
   let filter = 'pending';
   let cards = [];
   let current = null;
-  let mode = ''; // '' | block | edit
+  let mode = ''; // '' | block | edit | validate | people
   let shown = false;
   let printWave = 0;
 
   const launch = h('section.tad-launch');
+  const mailing = h('section.tad-mailing', { hidden: true });
   const kpis = h('div.tad-kpis', { attrs: { role: 'tablist', 'aria-label': 'Filtrer' } });
   const list = h('ul.tad-list', { attrs: { 'aria-label': 'Propositions' } });
   const detail = h('section.tad-detail', { tabIndex: -1, attrs: { 'aria-label': 'Détail' } });
@@ -76,7 +81,8 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       'div.tad-wrap',
       {},
       launch,
-      h('div.tad-policy', {}, h('span.tad-policy-ic', {}, ic('check', 'ic')), h('p', {}, h('b', { text: 'Chaque carte attend ta validation avant d’aller au jury.' }), ' Dans le doute, on accepte : on bloque seulement ce qui insulte, dénigre ou expose quelqu’un sans son accord. Pour le reste, c’est le jury qui décide de la rareté.')),
+      h('div.tad-policy', {}, h('span.tad-policy-ic', {}, ic('check', 'ic')), h('p', {}, h('b', { text: 'Chaque carte attend ta validation avant d’aller au jury.' }), ' En validant, indique qui est sur la photo : la carte attend alors l’accord de chacun et passe au jury d’elle-même à la dernière réponse. On bloque seulement ce qui insulte, dénigre ou expose quelqu’un.')),
+      mailing,
       kpis,
       grid,
       h('p.tad-keys', {}, h('kbd', { text: 'V' }), ' valider · ', h('kbd', { text: 'B' }), ' bloquer · ', h('kbd', { text: '↑' }), ' ', h('kbd', { text: '↓' }), ' naviguer'),
@@ -338,7 +344,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
   // ---------------------------------------------------------------- modération
   function renderKpis() {
     const c = ov.counts ?? {};
-    const n = { pending: c.pending ?? 0, reports: c.reports ?? 0, validated: (c.accepted ?? 0) + (c.printed ?? 0), blocked: c.blocked ?? 0 };
+    const n = { pending: c.pending ?? 0, consent: c.consent ?? 0, reports: c.reports ?? 0, validated: (c.accepted ?? 0) + (c.printed ?? 0), blocked: c.blocked ?? 0 };
     kpis.replaceChildren(
       ...FILTERS.map(([k, label, icon, cls]) => {
         const b = h(`button.tad-kpi.${cls}${k === filter ? '.is-on' : ''}`, { type: 'button', attrs: { role: 'tab', 'aria-selected': String(k === filter) } }, h('span.tad-kpi-l', {}, ic(icon), label), h('b', { text: String(n[k]) }));
@@ -370,7 +376,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
   function renderList() {
     list.replaceChildren();
     if (!cards.length) {
-      const empty = { pending: 'Rien à valider. Les nouvelles propositions arrivent ici.', reports: 'Aucune carte signalée.', validated: 'Aucune carte validée pour l’instant.', blocked: 'Aucune carte bloquée.' }[filter];
+      const empty = { pending: 'Rien à valider. Les nouvelles propositions arrivent ici.', consent: 'Aucune carte n’attend d’accord.', reports: 'Aucune carte signalée.', validated: 'Aucune carte validée pour l’instant.', blocked: 'Aucune carte bloquée.' }[filter];
       list.append(h('li.tad-empty', {}, ic('check', 'ic'), h('p', { text: empty })));
       return;
     }
@@ -380,8 +386,9 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       else if (filter === 'reports') tag = c.status === 'removed' ? h('span.tad-pill.tad-pill--blocked', { text: 'Retirée' }) : h('span.tad-flag', {}, ic('flag', 'ic ic--xs'), plural(c.reportN, 'signalement'));
       else if (filter === 'validated') tag = h('span.tad-pill.tad-pill--ok', { text: c.status === 'printed' ? `V${c.wave}` : 'Validée' });
       else if (filter === 'blocked') tag = h('span.tad-pill.tad-pill--blocked', { text: 'Bloquée' });
+      else if (filter === 'consent') tag = consentPill(c);
       const sub = filter === 'reports' && c.lastReport ? `${c.author.pseudo} · ${ago(c.lastReport)}` : `${c.author.pseudo} · ${ago(c.created)}`;
-      const b = h(`button.tad-item${c.id === current ? '.is-on' : ''}`, { type: 'button', data: { tad: c.id } }, h('span.tad-thumb', {}, c.thumb ? h('img', { alt: '', src: c.thumb }) : null), h('span.tad-it', {}, h('b', { text: c.title }), h('span', {}, sub, ' ', consentPill(c))), tag);
+      const b = h(`button.tad-item${c.id === current ? '.is-on' : ''}`, { type: 'button', data: { tad: c.id } }, h('span.tad-thumb', {}, c.thumb ? h('img', { alt: '', src: c.thumb }) : null), h('span.tad-it', {}, h('b', { text: c.title }), h('span', {}, sub, ' ', filter === 'consent' ? null : consentPill(c))), tag);
       b.addEventListener('click', () => {
         current = c.id;
         mode = '';
@@ -428,11 +435,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     row('Auteur', h('span.tad-author', {}, h('span.tav.tav--sm', { text: c.author.pseudo.slice(0, 2).toUpperCase() }), c.author.pseudo, c.author.muted ? h('small', { text: ' · propositions suspendues' }) : null));
     row('Historique', `${plural(c.author.validated, 'validée')} · ${plural(c.author.blocked, 'bloquée')}`);
     row('Catégorie', CATS[c.cat] ?? c.cat);
-    if (c.consent) {
-      const k = c.consent;
-      const parts = [`${k.ok} / ${k.total} d’accord`, k.no && plural(k.no, 'refus'), k.waiting && `${k.waiting} sans réponse`, k.toSend && `${k.toSend} à prévenir (mail tous les deux jours, depuis le TCG du Hub)`].filter(Boolean);
-      row('Sur la photo', h('span', {}, consentPill(c), ' ', parts.join(' · '), k.by?.length ? h('small', { text: ` · accord de ${k.by.join(', ')}` }) : null));
-    }
+    if (c.consent) row('Sur la photo', h('span', {}, consentPill(c), ' ', `${c.consent.ok} / ${plural(c.consent.total, 'personne')} d’accord`));
     if (printed) {
       row('Rareté', rchip(c.rarity));
       row('En jeu', `Vague ${c.wave} · n° ${String(c.no).padStart(3, '0')} · ${c.run ? `${c.issued} / ${c.run} tirés` : `${c.issued} tirées`}`);
@@ -445,11 +448,20 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     }
     if (c.status === 'blocked') info.append(h('p.tad-state.tad-state--blocked', {}, ic('x'), `Bloquée · ${REASONS[c.reason]?.[0] ?? c.reason}${c.message ? ` : « ${c.message} »` : ''}`));
     if (c.status === 'accepted') info.append(h('p.tad-state.tad-state--validated', {}, ic('check'), 'Validée · elle passera au jury'));
+    if (c.status === 'consent') info.append(h('p.tad-state.tad-state--soon', {}, ic('person'), c.consent?.no ? 'Validée · une personne a refusé : à toi de décider' : 'Validée · en attente de l’accord des personnes sur la photo'));
+    if (c.consent?.people?.length) info.append(peopleList(c));
 
     const acts = h('div.tad-acts');
-    const validate = () => act(c.id, { action: 'validate' }, c.status === 'blocked' ? 'Carte débloquée et validée.' : 'Carte validée : elle passera au jury.');
+    const validate = () => ((mode = 'validate'), renderDetail());
     if (c.status === 'pending') acts.append(btn('btn--primary btn--lg tad-ok', 'Valider', 'check', validate), btn('btn--lg tad-no', 'Bloquer…', 'x', () => ((mode = 'block'), renderDetail())));
-    if (c.status === 'accepted') acts.append(btn('tad-no', 'Bloquer…', 'x', () => ((mode = 'block'), renderDetail())));
+    if (c.status === 'consent')
+      acts.append(
+        btn('btn--primary', 'Valider sans attendre', 'check', () => {
+          if (confirm('Valider sans attendre les réponses manquantes ? La carte passe au jury.')) act(c.id, { action: 'force' }, 'Carte validée : elle passera au jury.');
+        }),
+      );
+    if (c.status === 'consent' || c.status === 'accepted' || c.status === 'printed') acts.append(btn('', 'Ajouter des personnes…', 'person', () => ((mode = 'people'), renderDetail())));
+    if (c.status === 'accepted' || c.status === 'consent') acts.append(btn('tad-no', 'Bloquer…', 'x', () => ((mode = 'block'), renderDetail())));
     if (c.status === 'blocked' && !c.img) acts.append(h('p.tad-help', { text: 'Photo effacée (bloquée depuis plus de 7 jours).' }));
     if (c.status === 'removed' && !c.img) acts.append(h('p.tad-help', { text: 'Photo effacée (retirée depuis plus de 30 jours) : elle ne peut plus revenir en jeu.' }));
     else if (c.status === 'blocked') acts.append(btn('btn--primary', 'Débloquer et valider', 'check', validate));
@@ -479,6 +491,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     info.append(acts);
     if (c.status === 'printed' || c.status === 'removed') info.append(h('p.tad-help', { text: 'Retirer : la carte sort du tirage, son image est remplacée par « Carte retirée » chez celles et ceux qui l’ont. Ils gardent l’exemplaire. La photo n’est plus servie à personne ; elle est effacée du stockage après 30 jours (« Restaurer » possible jusque-là).' }));
     if (mode === 'block') info.append(blockForm(c));
+    if (mode === 'validate' || mode === 'people') info.append(peopleForm(c, mode));
     if (mode === 'edit') info.append(editForm(c));
 
     const back = btn('btn--sm tad-back', 'Liste', 'back', () => grid.classList.remove('is-detail'));
@@ -508,6 +521,100 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     });
     requestAnimationFrame(() => form.querySelector('input').focus());
     return form;
+  }
+
+  // Personnes indiquées sur la photo : état de chacune, et « Retirer » (sans bloquer la carte).
+  function peopleList(c) {
+    const STATE = { ok: ['is-ok', 'check', 'd’accord'], no: ['is-no', 'x', 'a refusé'], waiting: ['is-wait', 'clock', 'prévenue, sans réponse'], toSend: ['is-send', 'send', 'mail à envoyer'] };
+    return h(
+      'ul.tad-people',
+      {},
+      ...c.consent.people.map((p) => {
+        const [cls, icon, label] = STATE[p.state] ?? STATE.toSend;
+        const rm =
+          c.status === 'removed'
+            ? null
+            : btn('btn--ghost btn--sm', 'Retirer', null, () => {
+                if (confirm(`Ne plus demander l’accord de ${p.hint} pour cette carte ? Elle n’est pas bloquée pour autant.`)) act(c.id, { action: 'untag', key: p.key }, 'Personne retirée de la carte.').then(loadMailing);
+              });
+        return h(`li.${cls}`, {}, ic(icon, 'ic ic--xs'), h('span.tad-people-h', { text: p.hint }), h('span.tad-people-s', { text: `${label}${p.by ? ` · ${p.by}` : ''}` }), rm);
+      }),
+    );
+  }
+
+  // « Y a-t-il des personnes sur la photo ? » : personne → validée ; sinon elle attend leur accord.
+  function peopleForm(c, kind) {
+    const picker = peoplePicker({ id: 'tad-people', search: async (q) => (await mailBridge()).searchContacts(q, 8) });
+    const form = h('form.tad-peopleform', { noValidate: true });
+    const submit = (alone) => {
+      const people = alone ? [] : picker.list();
+      if (people === null) return;
+      if (!alone && !people.length) return toast('Ajoute au moins une personne, ou choisis « Personne : valider ».', 'alert');
+      const msg = kind === 'people' ? 'Personnes ajoutées : leur accord est demandé.' : people.length ? `Carte validée : elle attend l’accord de ${plural(people.length, 'personne')}.` : 'Carte validée : elle passera au jury.';
+      act(c.id, { action: kind, people: people.join(',') }, msg).then(loadMailing);
+    };
+    const none = btn('btn--primary btn--lg tad-ok', 'Personne : valider', 'check', () => submit(true));
+    const withPeople = h('button.btn.btn--lg', { type: 'submit' }, ic('person'), h('span', { text: kind === 'people' ? 'Ajouter et demander leur accord' : 'Valider et demander leur accord' }));
+    form.append(
+      h('p.label', { text: kind === 'people' ? 'Qui ajouter sur la photo ?' : 'Y a-t-il des personnes reconnaissables sur la photo ?' }),
+      h('label.tad-help', { htmlFor: 'tad-people', text: 'Nom ou adresse de l’université : suggestions de l’annuaire, comme pour un mail. 5 personnes au plus.' }),
+      picker.el,
+      h('div.tad-row', {}, btn('btn--ghost', 'Annuler', null, () => ((mode = ''), renderDetail())), kind === 'validate' ? none : null, withPeople),
+      h('p.tad-help', { text: 'Elles reçoivent un mail depuis ta messagerie (copie cachée, au plus tous les deux jours) et répondent dans le TCG. La carte passe au jury dès que toutes ont accepté.' }),
+    );
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      submit(false);
+    });
+    requestAnimationFrame(() => (kind === 'validate' ? none.focus() : picker.focus()));
+    return form;
+  }
+
+  // ---------------------------------------------------------------- mails d'accord
+  let mailState = null;
+  async function loadMailing() {
+    try {
+      mailState = await tapi('mailing');
+    } catch {
+      mailState = null;
+    }
+    renderMailing();
+  }
+
+  function renderMailing() {
+    const m = mailState;
+    if (!m || (!m.targets.length && !m.waiting && !m.sent)) {
+      mailing.replaceChildren();
+      mailing.hidden = true;
+      return;
+    }
+    mailing.hidden = false;
+    const n = m.targets.length;
+    const status = !n ? 'Personne à prévenir pour l’instant.' : m.open ? `${plural(n, 'personne')} à prévenir : le mail part tout seul à ta prochaine visite du Hub, ou maintenant.` : `${plural(n, 'personne')} à prévenir · prochain envoi automatique le ${when(m.next)}.`;
+    const send = btn(m.open ? 'btn--primary' : '', m.open ? 'Envoyer maintenant' : 'Forcer l’envoi', 'send', () => sendNow(send, !m.open));
+    send.disabled = !n;
+    mailing.replaceChildren(
+      h('div.tad-mailing-h', {}, ic('send'), h('b', { text: 'Mails d’accord' }), h('span', { text: `${m.waiting} sans réponse · ${m.ok} d’accord · ${m.no} refus` })),
+      h('p.tad-help', { text: status }),
+      n ? h('details.tad-mailing-more', {}, h('summary', { text: 'Voir les adresses et le mail' }), h('ul', {}, ...m.targets.map((t) => h('li', { text: `${t.email} · ${plural(t.cards, 'carte')}` }))), h('p', {}, h('b', { text: MAIL_SUBJECT })), h('pre.tad-mailing-text', { text: mailText('') })) : null,
+      h('div.tad-row', {}, send),
+    );
+  }
+
+  async function sendNow(b, force) {
+    if (force && !confirm(`Forcer l’envoi maintenant, avant la fin des deux jours ? ${plural(mailState.targets.length, 'personne')} en copie cachée.`)) return;
+    b.disabled = true;
+    const label = b.querySelector('span');
+    try {
+      const mail = await mailBridge();
+      const me = await mail.me();
+      if (!me.address) throw new Error('adresse de ta messagerie introuvable');
+      const sent = await sendConsentMails({ m: mailState, me: me.address, name: me.name, send: (msg) => mail.send(msg), markSent: (keys, f) => tapi('mailing/sent', { keys, force: f }), force, onProgress: (k, total) => (label.textContent = `Envoi… ${k} / ${total}`) });
+      toast(`Mail envoyé à ${plural(sent, 'personne')}, en copie cachée.`, 'check');
+    } catch (err) {
+      toast(`Envoi impossible : ${err.message}`, 'alert');
+    }
+    await loadMailing();
   }
 
   function editForm(c) {
@@ -545,8 +652,9 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       list.querySelector('.is-on')?.scrollIntoView({ block: 'nearest' });
     } else if ((e.key === 'v' || e.key === 'V') && (c.status === 'pending' || c.status === 'blocked')) {
       e.preventDefault();
-      act(c.id, { action: 'validate' }, 'Carte validée : elle passera au jury.');
-    } else if ((e.key === 'b' || e.key === 'B') && (c.status === 'pending' || c.status === 'accepted')) {
+      mode = 'validate';
+      renderDetail();
+    } else if ((e.key === 'b' || e.key === 'B') && (c.status === 'pending' || c.status === 'accepted' || c.status === 'consent')) {
       e.preventDefault();
       mode = 'block';
       renderDetail();
@@ -557,6 +665,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     await loadOverview();
     renderLaunch();
     await loadCards(true);
+    await loadMailing();
   }
 
   return {

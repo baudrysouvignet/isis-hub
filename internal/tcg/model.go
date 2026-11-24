@@ -62,6 +62,7 @@ var Categories = map[string]bool{"meme": true, "moment": true, "lieu": true, "tr
 // Statut d'une carte, de la proposition à l'impression.
 const (
 	StatusPending  = "pending"  // en attente de validation
+	StatusConsent  = "consent"  // validée par l'administration, en attente de l'accord des personnes sur la photo
 	StatusAccepted = "accepted" // validée : passera au jury
 	StatusBlocked  = "blocked"  // bloquée par un administrateur (motif et message à l'auteur)
 	StatusPrinted  = "printed"  // imprimée dans une vague, en jeu
@@ -149,19 +150,20 @@ type Copy struct {
 // Player : un joueur. Reconnu par l'empreinte de son identifiant (State.Keys), jamais par
 // l'identifiant lui-même.
 type Player struct {
-	ID       string           `json:"id"`
-	Pseudo   string           `json:"pseudo"`
-	Created  time.Time        `json:"created"`
-	Owned    map[string][]int `json:"owned,omitempty"` // carte → numéros d'exemplaires (0 = commune)
-	Wish     []string         `json:"wish,omitempty"`  // « Je cherche »
-	Booster  string           `json:"booster,omitempty"`
-	LastDraw []Pull           `json:"lastDraw,omitempty"`
-	Ballots  map[int][]Ballot `json:"ballots,omitempty"` // vague → bulletins
-	Trades   []TradeLog       `json:"trades,omitempty"`
-	Muted    bool             `json:"muted,omitempty"`   // propositions suspendues par un administrateur
-	Seen     time.Time        `json:"seen,omitzero"`     // dernier passage (jour), pour les statistiques
-	MailKey  string           `json:"mailKey,omitempty"` // HMAC de l'adresse de sa messagerie (accords)
-	Admin    bool             `json:"admin,omitempty"`   // identifiant dans ADMIN_USERS (envoi des mails d'accord)
+	ID        string           `json:"id"`
+	Pseudo    string           `json:"pseudo"`
+	Created   time.Time        `json:"created"`
+	Owned     map[string][]int `json:"owned,omitempty"`    // carte → numéros d'exemplaires (0 = commune)
+	Wish      []string         `json:"wish,omitempty"`     // « Je cherche »
+	Booster   string           `json:"booster,omitempty"`  // jour du dernier booster (statistiques)
+	BoosterAt time.Time        `json:"boosterAt,omitzero"` // dernier booster : le suivant 24 h après
+	LastDraw  []Pull           `json:"lastDraw,omitempty"`
+	Ballots   map[int][]Ballot `json:"ballots,omitempty"` // vague → bulletins
+	Trades    []TradeLog       `json:"trades,omitempty"`
+	Muted     bool             `json:"muted,omitempty"`   // propositions suspendues par un administrateur
+	Seen      time.Time        `json:"seen,omitzero"`     // dernier passage (jour), pour les statistiques
+	MailKey   string           `json:"mailKey,omitempty"` // HMAC de l'adresse de sa messagerie (accords)
+	Admin     bool             `json:"admin,omitempty"`   // identifiant dans ADMIN_USERS (envoi des mails d'accord)
 }
 
 // Wave : une vague de cartes, avec son calendrier.

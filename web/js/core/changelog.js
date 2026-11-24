@@ -14,10 +14,13 @@ export const CHANGELOG = [
     date: '2026-11-24',
     title: 'TCG : l’accord des personnes sur la photo',
     quiet: true, // au journal seulement, sans pop-up « Nouveautés »
-    short: ['TCG : indique qui est sur ta photo, chacun donne son accord dans « Mes apparitions ».'],
+    short: ['TCG : les personnes sur la photo d’une carte donnent leur accord dans « Mes apparitions ».'],
     details: [
-      'Créer une carte : champ « Qui est sur la photo ? » (5 adresses de l’université au plus).',
-      'Une fois la carte validée, ces personnes reçoivent un mail de l’équipe ISIS Hub (un seul, en copie cachée, au plus tous les deux jours) et donnent ou refusent leur accord dans le TCG, « Mes apparitions ». Un refus retire la carte, sans dire qui a refusé.',
+      'À la validation, l’équipe indique les personnes reconnaissables sur la photo. La carte attend l’accord de chacune (« Acceptée · en attente de l’accord des personnes sur la photo ») et passe au jury dès la dernière réponse.',
+      'Ces personnes reçoivent un mail de l’équipe ISIS Hub (un seul, en copie cachée, au plus tous les deux jours) et répondent dans le TCG, « Mes apparitions », toujours visible. Personne ne sait qui a refusé.',
+      'Accord retiré sur une carte en jeu : les exemplaires restent dans les collections, marqués « Accord retiré », sans photo ni texte.',
+      'Créer une carte : plus de case « les personnes sont d’accord », l’accord leur est demandé directement.',
+      'Un booster toutes les 24 heures, comptées depuis le dernier ouvert.',
       'Le serveur ne garde qu’une empreinte de ces adresses, et leur version chiffrée seulement jusqu’au départ du mail.',
       'Correctif : l’icône des fichiers Moodle (PDF…) et les destinataires d’un mail retrouvent leur affichage.',
     ],
@@ -34,7 +37,7 @@ export const CHANGELOG = [
       steps: [
         ['Propose tes cartes', 'Une photo, un titre, deux phrases : un mème, un moment, un lieu de l’école.'],
         ['Classe celles des autres', 'Le jury de la semaine choisit les cartes qui entrent dans le jeu, et leur rareté.'],
-        ['Un booster par jour', 'Cinq cartes, de Commune à Unique, et des échanges en face à face avec un QR code.'],
+        ['Un booster toutes les 24 h', 'Cinq cartes, de Commune à Unique, et des échanges en face à face avec un QR code.'],
       ],
       privacy: 'Tu y apparais sous ton prénom et l’initiale de ton nom. Le jeu garde ce nom, ta collection, tes propositions et tes votes, rattachés à une empreinte de ton identifiant : jamais l’identifiant lui-même.',
       go: { label: 'Ouvrir le TCG', to: 'tcg' },

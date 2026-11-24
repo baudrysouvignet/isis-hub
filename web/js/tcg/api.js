@@ -77,5 +77,5 @@ async function adminCall(path, { method = 'GET', body } = {}, openSession) {
 
 export const adminApi = {
   mailing: (openSession) => adminCall('mailing', {}, openSession),
-  mailingSent: (keys, openSession) => adminCall('mailing/sent', { method: 'POST', body: { keys } }, openSession),
+  mailingSent: (keys, force, openSession) => adminCall('mailing/sent', { method: 'POST', body: { keys, force: Boolean(force) } }, openSession),
 };

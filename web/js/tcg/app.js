@@ -15,7 +15,7 @@ import { renderCreate, createForm, proposalsList } from './create.js';
 import { renderCollection } from './collection.js';
 import { renderJury } from './jury.js';
 import { renderTrade, startTrade, joinTradeCode, openJoinSheet } from './trade.js';
-import { renderConsent, openMailing, pendingAppear } from './consent.js';
+import { renderConsent, openMailing, pendingAppear, sendConsentMails } from './consent.js';
 
 const DOCK = [
   ['home', 'Booster', 'booster'],
@@ -76,6 +76,7 @@ export function createTCG(o) {
   let pendingCode = null;
   let mailTried = false; // adresse de la messagerie envoyée une fois par visite
   let mailing = null; // mails d'accord (administrateur), dernier état connu
+  let autoTried = false; // envoi automatique des mails d'accord : une tentative par visite
   let joining = null;
   const cards = new Map();
 
@@ -117,6 +118,29 @@ export function createTCG(o) {
       }, () => {});
     }
     return st;
+  }
+
+  // Mails d'accord, administrateur seulement : à chaque visite du Hub, si des personnes sont à
+  // prévenir et que les deux jours sont passés, le mail part tout seul de SA messagerie (sa session
+  // est dans cette page : le serveur ne peut pas envoyer de mail). Aucun effet pour les autres.
+  async function autoMail() {
+    if (autoTried || !o.isSignedIn() || !(prefs.get('tcgJoined') || st)) return;
+    const email = o.userEmail?.();
+    if (!email) return;
+    autoTried = true;
+    try {
+      if (!st) await loadState();
+      if (!st?.me?.admin) return;
+      const m = await adminApi.mailing(o.adminSession);
+      mailing = m;
+      if (!m.open || !m.targets.length) return;
+      const sent = await sendConsentMails({ m, me: email, name: o.userName(), send: (msg) => o.sendMail(msg), markSent: (keys, force) => adminApi.mailingSent(keys, force, o.adminSession) });
+      toast(`Mails d’accord envoyés depuis ta messagerie : ${plural(sent, 'personne')}, en copie cachée.`, 'check');
+      mailing = await adminApi.mailing().catch(() => mailing);
+      if (open && view === 'home' && !ctx.editing && !sheetOpen()) render();
+    } catch {
+      // messagerie ou session d'administration indisponible : nouvel essai à la prochaine visite
+    }
   }
 
   // Personnes sur la photo : le jeu retrouve les cartes où l'on m'a indiqué grâce à l'adresse de ma
@@ -217,7 +241,7 @@ export function createTCG(o) {
           h(
             'ul.twel-list',
             {},
-            li('booster', '1 booster par jour', ', 5 cartes, de Commune à Unique (un seul exemplaire au monde).'),
+            li('booster', '1 booster toutes les 24 h', ', 5 cartes, de Commune à Unique (un seul exemplaire au monde).'),
             li('pen', 'Crée tes cartes', ` : une photo, un titre, deux phrases. ${data()?.perDay ?? 3} par jour.`),
             li('jury', 'Le jury de la semaine', ' choisit les cartes qui entrent dans le jeu.'),
             li('trade', 'Échange en face à face', ' avec un QR code.'),
@@ -635,7 +659,7 @@ export function createTCG(o) {
     const cta = ready
       ? h('div.th-cta', {}, tbtn('Ouvrir le booster', 'booster', 'tbtn--primary tbtn--xl', openToday))
       : h('div.th-cta', {}, h('p.th-timer', {}, ic('clock'), 'Prochain booster dans ', h('b', { data: { until: me.nextBooster }, text: untilText(me.nextBooster) })), st.lastDraw?.length ? tbtn('Revoir mon tirage', 'loop', 'tbtn--ghost', replay) : null);
-    const stage = h('div.th-stage', {}, h('h1.th-h1', { tabIndex: -1, text: ready ? 'Ton booster du jour' : 'À demain' }), h('div.th-pack', {}, h('span.th-halo'), packBtn), cta);
+    const stage = h('div.th-stage', {}, h('h1.th-h1', { tabIndex: -1, text: ready ? 'Ton booster du jour' : 'Prochain booster bientôt' }), h('div.th-pack', {}, h('span.th-halo'), packBtn), cta);
 
     // À faire
     const todo = [];
@@ -849,7 +873,10 @@ export function createTCG(o) {
   return {
     enter,
     /** Adresse de la messagerie connue (lue après l'ouverture du jeu) : rattachement au joueur. */
-    mailReady: () => linkMail(),
+    mailReady: () => {
+      linkMail();
+      autoMail();
+    },
     leave: () => setMode(false),
     isOpen: () => open,
     /** Vue publique chargée (pour savoir si le TCG est ouvert), 3 s au plus. */
