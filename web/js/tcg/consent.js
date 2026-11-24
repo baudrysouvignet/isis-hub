@@ -10,10 +10,8 @@ import { h, toast } from '../core/dom.js';
 import { api, adminApi, TcgError } from './api.js';
 import { cardEl, ic, sheet, tbtn, dayLong, hourText, plural } from './ui.js';
 
-const LINK = 'accord'; // #tcg/accord
 
-// Adresse du Hub (« / »), que l'on soit sur le Hub ou sur /admin.
-export const consentLink = () => `${new URL('.', location.href).href}#tcg/${LINK}`;
+export { consentLink } from './consent-text.js';
 
 /** Cartes sans réponse (pastille de l'accueil). */
 export const pendingAppear = (st) => (st?.appear ?? []).filter((a) => !a.answer && !a.retired);
@@ -80,25 +78,9 @@ async function answer(ctx, a, ok) {
 
 // ------------------------------------------------------------------ envoi des mails (admin)
 
-/** Texte du mail : le même pour tous (copie cachée), sans nom ni carte. */
-export function mailText(senderName) {
-  return [
-    'Bonjour,',
-    '',
-    'Tu apparais sur la photo d’une ou plusieurs cartes du TCG de la promo, dans ISIS Hub.',
-    'Une carte n’entre dans le jeu qu’avec l’accord de chaque personne indiquée dessus : il nous faut le tien.',
-    '',
-    `Pour accepter ou refuser, connecte-toi à ISIS Hub, onglet TCG → « Mes apparitions » :`,
-    consentLink(),
-    '',
-    'Personne ne saura qui a refusé. Tu ne recevras pas d’autre mail pour ces cartes.',
-    '',
-    'Bonne journée,',
-    senderName || 'L’équipe ISIS Hub',
-  ].join('\n');
-}
-
-export const MAIL_SUBJECT = 'TCG de la promo : tu apparais sur une carte, ton accord est demandé';
+// Objet et texte du mail d'accord : tcg/consent-text.js (sans interface, lu aussi par core/hubmails.js).
+export { mailText, MAIL_SUBJECT } from './consent-text.js';
+import { mailText, MAIL_SUBJECT } from './consent-text.js';
 
 /**
  * Envoie le mail d'accord depuis la messagerie de l'administrateur : adressé à lui-même, les

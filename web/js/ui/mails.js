@@ -6,6 +6,7 @@ import { $, $$, h, icon, restartClass, clipFrom, lockScroll, motionOK, toast, EA
 import * as D from '../core/dates.js';
 import * as mail from '../portals/mail.js';
 import * as MP from '../core/mailprefs.js';
+import { createHubMails } from '../core/hubmails.js';
 import { sanitizeMail, textToFragment } from '../portals/sanitize.js';
 import { NotSignedIn } from '../portals/config.js';
 import { modal } from './layout.js';
@@ -306,10 +307,34 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, lo
     alertTimer = setTimeout(tick, delays[i++]);
   }
 
+  // ------------------------------------------- mails d'ISIS Hub : ne garder que le dernier
+
+  const hubMails = createHubMails();
+  /** Anciens mails d'accord du TCG à la corbeille (récupérables), le plus récent reste (core/hubmails.js). */
+  async function withoutOldHubMails(batch) {
+    if (!MP.hubMailsOn()) return batch;
+    const old = hubMails.pick(batch);
+    if (!old.length) return batch;
+    try {
+      await mail.moveTo(old, 'trash');
+    } catch {
+      return batch; // en cas de doute, les mails restent
+    }
+    const gone = new Set(old.map((m) => m.id));
+    ids = ids.filter((id) => !gone.has(id));
+    setUnread(unread - old.filter((m) => m.unread).length);
+    // L'ancien « dernier » peut être déjà affiché (un plus récent vient d'arriver).
+    if (mails.some((m) => gone.has(m.id))) {
+      mails = mails.filter((m) => !gone.has(m.id));
+      redraw();
+    }
+    return batch.filter((m) => !gone.has(m.id));
+  }
+
   /** Règles automatiques sur un lot (boîte de réception seulement). Rend le lot sans les mails mis à la corbeille. */
   async function withRules(input) {
     if (box !== 'inbox') return input;
-    const batch = await withoutLoginAlerts(input);
+    const batch = await withoutOldHubMails(await withoutLoginAlerts(input));
     if (!MP.rules().length) return batch;
     const toTrash = MP.applyRules(batch);
     if (!toTrash.length) return batch;

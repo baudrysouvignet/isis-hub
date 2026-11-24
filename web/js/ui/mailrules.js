@@ -60,6 +60,13 @@ export function setupMailRules({ onRuleAdded }) {
   MP.onMailPrefs(syncAlerts);
   syncAlerts();
 
+  // Mails d'ISIS Hub : ne garder que le dernier (core/hubmails.js).
+  const hub = $('[data-hub-mails]', dialog);
+  const syncHub = () => (hub.checked = MP.hubMailsOn());
+  hub.addEventListener('change', () => MP.setHubMails(hub.checked));
+  MP.onMailPrefs(syncHub);
+  syncHub();
+
   $('[data-tag-form]', dialog).addEventListener('submit', (e) => {
     e.preventDefault();
     const input = $('[data-tag-name]', dialog);

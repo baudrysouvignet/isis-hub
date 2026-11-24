@@ -18,6 +18,7 @@ export const CHANGELOG = [
     details: [
       'Créer une carte : « Qui est sur la photo ? », avec la même liste que le champ « Cc » d’un mail (personnes récentes d’abord, puis l’annuaire, étudiants en premier). 5 personnes au plus.',
       'L’équipe vérifie cette liste à la validation, puis demande leur accord à ces personnes : rien ne part avant.',
+      'Mails : nouvelle option « Ne garder que le dernier mail d’ISIS Hub » (Règles et étiquettes), cochée d’office : seul le plus récent mail « tu apparais sur une carte » reste dans ta boîte, les plus anciens vont à la corbeille.',
     ],
   },
   {
