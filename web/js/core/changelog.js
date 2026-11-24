@@ -10,6 +10,17 @@
 
 export const CHANGELOG = [
   {
+    version: '2.0.6',
+    date: '2026-11-24',
+    title: 'TCG : recadrage des photos et formulaire plus fiable',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
+    short: ['TCG : recadre ta photo comme dans une app photo ; le formulaire ne se vide plus en cours de saisie.'],
+    details: [
+      'Créer une carte : toute la photo est visible par défaut (bords flous si besoin). Grand cadre avec grille : fais glisser la photo, zoome avec deux doigts, la molette ou le curseur, ou choisis « Toute la photo » / « Remplir le cadre ».',
+      'Correctif : avant le lancement, le formulaire « Propose ta carte » pouvait se vider pendant la saisie. Ce que tu as commencé (photo, texte, personnes) reste maintenant jusqu’à l’envoi.',
+    ],
+  },
+  {
     version: '2.0.5',
     date: '2026-11-24',
     title: 'TCG : jamais deux mails d’accord en 24 h',
