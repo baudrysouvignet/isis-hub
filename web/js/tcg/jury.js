@@ -101,12 +101,15 @@ function duels(ctx, jury, ballot, bi, series, { practice = false } = {}) {
   const count = h('span.tdu-count');
   const undo = h('button.tdu-undo', { type: 'button', disabled: true }, ic('back', 'ic ic--xs'), h('span', { text: 'Choix précédent' }));
   const arena = h('div.tdu-arena', { attrs: { 'aria-live': 'polite' } });
+  // Téléphone (80 % des visites) : la carte est le bouton, un appui long l'agrandit.
+  const touch = Boolean(globalThis.matchMedia?.('(hover: none), (pointer: coarse)').matches);
   const wrap = h(
     'div.tdu',
     {},
     h('div.tdu-bar', {}, h('span.tdu-series', { text: series }), dots, count),
     h('p.tdu-q', { text: 'Laquelle veux-tu le plus voir dans le jeu ?' }),
     arena,
+    h('p.tdu-hint', {}, touch ? h('b', { text: 'Touche celle que tu veux le plus voir dans le jeu' }) : h('b', { text: 'Clique sur ta préférée, ou ← / →' }), touch ? h('span', { text: 'Appui long pour l’agrandir' }) : null),
     h('div.tdu-foot', {}, undo, h('p.tdu-anon', {}, ic('eye', 'ic ic--xs'), 'Auteurs masqués · tes cartes ne te sont jamais proposées')),
   );
 
@@ -115,10 +118,33 @@ function duels(ctx, jury, ballot, bi, series, { practice = false } = {}) {
     const btn = h(
       `button.tdu-opt.tdu-opt--${side}`,
       { type: 'button', attrs: { 'aria-label': `Je préfère « ${c.title} »` } },
-      cardEl(c, { size: 'sm', mystery: true, live: true, by: '' }),
+      // Au doigt, pas d'inclinaison qui suit le pointeur : elle resterait figée après le toucher.
+      cardEl(c, { size: 'sm', mystery: true, live: !touch, by: '' }),
+      h('span.tdu-heart', { attrs: { 'aria-hidden': 'true' } }, ic('heart', 'ic')),
       h('span.tdu-pick', { attrs: { 'aria-hidden': 'true' } }, ic('heart', 'ic ic--xs'), 'Celle-ci'),
     );
-    btn.addEventListener('click', () => pick(btn));
+    // Appui long (450 ms sans bouger) : la carte en grand, sans la choisir.
+    let timer = 0;
+    let held = false;
+    let start = null;
+    const cancelHold = () => clearTimeout(timer);
+    btn.addEventListener('pointerdown', (e) => {
+      held = false;
+      start = { x: e.clientX, y: e.clientY };
+      cancelHold();
+      timer = setTimeout(() => {
+        held = true;
+        buzz(8);
+        bigCard(c);
+      }, 450);
+    });
+    btn.addEventListener('pointermove', (e) => start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10 && cancelHold());
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) btn.addEventListener(ev, cancelHold);
+    btn.addEventListener('contextmenu', (e) => e.preventDefault()); // menu « Enregistrer l'image » au doigt
+    btn.addEventListener('click', () => {
+      if (held) return void (held = false);
+      pick(btn);
+    });
     const see = h('button.tdu-see', { type: 'button', attrs: { 'aria-label': `Voir la carte « ${c.title} » en grand` } }, ic('eye', 'ic ic--xs'));
     see.addEventListener('click', () => bigCard(c));
     return h(`div.tdu-cell.tdu-cell--${side}`, {}, btn, see);
@@ -134,19 +160,23 @@ function duels(ctx, jury, ballot, bi, series, { practice = false } = {}) {
       busy = true;
       answers = [...answers, [a, b, winner]];
       if (!practice) saveAnswers(key, answers);
+      buzz(12);
       arena.classList.add('is-chosen');
-      el.closest('.tdu-cell').classList.add('is-win');
+      for (const cell of arena.querySelectorAll('.tdu-cell')) cell.classList.add(cell.contains(el) ? 'is-win' : 'is-lose');
       setTimeout(() => {
         busy = false;
         step(1);
-      }, motionOK() ? 420 : 0);
+      }, motionOK() ? 520 : 0);
     };
     arena.classList.remove('is-chosen');
     arena.replaceChildren(option(byId.get(a), 'a', choose(a)), h('span.tdu-or', { attrs: { 'aria-hidden': 'true' } }, 'ou'), option(byId.get(b), 'b', choose(b)));
+    // Les deux cartes sont distribuées, comme tirées du paquet.
     if (motionOK()) {
       for (const [i, cell] of [...arena.querySelectorAll('.tdu-cell')].entries()) {
-        cell.animate([{ opacity: 0, transform: `translateY(${dir > 0 ? 18 : -18}px) scale(.97)` }, { opacity: 1, transform: 'none' }], { duration: 340, delay: i * 70, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' });
+        const from = dir > 0 ? `translateY(70px) rotate(${i ? 9 : -9}deg) scale(.86)` : 'translateY(-50px) scale(.92)';
+        cell.animate([{ opacity: 0, transform: from }, { opacity: 1, transform: 'none' }], { duration: 420, delay: i * 90, easing: 'cubic-bezier(.2,.9,.25,1.15)', fill: 'backwards' });
       }
+      arena.querySelector('.tdu-or')?.animate([{ opacity: 0, transform: 'scale(.4)' }, { opacity: 1, transform: 'none' }], { duration: 300, delay: 220, easing: 'cubic-bezier(.2,.9,.25,1.3)', fill: 'backwards' });
     }
   }
 
@@ -207,7 +237,7 @@ function duels(ctx, jury, ballot, bi, series, { practice = false } = {}) {
   document.addEventListener('keydown', onKey);
 
   step(1);
-  if (practice) wrap.querySelector('.tdu-anon').textContent = 'Essai réservé à l’administration : rien n’est enregistré, les joueurs ne le voient pas.';
+  if (practice) wrap.querySelector('.tdu-anon').textContent = 'Essai réservé à l’administration : rien n’est enregistré.';
   if (redo && !practice) {
     const cancel = h('button.tdu-cancel', { type: 'button', text: 'Garder mon classement' });
     cancel.addEventListener('click', () => {
@@ -244,6 +274,15 @@ async function startPractice(ctx, button) {
   } catch (e) {
     toast(e.message, 'alert');
     if (button) button.disabled = false;
+  }
+}
+
+/** Petite vibration (Android) au choix d'une carte ; rien ailleurs. */
+function buzz(ms) {
+  try {
+    navigator.vibrate?.(ms);
+  } catch {
+    // pas de vibreur : rien
   }
 }
 

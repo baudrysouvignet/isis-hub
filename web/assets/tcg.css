@@ -1287,8 +1287,11 @@ html[data-vt="out"]::view-transition-new(root) { z-index: 1; }
 }
 .tdu-opt--b { --glow: 255, 122, 156; }
 .tdu-opt .tc { --w: 100%; transition: transform .25s var(--ease), filter .25s var(--ease); }
-.tdu-opt:hover .tc { transform: translateY(-4px); filter: drop-shadow(0 18px 30px rgba(var(--glow), .35)); }
-.tdu-opt:active .tc { transform: scale(.985); }
+@media (hover: hover) {
+  .tdu-opt:hover .tc { transform: translateY(-4px); filter: drop-shadow(0 18px 30px rgba(var(--glow), .35)); }
+  .tdu-opt:hover .tdu-pick { background: rgba(var(--glow), .4); }
+}
+.tdu-opt:active .tc { transform: scale(.97); }
 .tdu-opt:focus-visible { outline: none; }
 .tdu-opt:focus-visible .tc { outline: 3px solid var(--focus); outline-offset: 4px; border-radius: 6cqw; }
 .tdu-cell .tc-title { font-size: max(6.4cqw, 11px); }
@@ -1299,7 +1302,6 @@ html[data-vt="out"]::view-transition-new(root) { z-index: 1; }
   transition: background .25s var(--ease), color .25s var(--ease);
 }
 .tdu-pick .ic { fill: currentColor; stroke: none; }
-.tdu-opt:hover .tdu-pick { background: rgba(var(--glow), .4); }
 .tdu-see { position: absolute; right: 0; bottom: 0; width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text-2); }
 .tdu-see:hover { color: var(--text); border-color: var(--line-2); }
 .tdu-see:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -1310,8 +1312,19 @@ html[data-vt="out"]::view-transition-new(root) { z-index: 1; }
   transition: opacity .25s var(--ease), transform .25s var(--ease);
 }
 .tdu-arena.is-chosen .tdu-or { opacity: 0; transform: scale(.6); }
-.tdu-arena.is-chosen .tdu-cell:not(.is-win) { opacity: .22; transform: scale(.94); filter: saturate(.3); }
-.tdu-arena.is-chosen .tdu-cell.is-win .tc { transform: scale(1.04); filter: drop-shadow(0 0 22px rgba(var(--glow), .75)); }
+.tdu-arena.is-chosen .tdu-cell.is-lose { opacity: 0; transform: translateY(34px) scale(.88); filter: saturate(.2); }
+.tdu-arena.is-chosen .tdu-cell.is-win { transform: translateY(-10px) scale(1.05); }
+.tdu-arena.is-chosen .tdu-cell.is-win .tc { filter: drop-shadow(0 0 24px rgba(var(--glow), .8)); }
+.tdu-heart {
+  position: absolute; left: 50%; top: 42%; z-index: 4; width: 64px; height: 64px; margin: -32px 0 0 -32px; display: grid; place-items: center;
+  border-radius: 50%; background: rgb(var(--glow)); color: #FFFFFF; box-shadow: 0 10px 30px -6px rgba(var(--glow), .9);
+  opacity: 0; transform: scale(.3); transition: opacity .2s var(--ease), transform .35s cubic-bezier(.2, .9, .25, 1.5); pointer-events: none;
+}
+.tdu-heart .ic { width: 30px; height: 30px; fill: currentColor; stroke: none; }
+.tdu-cell.is-win .tdu-heart { opacity: 1; transform: none; }
+.tdu-hint { display: none; margin: 0; text-align: center; }
+.tdu-hint b { display: block; font: 700 14px/1.3 var(--font); color: var(--text); }
+.tdu-hint span { display: block; margin-top: 3px; color: var(--text-3); font-size: 12px; }
 .tdu-arena.is-chosen .tdu-cell.is-win .tdu-pick { background: rgb(var(--glow)); color: #061317; }
 .tdu-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; }
 .tdu-undo, .tdu-cancel { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text-2); font: 650 13px/1 var(--font); }
@@ -1333,20 +1346,44 @@ html[data-vt="out"]::view-transition-new(root) { z-index: 1; }
   .tdu-q { display: none; }
   .tdu-dots i { width: 14px; }
   .tdu-dots i.is-cur { width: 22px; }
-  .tdu-arena { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
-  .tju-head .tju-meter, .tdu-max { display: none; }
+  /* Téléphone : l'écran entier sans défiler. Deux cartes en éventail, comme tenues en main, le
+     « ou » entre elles ; la carte est le bouton (appui long : en grand). */
+  .tju-head { margin-bottom: 10px; }
+  .tju-head .tju-meter, .tdu-max, .tdu-pick, .tdu-see { display: none; }
+  .tdu { display: flex; flex-direction: column; gap: 12px; min-height: calc(100dvh - var(--head-h) - 214px); }
+  .tdu-bar { gap: 8px; }
+  .tdu-arena {
+    flex: 1; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: center; align-items: center; gap: 5px; margin: 0 -6px; padding: 10px 0;
+    background: radial-gradient(60% 55% at 22% 50%, rgba(76, 195, 211, .2), transparent 70%), radial-gradient(60% 55% at 78% 50%, rgba(255, 122, 156, .17), transparent 70%);
+  }
   .tdu-cell { max-width: none; }
-  .tdu-or { position: absolute; left: 50%; top: 34%; width: 44px; height: 44px; margin: 0; translate: -50% -50%; font-size: 12px; box-shadow: 0 0 0 5px var(--bg), 0 10px 26px -8px rgba(169, 139, 255, .85); }
-  .tdu-opt { gap: 10px; }
-  .tdu-pick { padding: 8px 12px; font-size: 12.5px; }
-  .tdu-see { width: 34px; height: 34px; bottom: 1px; }
+  .tdu-cell--a { rotate: -2.5deg; }
+  .tdu-cell--b { rotate: 2.5deg; }
+  .tdu-opt { gap: 0; }
+  .tdu-cell .tc-title { font-size: max(6.4cqw, 12px); }
+  .tdu-cell .tc-desc { font-size: max(4.3cqw, 9px); -webkit-line-clamp: 3; }
+  /* À hauteur des photos (pas sur le texte des cartes) : centre des cartes moins ≈ 17 % de leur hauteur. */
+  .tdu-or { position: absolute; left: 50%; top: calc(50% - 12vw); z-index: 3; width: 46px; height: 46px; margin: 0; translate: -50% -50%; font-size: 12.5px; box-shadow: 0 0 0 5px var(--bg), 0 10px 26px -8px rgba(169, 139, 255, .9); }
+  .tdu-heart { width: 54px; height: 54px; margin: -27px 0 0 -27px; }
+  .tdu-hint { display: block; }
+  .tdu-foot { justify-content: space-between; gap: 8px; }
+  .tdu-anon { width: auto; margin: 0; font-size: 11px; text-align: right; }
+  .tdu-undo { height: 34px; padding: 0 11px; font-size: 12.5px; }
+  .tju-done { gap: 14px; padding: 24px 14px; }
+  .tju-done .rc-acts { display: grid; width: 100%; gap: 8px; }
+  .tju-done .rc-acts .tbtn { width: 100%; justify-content: center; }
   .tdu-anon { width: 100%; margin: 0; }
-  .tju-podium { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-  .tju-pod b { font-size: 10.5px; }
-  .tju-pod .tju-rank { top: -7px; left: -5px; width: 22px; height: 22px; font-size: 11px; border-radius: 7px; }
+  /* Classement : une liste, lisible au doigt */
+  .tju-podium { grid-template-columns: minmax(0, 1fr); gap: 8px; width: 100%; }
+  .tju-pod { grid-template-columns: 28px 76px minmax(0, 1fr); align-items: center; gap: 12px; padding: 8px 12px 8px 8px; border-radius: 16px; background: rgba(255, 255, 255, .04); border: 1px solid var(--line); text-align: left; }
+  .tju-pod img { width: 76px; border-radius: 10px; }
+  .tju-pod b { font-size: 14px; color: var(--text); }
+  .tju-pod .tju-rank { position: static; width: 28px; height: 28px; font-size: 13px; border-radius: 9px; box-shadow: none; }
+  .tju-pod--0 { border-color: rgba(127, 227, 238, .45); background: linear-gradient(90deg, rgba(76, 195, 211, .14), transparent 70%); }
+  .tju-pod--0 img { box-shadow: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .tdu-opt .tc, .tdu-cell, .tdu-or, .tdu-dots i { transition: none; }
+  .tdu-opt .tc, .tdu-cell, .tdu-or, .tdu-dots i, .tdu-heart { transition: none; }
 }
 
 /* Administration : quantités à imprimer (v2.1.0) */
@@ -1481,3 +1518,17 @@ html[data-vt="out"]::view-transition-new(root) { z-index: 1; }
 .la-duel .la-pill { position: absolute; left: 0; right: 0; bottom: -6px; width: max-content; margin: 0 auto; }
 
 .tju-try { display: grid; justify-items: center; gap: 6px; margin-top: 4px; padding-top: 16px; border-top: 1px solid var(--line); }
+/* Duel sur petit téléphone (320 px) : la carte reste complète, description comprise, même sous
+   170 px de large (où les cartes de la collection passent en version compacte). */
+@container tc (max-width: 170px) {
+  .tdu-cell .tc-body { display: flex; }
+  .tdu-cell .tc-cat { display: none; }
+  .tdu-cell .tc-frame { gap: 2.4cqw; padding: 3.6cqw 3.8cqw 3.2cqw; }
+  .tdu-cell .tc-art { flex: none; aspect-ratio: 4 / 3; }
+  .tdu-cell .tc-title { font-size: max(6.4cqw, 10.5px); }
+  .tdu-cell .tc-desc { font-size: max(4.3cqw, 8px); -webkit-line-clamp: 3; }
+  .tdu-cell .tc-foot { font-size: 3.1cqw; }
+}
+@media (max-width: 359.98px) {
+  .tdu-anon { display: none; }
+}
