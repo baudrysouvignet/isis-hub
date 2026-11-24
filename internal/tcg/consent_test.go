@@ -85,8 +85,8 @@ func TestConsentFlow(t *testing.T) {
 		t.Fatalf("après envoi : %v", m)
 	}
 
-	// Une nouvelle personne le lendemain : attend deux jours… sauf envoi forcé.
-	clk.add(26 * time.Hour)
+	// Une nouvelle personne quelques heures plus tard : elle attend les 24 heures, même « forcé ».
+	clk.add(5 * time.Hour)
 	admin.must("POST", "/api/tcg/admin/card/"+alone, map[string]any{"action": "people", "people": "lea.martin@etud.univ-jfc.fr"}, 200)
 	if p := hugo.state().Proposals[0]; p.Status != StatusConsent {
 		t.Fatalf("personne ajoutée à une carte validée : %s", p.Status)
@@ -97,7 +97,9 @@ func TestConsentFlow(t *testing.T) {
 	}
 	key := m["targets"].([]any)[0].(map[string]any)["key"].(string)
 	admin.must("POST", "/api/tcg/admin/mailing/sent", map[string]any{"keys": []string{key}}, 409)
-	admin.must("POST", "/api/tcg/admin/mailing/sent", map[string]any{"keys": []string{key}, "force": true}, 200)
+	admin.must("POST", "/api/tcg/admin/mailing/sent", map[string]any{"keys": []string{key}, "force": true}, 409)
+	clk.add(19 * time.Hour) // 24 h après le premier envoi
+	admin.must("POST", "/api/tcg/admin/mailing/sent", map[string]any{"keys": []string{key}}, 200)
 
 	// Réponses : Léa accepte « Au foyer », Hugo aussi → la carte passe au jury d'elle-même.
 	lea.must("POST", "/api/tcg/consent", map[string]any{"card": card, "ok": true}, 200)

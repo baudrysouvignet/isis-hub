@@ -6,8 +6,9 @@ package tcg
 // visibles. La carte attend alors leur accord (« consent ») et passe au jury d'elle-même après la
 // dernière réponse positive. Les mails partent de SA messagerie (ISIS Hub, dans sa page), quand il
 // clique sur « Envoyer les mails » (rien d'automatique) : un seul mail, tous les destinataires en
-// copie cachée, et chaque adresse ne le reçoit qu'une fois par carte. (Le serveur garde une limite
-// de deux jours entre deux envois, que le bouton de l'administrateur lève : « force ».) Chacun répond dans le TCG
+// copie cachée, et chaque adresse ne le reçoit qu'une fois par carte. Pas plus d'un envoi par
+// 24 heures, même au clic (le serveur refuse ; un envoi en plusieurs mails de 49 copies cachées
+// reste permis pendant l'heure qui suit son début). Chacun répond dans le TCG
 // (« Mes apparitions ») ; un refus garde la carte en attente, à la décision de l'administrateur.
 //
 // Le serveur ne garde que l'empreinte de l'adresse (HMAC) et, jusqu'au départ du mail seulement,
@@ -30,10 +31,10 @@ import (
 )
 
 const (
-	maxTags      = 5              // personnes indiquées par carte
-	mailingEvery = 48 * time.Hour // un envoi tous les deux jours au plus
-	mailingBatch = time.Hour      // un envoi peut tenir en plusieurs mails (50 destinataires chacun)
-	mailingChunk = 49             // copies cachées par mail (+ l'expéditeur en destinataire)
+	maxTags      = 5               // personnes indiquées par carte
+	mailingEvery = 24 * time.Hour  // un envoi toutes les 24 heures au plus, sans exception
+	mailingBatch = 2 * time.Minute // suite d'un même envoi (plusieurs mails de 49 copies cachées, à la suite)
+	mailingChunk = 49              // copies cachées par mail (+ l'expéditeur en destinataire)
 )
 
 // Tag : une personne indiquée sur la photo d'une carte.
@@ -359,13 +360,20 @@ type MailingView struct {
 	Sent    int          `json:"sent"`
 }
 
+// mailingOpen : un nouvel envoi est-il permis (24 h après le début du précédent) ?
 func (g *Game) mailingOpen(now time.Time) (bool, time.Time) {
 	m := g.st.Mailing
-	if m.Start.IsZero() || now.Sub(m.Start) < mailingBatch {
+	if m.Start.IsZero() {
 		return true, time.Time{}
 	}
 	next := m.Start.Add(mailingEvery)
 	return !now.Before(next), next
+}
+
+// mailingFollowUp : mail suivant d'un envoi en cours (lots de 49), quelques secondes après le précédent.
+func (g *Game) mailingFollowUp(now time.Time) bool {
+	m := g.st.Mailing
+	return !m.Last.IsZero() && now.Sub(m.Last) < mailingBatch
 }
 
 // MailingState : adresses à prévenir (en clair, pour l'administrateur seulement) et compteurs.
@@ -405,16 +413,17 @@ func (g *Game) MailingState() MailingView {
 
 // MailingSent : le mail est parti pour ces adresses (l'administrateur l'a envoyé de sa messagerie).
 // Elles ne recevront plus ce mail pour ces cartes, et leur adresse en clair est effacée.
-// force : envoi demandé par l'administrateur avant la fin des deux jours.
-func (g *Game) MailingSent(keys []string, force bool) (int, error) {
+func (g *Game) MailingSent(keys []string) (int, error) {
 	if len(keys) == 0 || len(keys) > mailingChunk {
 		return 0, ErrInvalid
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := g.now()
-	if open, next := g.mailingOpen(now); !open && !force {
-		return 0, userErr(http.StatusConflict, "Un mail est déjà parti il y a moins de deux jours : prochain envoi le %s.", next.In(Paris).Format("02/01 à 15h04"))
+	open, next := g.mailingOpen(now)
+	followUp := !open && g.mailingFollowUp(now)
+	if !open && !followUp {
+		return 0, userErr(http.StatusConflict, "Un mail d’accord est déjà parti il y a moins de 24 heures : prochain envoi possible le %s.", next.In(Paris).Format("02/01 à 15h04"))
 	}
 	want := map[string]bool{}
 	for _, k := range keys {
@@ -440,8 +449,8 @@ func (g *Game) MailingSent(keys []string, force bool) (int, error) {
 	if n == 0 {
 		return 0, nil
 	}
-	if g.st.Mailing.Start.IsZero() || now.Sub(g.st.Mailing.Start) >= mailingBatch || force {
-		g.st.Mailing.Start = now
+	if !followUp {
+		g.st.Mailing.Start = now // nouvel envoi : les 24 heures partent d'ici
 	}
 	g.st.Mailing.Last = now
 	g.st.Mailing.Sent += n

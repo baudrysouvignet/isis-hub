@@ -143,7 +143,8 @@ export async function openMailing(ctx) {
   const draw = () => {
     const n = m.targets.length;
     const stats = h('div.tml-stats', {}, stat(n, 'à prévenir'), stat(m.waiting, 'sans réponse'), stat(m.ok, 'd’accord'), stat(m.no, 'refus'));
-    const when = h('p.tml-when', {}, ic('clock'), m.last ? `Dernier envoi le ${dayLong(m.last)} à ${hourText(m.last)}.` : 'Aucun mail envoyé pour l’instant.');
+    const last = m.last ? `Dernier envoi le ${dayLong(m.last)} à ${hourText(m.last)}.` : 'Aucun mail envoyé pour l’instant.';
+    const when = h('p.tml-when', {}, ic('clock'), !m.open && m.next ? `${last} Prochain envoi possible le ${dayLong(m.next)} à ${hourText(m.next)} (un envoi toutes les 24 h).` : last);
     const parts = [stats, when];
     if (n) {
       const lots = Math.ceil(n / m.chunk);
@@ -155,8 +156,8 @@ export async function openMailing(ctx) {
         h('details.tml-who', {}, h('summary', { text: 'Voir le mail' }), h('p.tml-subj', { text: MAIL_SUBJECT }), h('pre.tml-text', { text: mailText(ctx.userName()) })),
       );
     }
-    const send = tbtn(n ? `Envoyer les mails (${n})` : 'Rien à envoyer', 'send', 'tbtn--primary tbtn--lg', () => run(send));
-    send.disabled = !n;
+    const send = tbtn(!m.open ? 'Envoi possible dans 24 h' : n ? `Envoyer les mails (${n})` : 'Rien à envoyer', 'send', 'tbtn--primary tbtn--lg', () => run(send));
+    send.disabled = !n || !m.open;
     parts.push(send);
     body.replaceChildren(...parts);
   };

@@ -540,10 +540,10 @@ func (s *Service) serveAdmin(w http.ResponseWriter, r *http.Request, action stri
 	case action == "mailing/sent":
 		var in struct {
 			Keys  []string `json:"keys"`
-			Force bool     `json:"force"`
+			Force bool     `json:"force"` // ignoré : plus d'envoi forcé (24 h entre deux envois)
 		}
 		if readJSON(8<<10, &in) {
-			n, err := s.Game.MailingSent(in.Keys, in.Force)
+			n, err := s.Game.MailingSent(in.Keys)
 			if err != nil {
 				failErr(w, err)
 				return

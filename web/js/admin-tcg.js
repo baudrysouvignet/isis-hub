@@ -597,9 +597,11 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     mailing.hidden = false;
     const n = m.targets.length;
     // Rien ne part tout seul : le mail part quand tu cliques, depuis ta messagerie.
-    const status = `${n ? `${plural(n, 'personne')} à prévenir.` : 'Personne à prévenir pour l’instant.'}${m.last ? ` Dernier envoi le ${when(m.last)}.` : ''}`;
-    const send = btn('btn--primary', n ? `Envoyer les mails (${n})` : 'Envoyer les mails', 'send', () => sendNow(send));
-    send.disabled = !n;
+    // Un envoi toutes les 24 heures au plus (le serveur refuse avant) : bouton grisé jusque-là.
+    const wait = !m.open && m.next ? ` Prochain envoi possible le ${when(m.next)}.` : '';
+    const status = `${n ? `${plural(n, 'personne')} à prévenir.` : 'Personne à prévenir pour l’instant.'}${m.last ? ` Dernier envoi le ${when(m.last)}.` : ''}${wait}`;
+    const send = btn('btn--primary', !m.open ? 'Envoi possible dans 24 h' : n ? `Envoyer les mails (${n})` : 'Envoyer les mails', 'send', () => sendNow(send));
+    send.disabled = !n || !m.open;
     mailing.replaceChildren(
       h('div.tad-mailing-h', {}, ic('send'), h('b', { text: 'Mails d’accord' }), h('span', { text: `${m.waiting} sans réponse · ${m.ok} d’accord · ${m.no} refus` })),
       h('p.tad-help', { text: status }),
