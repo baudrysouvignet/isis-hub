@@ -1,5 +1,6 @@
 // ISIS · TCG : créer une carte (atelier). La photo est recadrée dans la page au format de la carte
-// (4:3) : on la fait glisser dans l'aperçu et on zoome. Elle part déjà compressée en deux tailles
+// (4:3), comme dans les apps photo : grand cadre avec grille, on fait glisser, on zoome (deux
+// doigts, molette ou curseur). Par défaut toute la photo est visible (bords flous si besoin). Elle part déjà compressée en deux tailles
 // (960 × 720 et 320 × 240, WebP sinon JPEG) : redessinée sur un canevas, elle perd au passage ses
 // métadonnées (position GPS, appareil…). Le serveur vérifie de nouveau tout cela.
 
@@ -7,6 +8,7 @@ import { h, toast, motionOK } from '../core/dom.js';
 import { api, TcgError } from './api.js';
 import { cardEl, ic, quota, tbtn, CATS, dayLong, dateShort, rchip, plural } from './ui.js';
 import { peoplePicker } from './people.js';
+import { cropRect, fitZoom, MAX_ZOOM } from './crop.js';
 
 const W = 960;
 const H = 720;
@@ -34,32 +36,36 @@ async function encode(c, max) {
   throw new TcgError('Photo trop détaillée pour être compressée : essaie une autre photo.');
 }
 
-/** Recadrage : centre (cx, cy) dans l'image et zoom (1 = la plus grande zone 4:3 possible). */
-function cropRect(img, s) {
-  const iw = img.naturalWidth;
-  const ih = img.naturalHeight;
-  const baseW = iw / ih > W / H ? ih * (W / H) : iw;
-  const baseH = baseW * (H / W);
-  const cw = baseW / s.zoom;
-  const ch = baseH / s.zoom;
-  s.cx = Math.min(iw - cw / 2, Math.max(cw / 2, s.cx));
-  s.cy = Math.min(ih - ch / 2, Math.max(ch / 2, s.cy));
-  return { x: s.cx - cw / 2, y: s.cy - ch / 2, w: cw, h: ch };
-}
-
-function draw(img, s, w, hgt) {
-  const c = canvas(w, hgt);
+/** La photo recadrée sur un canevas w × hgt ; bords éventuels : la photo floutée et assombrie. */
+function draw(img, s, w, hgt, into = null) {
+  const c = into ?? canvas(w, hgt);
   const g = c.getContext('2d', { alpha: false });
   g.fillStyle = '#0B1418';
   g.fillRect(0, 0, w, hgt);
   g.imageSmoothingQuality = 'high';
-  const r = cropRect(img, s);
-  g.drawImage(img, r.x, r.y, r.w, r.h, 0, 0, w, hgt);
+  const iw = img.naturalWidth;
+  const ih = img.naturalHeight;
+  const r = cropRect(iw, ih, s);
+  const k = w / r.w;
+  if (r.w > iw || r.h > ih) {
+    // Fond : la photo en plein cadre, floutée (si le navigateur sait) et assombrie.
+    const cover = Math.max(w / iw, hgt / ih);
+    g.save();
+    if ('filter' in g) g.filter = 'blur(18px)';
+    g.globalAlpha = 0.55;
+    g.drawImage(img, (w - iw * cover) / 2, (hgt - ih * cover) / 2, iw * cover, ih * cover);
+    g.restore();
+  }
+  g.drawImage(img, -r.x * k, -r.y * k, iw * k, ih * k);
   return c;
 }
 
 /** En-tête, formulaire et aperçu ; « Mes propositions » en dessous. */
 export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
+  // Formulaire commencé (photo, texte, personnes) : la page peut être redessinée (rafraîchissement,
+  // retour sur l'onglet…), on rend le MÊME formulaire, rien de ce qui a été saisi n'est perdu.
+  if (ctx.draftForm) return ctx.draftForm;
+  const host = h('div.tcr-host');
   const st = ctx.st;
   const pub = ctx.pub;
   const perDay = pub?.perDay ?? 3;
@@ -93,15 +99,35 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
   const fileIn = h('input.sr-only', { type: 'file', id: 'tcr-file', accept: 'image/*' });
   const dropTitle = h('b', { text: 'Ajoute une photo' });
   const drop = h('label.tcr-drop', { htmlFor: 'tcr-file' }, ic('photo', 'ic'), h('span', {}, dropTitle, h('small', { text: 'JPG ou PNG · elle sera recadrée au format de la carte' })));
-  const zoomIn = h('input', { type: 'range', min: '1', max: '3', step: '0.01', value: '1', id: 'tcr-zoom' });
-  const zoom = h('div.tcr-zoom', { hidden: true }, h('label.tlabel', { htmlFor: 'tcr-zoom', text: 'Zoom' }), zoomIn, h('small', { text: 'Fais glisser la photo dans l’aperçu pour la recadrer.' }));
+  // Recadreur (comme dans les apps photo) : grand cadre 4:3 avec la grille des tiers.
+  const zoomIn = h('input', { type: 'range', min: '0.3', max: String(MAX_ZOOM), step: '0.005', value: '1', id: 'tcr-zoom' });
+  const cropCanvas = canvas(640, 480);
+  cropCanvas.className = 'tcr-crop-canvas';
+  const stage = h('div.tcr-crop-stage', { attrs: { role: 'img', 'aria-label': 'Recadrage de la photo : fais-la glisser pour choisir ce qui se voit' } }, cropCanvas, h('span.tcr-crop-grid', { attrs: { 'aria-hidden': 'true' } }));
+  const setZoom = (z) => {
+    if (!photo) return;
+    crop.zoom = z;
+    cropRect(photo.naturalWidth, photo.naturalHeight, crop); // borne le zoom et recentre
+    zoomIn.value = String(crop.zoom);
+    repaint();
+  };
+  const fitBtn = tbtn('Toute la photo', 'photo', 'tbtn--ghost tbtn--sm', () => setZoom(fitZoom(photo.naturalWidth, photo.naturalHeight)));
+  const fillBtn = tbtn('Remplir le cadre', 'plus', 'tbtn--ghost tbtn--sm', () => setZoom(1));
+  const zoom = h(
+    'div.tcr-zoom.tcr-crop',
+    { hidden: true },
+    stage,
+    h('div.tcr-crop-tools', {}, h('label.tlabel', { htmlFor: 'tcr-zoom', text: 'Zoom' }), zoomIn, fitBtn, fillBtn),
+    h('small', { text: 'Fais glisser la photo dans le cadre pour choisir ce qui se voit. Zoome avec deux doigts, la molette ou le curseur.' }),
+  );
 
   let raf = 0;
   const repaint = () => {
     if (raf || !photo) return;
     raf = requestAnimationFrame(() => {
       raf = 0;
-      photoURL = draw(photo, crop, 480, 360).toDataURL('image/jpeg', 0.82);
+      draw(photo, crop, 640, 480, cropCanvas);
+      photoURL = cropCanvas.toDataURL('image/jpeg', 0.82);
       if (artImg) artImg.src = photoURL;
     });
   };
@@ -127,14 +153,18 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     if (blobURL) URL.revokeObjectURL(blobURL);
     blobURL = url;
     photo = img;
-    crop.zoom = 1;
+    // Par défaut : toute la photo (rien n'est coupé) ; « Remplir le cadre » ou le zoom pour recadrer.
+    const fit = fitZoom(img.naturalWidth, img.naturalHeight);
+    crop.zoom = fit;
     crop.cx = img.naturalWidth / 2;
     crop.cy = img.naturalHeight / 2;
-    zoomIn.value = '1';
+    zoomIn.min = String(fit);
+    zoomIn.value = String(fit);
     zoom.hidden = false;
+    draw(photo, crop, 640, 480, cropCanvas);
     dropTitle.textContent = 'Changer la photo';
     err.hidden = true;
-    photoURL = draw(photo, crop, 480, 360).toDataURL('image/jpeg', 0.82);
+    photoURL = cropCanvas.toDataURL('image/jpeg', 0.82);
     renderPreview();
   }
   fileIn.addEventListener('change', () => loadFile(fileIn.files[0]));
@@ -143,28 +173,48 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     e.preventDefault();
     loadFile(e.dataTransfer?.files?.[0]);
   });
-  zoomIn.addEventListener('input', () => {
-    crop.zoom = Number(zoomIn.value);
-    repaint();
-  });
+  zoomIn.addEventListener('input', () => setZoom(Number(zoomIn.value)));
 
+  // Glisser (un doigt ou la souris), pincer (deux doigts), molette : sur le cadre et sur l'aperçu.
   function bindArt(art) {
     if (!art) return;
-    let d = null;
+    const pts = new Map(); // pointeurs posés
+    let d = null; // glisser : départ
+    let pinch = null; // pincer : écart et zoom de départ
+    const gap = () => {
+      const [a, b] = [...pts.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y) || 1;
+    };
+    const startDrag = (p) => {
+      const r = cropRect(photo.naturalWidth, photo.naturalHeight, crop);
+      d = { x: p.x, y: p.y, cx: crop.cx, cy: crop.cy, k: r.w / art.getBoundingClientRect().width };
+    };
     art.addEventListener('pointerdown', (e) => {
       if (!photo) return fileIn.click();
       e.preventDefault();
-      const r = cropRect(photo, crop);
-      d = { x: e.clientX, y: e.clientY, cx: crop.cx, cy: crop.cy, k: r.w / art.getBoundingClientRect().width };
       art.setPointerCapture(e.pointerId);
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2) {
+        pinch = { gap: gap(), zoom: crop.zoom };
+        d = null;
+      } else if (pts.size === 1) startDrag(pts.get(e.pointerId));
+      ctx.editing = true;
     });
     art.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && pts.size >= 2) return setZoom(pinch.zoom * (gap() / pinch.gap));
       if (!d) return;
       crop.cx = d.cx - (e.clientX - d.x) * d.k;
       crop.cy = d.cy - (e.clientY - d.y) * d.k;
       repaint();
     });
-    const up = () => (d = null);
+    const up = (e) => {
+      pts.delete(e.pointerId);
+      if (pts.size < 2) pinch = null;
+      d = null;
+      if (pts.size === 1) startDrag([...pts.values()][0]); // un doigt reste : on continue de glisser
+    };
     art.addEventListener('pointerup', up);
     art.addEventListener('pointercancel', up);
     art.addEventListener(
@@ -172,13 +222,12 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
       (e) => {
         if (!photo) return;
         e.preventDefault();
-        crop.zoom = Math.min(3, Math.max(1, crop.zoom * (e.deltaY < 0 ? 1.06 : 0.94)));
-        zoomIn.value = String(crop.zoom);
-        repaint();
+        setZoom(crop.zoom * (e.deltaY < 0 ? 1.06 : 0.94));
       },
       { passive: false },
     );
   }
+  bindArt(stage);
 
   // Texte.
   const counter = (n, max) => {
@@ -278,7 +327,10 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
   }
 
   // Saisie en cours : le rafraîchissement automatique du jeu ne redessine pas la page.
-  const touched = () => (ctx.editing = true);
+  const touched = () => {
+    ctx.editing = true;
+    ctx.draftForm = host; // gardé tel quel jusqu'à l'envoi
+  };
   form.addEventListener('input', touched);
   form.addEventListener('change', touched);
   form.addEventListener('submit', async (e) => {
@@ -307,6 +359,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
       await api.propose(fd);
       toast('Carte envoyée en relecture : un admin la valide sous 48 h.', 'check');
       if (blobURL) URL.revokeObjectURL(blobURL);
+      ctx.draftForm = null; // envoyée : le prochain affichage repart d'un formulaire vide
       await ctx.reload();
     } catch (ex) {
       showErr(ex instanceof TcgError ? ex.message : 'Envoi impossible pour l’instant : réessaie.');
@@ -322,9 +375,8 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     h('div', {}, h('p.tk', { text: 'Atelier' }), h(`${heading}.tv-h1`, { tabIndex: -1, text: launch ? 'Propose ta carte' : 'Créer une carte' })),
     h('div.tcr-quota', {}, quota(left, perDay), h('span', { text: muted ? 'Propositions suspendues' : left > 0 ? `${plural(left, 'proposition')} aujourd’hui` : 'Reviens demain' })),
   );
-  const frag = document.createDocumentFragment();
-  frag.append(head, h('section.tcr', {}, h('div.tcr-grid', {}, form, preview), proposalsList(ctx, launch)));
-  return frag;
+  host.append(head, h('section.tcr', {}, h('div.tcr-grid', {}, form, preview), proposalsList(ctx, launch)));
+  return host;
 }
 
 /** « Mes propositions » et leur avancement : validation → jury → impression. */

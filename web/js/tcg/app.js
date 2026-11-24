@@ -433,6 +433,9 @@ export function createTCG(o) {
     else content = renderHome();
     wrap.dataset.v = p === 'soon' ? 'soon' : view;
     wrap.replaceChildren(content);
+    // Formulaire commencé à l'écran : la page reste « en saisie » (pas de rafraîchissement qui
+    // déplacerait le champ pendant qu'on tape).
+    if (ctx.draftForm && wrap.contains(ctx.draftForm)) ctx.editing = true;
     if (motionOK()) content.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' });
   }
 
@@ -441,10 +444,12 @@ export function createTCG(o) {
     for (const el of wrap.querySelectorAll('[data-until]')) el.textContent = untilText(el.dataset.until);
     const cd = wrap.querySelector('[data-countdown]');
     if (cd) countdown(cd);
-    if (st?.me && !st.me.boosterReady && Date.now() >= new Date(st.me.nextBooster).getTime()) {
+    // Booster prêt : seulement une fois le jeu lancé (avant, le formulaire « Propose ta carte » est
+    // sur l'accueil), et jamais pendant une saisie ou une feuille ouverte : la page attend.
+    if (phase() === 'live' && st?.me && !st.me.boosterReady && Date.now() >= new Date(st.me.nextBooster).getTime()) {
       st.me.boosterReady = true; // le serveur confirmera à l'ouverture
       syncHeader();
-      if (view === 'home') render();
+      if (view === 'home' && !ctx.editing && !sheetOpen()) render();
     }
   }
 
@@ -881,6 +886,7 @@ export function createTCG(o) {
     startTrade: () => startTrade(ctx),
     /** Déconnexion du Hub : la session de jeu de cet appareil est oubliée aussi. */
     async signedOut() {
+      ctx.draftForm = null; // brouillon (photo comprise) oublié à la déconnexion
       if (st) await api.logout().catch(() => {});
       setState(null);
       prefs.set('tcgJoined', null);
