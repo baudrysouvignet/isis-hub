@@ -636,7 +636,7 @@ button.ng:active { transform: scale(.97); }
 .nadd-on { font: 550 13.5px/1 var(--font); color: var(--text-3); }
 .stepper { display: inline-flex; align-items: center; gap: 4px; height: 56px; padding: 0 6px; border-radius: 12px; border: 1px solid var(--line-2); }
 .stepper output { min-width: 2.5ch; text-align: center; font: 720 18px/1 var(--font); font-variant-numeric: tabular-nums; }
-.nadd.is-slot .stepper { background: var(--sunken); border-color: transparent; }
+.nadd.is-slot.is-sim .stepper { background: var(--sunken); border-color: transparent; }
 .nadd-label-h { display: none; margin-top: 6px; font: 500 12px/1.4 var(--font); color: var(--text-3); }
 .nadd.is-slot:not(.is-sim) .nadd-label-h { display: block; }
 .nadd-preview { display: grid; gap: 6px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); min-height: 48px; }
@@ -1598,3 +1598,16 @@ dialog.launch:not([open]) { display: none; }
   .launch.is-leaving { animation-name: fadeOut !important; }
   .la-pill { animation: none; }
 }
+
+/* Lecteur de mail : destinataires nombreux repliés (v2.1.0) */
+.reader-to-more { display: inline; padding: 0; border: 0; background: none; color: var(--brand); font: inherit; font-weight: 650; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.reader-to-more:hover { color: var(--text); }
+.reader-to-more:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+
+/* Visionneuse : navigateur sans lecteur PDF dans la page (Android…), v2.1.0 */
+.att-nopdf { display: grid; justify-items: center; gap: 10px; max-width: 360px; padding: 34px 20px; text-align: center; }
+.att-nopdf-ic { width: 60px; height: 60px; display: grid; place-items: center; border-radius: 18px; background: var(--brand-soft, var(--sunken)); color: var(--brand); }
+.att-nopdf-ic .ic { width: 28px; height: 28px; }
+.att-nopdf b { font: 700 15px/1.3 var(--font); word-break: break-word; }
+.att-nopdf p { margin: 0; color: var(--text-2); font-size: 13.5px; line-height: 1.45; }
+.att-nopdf .btn { margin-top: 6px; }

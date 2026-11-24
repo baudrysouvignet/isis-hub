@@ -118,3 +118,51 @@ func TestRetriedEvery15Minutes(t *testing.T) {
 		t.Fatalf("pas relu après 15 minutes : %d", calls)
 	}
 }
+
+// Les sources ne donnent que le menu du jour : ceux déjà vus restent une semaine, même après un
+// redémarrage du serveur (fichier du dossier de données).
+func TestHistoryPersistsOneWeek(t *testing.T) {
+	day := 0
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		date := time.Date(2026, 11, 17+day, 12, 0, 0, 0, time.UTC).Format("02-01-2006")
+		w.Write([]byte(strings.Replace(apiSample, "17-11-2026", date, 1)))
+	}))
+	defer api.Close()
+	path := t.TempDir() + "/crous.json"
+	now := time.Date(2026, 11, 17, 9, 0, 0, 0, paris)
+	open := func() *Service {
+		s := New()
+		s.BaseAPI, s.BaseCrou = api.URL, api.URL
+		s.now = func() time.Time { return now }
+		if err := s.Persist(path); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	s := open()
+	for ; day < 10; day++ {
+		now = time.Date(2026, 11, 17+day, 9, 0, 0, 0, paris)
+		s.Get(context.Background())
+		if day == 4 {
+			s = open() // redémarrage : l'historique est relu sur disque
+			if m := s.Get(context.Background()); len(m.Days["2026-11-17"]) == 0 {
+				t.Fatal("menu du 17 perdu au redémarrage")
+			}
+		}
+	}
+	m := s.Get(context.Background())
+	if len(m.Days["2026-11-26"]) == 0 || len(m.Days["2026-11-19"]) == 0 {
+		t.Fatalf("semaine écoulée incomplète : %v", keys(m))
+	}
+	if len(m.Days["2026-11-18"]) != 0 {
+		t.Fatalf("menu de plus d'une semaine gardé : %v", keys(m))
+	}
+}
+
+func keys(m Menus) []string {
+	var out []string
+	for d := range m.Days {
+		out = append(out, d)
+	}
+	return out
+}

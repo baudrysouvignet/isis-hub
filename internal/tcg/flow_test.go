@@ -297,7 +297,17 @@ func TestFullLaunchFlow(t *testing.T) {
 		}
 		p.must("POST", "/api/tcg/jury", map[string]any{"wave": st.Jury.Wave, "ballot": 0, "rank": rank}, 200)
 		p.must("POST", "/api/tcg/jury", map[string]any{"wave": st.Jury.Wave, "ballot": 0, "rank": rank[:2]}, 400) // incomplet
-		p.must("POST", "/api/tcg/jury/more", nil, 200)
+		p.must("POST", "/api/tcg/jury/more", nil, 409)                                                            // série suivante demain
+		if st := p.state(); st.Jury.More || st.Jury.Next.IsZero() || st.Jury.Max != maxBallots {
+			t.Fatalf("série suivante : %+v", st.Jury)
+		}
+	}
+	clk.t = day(7, 9) // le lendemain : une série de plus
+	for _, name := range names {
+		if st := players[name].state(); !st.Jury.More {
+			t.Fatalf("%s : pas de deuxième série", name)
+		}
+		players[name].must("POST", "/api/tcg/jury/more", nil, 200)
 	}
 	if st := ines.state(); st.Jury.Jurors != len(names) || len(st.Jury.Ballots) != 2 {
 		t.Fatalf("jurés : %d, bulletins : %d", st.Jury.Jurors, len(st.Jury.Ballots))

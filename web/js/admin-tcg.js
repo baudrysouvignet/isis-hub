@@ -335,9 +335,53 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     box.replaceChildren(
       h('h3.tad-sub', { text: `Aperçu de l’impression · vague ${n}` }),
       h('p.tad-help', { text: `Cartes validées, de la plus attendue par le jury à la moins attendue : les premières deviennent les plus rares. ${data.wave.size} cartes au plus. Sans impression manuelle, la vague s’imprime seule le ${when(data.wave.releaseAt)}.` }),
+      quantities(n, data),
       picked.length ? h('p.tad-mix', {}, ...mix.map(([r, k]) => h('span', {}, rchip(r), ` × ${k}`))) : h('p.tad-help', { text: 'Aucune carte validée pour l’instant.' }),
       data.cards.length ? rows : null,
       h('div.tad-row', {}, btn('btn--ghost btn--sm', 'Fermer l’aperçu', null, () => ((printWave = 0), (box.hidden = true))), picked.length ? print : null),
+    );
+  }
+
+  /**
+   * Quantités de la vague, réglables jusqu'à l'impression : cartes au plus, cartes par rareté
+   * (automatique, ou choisies : les communes complètent) et exemplaires de chaque carte.
+   */
+  function quantities(n, data) {
+    const RARE = ['unique', 'legendaire', 'epique', 'rare'];
+    const num = (value, label, { min = 0, max = 200, disabled = false } = {}) =>
+      h('input.input.tad-qn', { type: 'number', value: String(value), min: String(min), max: String(max), step: '1', disabled, attrs: { inputmode: 'numeric', 'aria-label': label } });
+    const size = num(data.wave.size, 'Cartes dans la vague, au plus', { min: 3 });
+    const auto = h('input', { type: 'checkbox', checked: !data.custom });
+    const counts = Object.fromEntries(RARE.map((r) => [r, num(data.mix[r] ?? 0, `Cartes ${RLABEL[r]}`, { disabled: !data.custom })]));
+    const runs = Object.fromEntries(['legendaire', 'epique', 'rare'].map((r) => [r, num(data.runs[r], `Exemplaires de chaque carte ${RLABEL[r]}`, { min: 1, max: 500 })]));
+    const communes = h('b.tad-q-rest');
+    const paint = () => {
+      const avail = Math.min(data.cards.filter((c) => !c.override || c.planned).length, Number(size.value) || 0);
+      const used = RARE.reduce((a, r) => a + (auto.checked ? (data.auto[r] ?? 0) : Number(counts[r].value) || 0), 0);
+      if (auto.checked) for (const r of RARE) counts[r].value = String(data.auto[r] ?? 0);
+      communes.textContent = String(Math.max(0, avail - used));
+      for (const r of RARE) counts[r].disabled = auto.checked;
+    };
+    [size, ...Object.values(counts)].forEach((i) => i.addEventListener('input', paint));
+    auto.addEventListener('change', paint);
+    const rows = RARE.map((r) => h('div.tad-q-row', {}, rchip(r), counts[r], r === 'unique' ? h('span.tad-q-run', { text: '1 exemplaire' }) : h('label.tad-q-run', {}, runs[r], h('span', { text: 'exemplaires chacune' }))));
+    rows.push(h('div.tad-q-row', {}, rchip('commune'), communes, h('span.tad-q-run', { text: 'le reste · tirage illimité' })));
+    const apply = btn('btn--primary btn--sm', 'Appliquer', 'check', async () => {
+      const body = { size: Number(size.value) || 0, mix: auto.checked ? null : Object.fromEntries(RARE.map((r) => [r, Number(counts[r].value) || 0])), runs: Object.fromEntries(Object.entries(runs).map(([r, i]) => [r, Number(i.value) || 0])) };
+      try {
+        await tapi(`wave/${n}/mix`, body);
+        toast('Quantités enregistrées : l’aperçu est à jour.', 'check');
+        preview(n);
+      } catch (e) {
+        toast(e.message, 'alert');
+      }
+    });
+    paint();
+    return h(
+      'details.tad-q',
+      { open: data.custom || Object.keys(data.wave.runs ?? {}).length > 0 },
+      h('summary', {}, h('b', { text: 'Quantités à imprimer' }), h('span', { text: data.custom ? 'choisies' : 'automatiques' })),
+      h('div.tad-q-body', {}, h('label.tad-q-size', {}, h('span', { text: 'Cartes dans la vague (au plus)' }), size), h('label.tad-q-auto', {}, auto, h('span', { text: 'Répartition automatique (les plus attendues deviennent les plus rares)' })), ...rows, h('p.tad-help', { text: 'Rien n’est imprimé avant « Imprimer » ou la date de sortie : tu peux changer ces nombres jusque-là. Les exemplaires valent pour cette vague seulement.' }), h('div.tad-row', {}, apply)),
     );
   }
 
@@ -545,11 +589,22 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
 
   // « Y a-t-il des personnes sur la photo ? » : personne → validée ; sinon elle attend leur accord.
   function peopleForm(c, kind) {
+    // Dès qu'un nom est saisi (ou indiqué par l'auteur), « Personne : valider » disparaît.
+    let none = null;
+    let withPeople = null;
+    const sync = () => {
+      if (!none || !withPeople) return;
+      const named = picker.count() > 0;
+      none.hidden = named;
+      withPeople.classList.toggle('btn--primary', named || kind === 'people');
+    };
     const picker = peoplePicker({
       id: 'tad-people',
       initial: kind === 'validate' ? (c.proposed ?? []) : [],
       search: async (q) => (await mailBridge()).searchContacts(q, 12),
       recent: async () => (await mailBridge()).recentRecipients(),
+      onChange: () => sync(),
+      onType: () => sync(),
     });
     const form = h('form.tad-peopleform', { noValidate: true });
     const submit = (alone) => {
@@ -559,12 +614,13 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       const msg = kind === 'people' ? 'Personnes ajoutées : leur accord est demandé.' : people.length ? `Carte validée : elle attend l’accord de ${plural(people.length, 'personne')}.` : 'Carte validée : elle passera au jury.';
       act(c.id, { action: kind, people: people.join(',') }, msg).then(loadMailing);
     };
-    const none = btn('btn--primary btn--lg tad-ok', 'Personne : valider', 'check', () => submit(true));
-    const withPeople = h('button.btn.btn--lg', { type: 'submit' }, ic('person'), h('span', { text: kind === 'people' ? 'Ajouter et demander leur accord' : 'Valider et demander leur accord' }));
+    none = btn('btn--primary btn--lg tad-ok', 'Personne : valider', 'check', () => submit(true));
+    withPeople = h('button.btn.btn--lg', { type: 'submit' }, ic('person'), h('span', { text: kind === 'people' ? 'Ajouter et demander leur accord' : 'Valider et demander leur accord' }));
+    sync();
     form.append(
       h('p.label', { text: kind === 'people' ? 'Qui ajouter sur la photo ?' : 'Y a-t-il des personnes reconnaissables sur la photo ?' }),
       kind === 'validate' && c.proposed?.length ? h('p.tad-help', { text: `L’auteur a indiqué ${plural(c.proposed.length, 'personne')} : vérifie la liste, retire ou ajoute qui il faut.` }) : null,
-      h('label.tad-help', { htmlFor: 'tad-people', text: 'Nom ou adresse de l’université : suggestions de l’annuaire, comme pour un mail. 5 personnes au plus.' }),
+      h('label.tad-help', { htmlFor: 'tad-people', text: 'Nom ou adresse de l’université : suggestions de l’annuaire, comme pour un mail. 10 personnes au plus.' }),
       picker.el,
       h('div.tad-row', {}, btn('btn--ghost', 'Annuler', null, () => ((mode = ''), renderDetail())), kind === 'validate' ? none : null, withPeople),
       h('p.tad-help', { text: 'Elles reçoivent un mail depuis ta messagerie (copie cachée, quand tu cliques sur « Envoyer les mails ») et répondent dans le TCG. La carte passe au jury dès que toutes ont accepté.' }),
@@ -573,7 +629,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       e.preventDefault();
       submit(false);
     });
-    requestAnimationFrame(() => (kind === 'validate' ? none.focus() : picker.focus()));
+    requestAnimationFrame(() => (kind === 'validate' && !none.hidden ? none.focus() : picker.focus()));
     return form;
   }
 

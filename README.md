@@ -114,7 +114,9 @@ code servi. D'où les moyens de vérification ci-dessous.
 - **Resto U' de Castres** : bloc 12 h 30 – 13 h 30 chaque jour de cours ; un clic affiche le menu du
   midi (ou « Menu non publié »). Le serveur lit le menu **public** (API Croustillant, à défaut la page
   du CROUS Toulouse) au plus toutes les 15 minutes (`/api/crous`, sans cache) : la page ne contacte
-  aucun tiers, et une page restée ouverte relit le menu toutes les 15 minutes.
+  aucun tiers, et une page restée ouverte relit le menu toutes les 15 minutes. Les sources ne donnent
+  que le menu du jour : le serveur garde une semaine de menus déjà vus (`crous.json` du volume
+  `/data`, menus publics seulement), pour qu'ils restent consultables après un redémarrage.
 - **Mails** : boîte de réception chargée au fil du défilement, lus et non lus, recherche (expéditeur,
   objet, aperçu), 5 mails sur téléphone puis « Afficher plus », état « mis à jour il y a… » cliquable.
   Un clic ouvre le mail en plein écran **et le marque comme lu dans la messagerie** (`\Seen`).

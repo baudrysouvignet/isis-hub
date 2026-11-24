@@ -5,14 +5,15 @@
 // le confirment (le type annoncé par l'expéditeur ne compte pas). HTML, SVG et tout le reste
 // sont seulement proposés au téléchargement, sous le type neutre application/octet-stream.
 
-import { $, h, toast } from '../core/dom.js';
+import { $, h, icon, toast } from '../core/dom.js';
 import * as mail from '../portals/mail.js';
 import { modal } from './layout.js';
-import { kb, sniff, safeName, viewable } from '../portals/files.js';
+import { kb, sniff, safeName, viewable, inlinePdf } from '../portals/files.js';
 
 export { kb, viewable };
 
 const MAX = 25 * 1024 * 1024;
+
 
 // Une seule visionneuse pour la page (mails et Moodle s'en servent tous les deux).
 let shared = null;
@@ -85,6 +86,20 @@ function makeViewer() {
       dl.setAttribute('download', safeName(fileName));
       if (type?.startsWith('image/')) {
         body.replaceChildren(h('img.att-img', { src: blobUrl(bytes, type), alt: fileName }));
+      } else if (type === 'application/pdf' && !inlinePdf()) {
+        // Pas de lecteur PDF dans la page (Android…) : un cadre resterait gris. On ouvre le PDF
+        // avec le lecteur du téléphone, sans passer par aucun site.
+        const pdf = blobUrl(bytes, type);
+        body.replaceChildren(
+          h(
+            'div.att-nopdf',
+            {},
+            h('span.att-nopdf-ic', {}, icon('doc', 'ic')),
+            h('b', { text: fileName }),
+            h('p', { text: 'Ce navigateur n’affiche pas les PDF dans une page : ouvre-le avec le lecteur de ton téléphone.' }),
+            h('a.btn.btn--primary', { href: pdf, target: '_blank', rel: 'noopener', text: 'Ouvrir le PDF' }),
+          ),
+        );
       } else if (type === 'application/pdf') {
         const pdf = blobUrl(bytes, type);
         // iPhone, iPad : un PDF dans un cadre n'y montre souvent que sa première page.

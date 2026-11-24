@@ -495,7 +495,7 @@ func (g *Game) ImageShown(name string) bool {
 	return false
 }
 
-// Withdraw : l'auteur retire une proposition pas encore imprimée.
+// Withdraw : l'auteur retire une proposition pas encore validée (en attente ou bloquée).
 func (g *Game) Withdraw(pid, id string) error {
 	g.mu.Lock()
 	c := g.st.Cards[id]
@@ -503,9 +503,14 @@ func (g *Game) Withdraw(pid, id string) error {
 		g.mu.Unlock()
 		return ErrNotFound
 	}
-	if c.Status == StatusPrinted || c.Status == StatusRemoved {
+	switch c.Status {
+	case StatusPrinted, StatusRemoved:
 		g.mu.Unlock()
 		return userErr(http.StatusConflict, "Cette carte est déjà imprimée.")
+	case StatusConsent, StatusAccepted:
+		// Validée : elle est dans le jeu (jury, impression), son auteur ne la retire plus.
+		g.mu.Unlock()
+		return userErr(http.StatusConflict, "Ta carte est validée : elle est dans le jeu et ne peut plus être retirée.")
 	}
 	imgs := []string{c.Img, c.Thumb}
 	g.st.Used -= c.Bytes
@@ -541,10 +546,39 @@ func without(ids []string, id string) []string {
 
 // ------------------------------------------------------------ jury de la semaine
 
+// Le jury se joue en « Tu préfères » : une série de duels porte sur les 5 cartes d'un bulletin, et
+// les choix (7 duels au plus, tri de Ford-Johnson, web/js/tcg/duels.js) donnent le classement
+// complet de ces 5 cartes, enregistré comme avant. Une série de plus chaque jour du jury.
 const (
 	ballotSize = 5
-	maxBallots = 3
+	maxBallots = 7
 )
+
+// parisDays : jours calendaires (Paris) de a à b.
+func parisDays(a, b time.Time) int {
+	ya, ma, da := a.In(Paris).Date()
+	yb, mb, db := b.In(Paris).Date()
+	return int(time.Date(yb, mb, db, 12, 0, 0, 0, time.UTC).Sub(time.Date(ya, ma, da, 12, 0, 0, 0, time.UTC)).Hours() / 24)
+}
+
+// seriesOpen : séries ouvertes à ce moment du jury (une le premier jour, une de plus chaque jour à
+// minuit ; un jour manqué se rattrape).
+func seriesOpen(w *Wave, now time.Time) int {
+	return min(max(parisDays(w.JuryFrom, now)+1, 1), maxBallots)
+}
+
+// nextSeries : ouverture de la série suivante (minuit à Paris), ou zéro s'il n'y en aura plus.
+func nextSeries(w *Wave, now time.Time) time.Time {
+	if seriesOpen(w, now) >= maxBallots {
+		return time.Time{}
+	}
+	p := now.In(Paris)
+	next := time.Date(p.Year(), p.Month(), p.Day()+1, 0, 0, 0, 0, Paris)
+	if !next.Before(w.JuryUntil) {
+		return time.Time{}
+	}
+	return next
+}
 
 // ensureBallot : premier bulletin du joueur pour le jury ouvert (créé à la demande).
 func (g *Game) ensureBallot(p *Player, w *Wave) {
@@ -630,7 +664,7 @@ func (g *Game) Vote(pid string, wave, ballot int, rank []string) error {
 	return nil
 }
 
-// MoreBallot : 5 autres cartes à classer (3 bulletins au plus par jury).
+// MoreBallot : série suivante, 5 autres cartes (une série par jour de jury, 7 au plus).
 func (g *Game) MoreBallot(pid string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -638,13 +672,19 @@ func (g *Game) MoreBallot(pid string) error {
 	if p == nil {
 		return ErrNotFound
 	}
-	w := g.juryWave(g.now())
+	now := g.now()
+	w := g.juryWave(now)
 	if w == nil {
 		return userErr(http.StatusConflict, "Le jury est fermé.")
 	}
 	bs := p.Ballots[w.N]
-	if len(bs) == 0 || len(bs[len(bs)-1].Rank) == 0 || len(bs) >= maxBallots {
-		return userErr(http.StatusConflict, "Valide d’abord ton classement.")
+	switch {
+	case len(bs) == 0 || len(bs[len(bs)-1].Rank) == 0:
+		return userErr(http.StatusConflict, "Termine d’abord ta série de duels.")
+	case len(bs) >= maxBallots:
+		return userErr(http.StatusConflict, "Tu as joué toutes les séries de ce jury.")
+	case len(bs) >= seriesOpen(w, now):
+		return userErr(http.StatusConflict, "La série suivante ouvre demain.")
 	}
 	b, ok := g.newBallot(p, w)
 	if !ok {
@@ -667,6 +707,37 @@ func samePerm(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// TryCards : essai de « Tu préfères ? » pour l'administration, même sans jury ouvert (avant le
+// lancement notamment) : 5 cartes validées, sinon en attente de l'accord ou de la validation.
+// Rien n'est enregistré, et les joueurs n'y ont pas accès.
+func (g *Game) TryCards(pid string) ([]CardView, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	p := g.st.Players[pid]
+	if p == nil || !p.Admin {
+		return nil, userErr(http.StatusForbidden, "Réservé à l’administration.")
+	}
+	var out []CardView
+	for _, status := range []string{StatusAccepted, StatusConsent, StatusPending} {
+		var ids []string
+		for _, c := range g.st.Cards {
+			if c.Status == status && !c.Purged && c.Img != "" {
+				ids = append(ids, c.ID)
+			}
+		}
+		g.shuffle(ids)
+		for _, id := range ids {
+			if len(out) < ballotSize {
+				out = append(out, g.candidateView(g.st.Cards[id]))
+			}
+		}
+	}
+	if len(out) < 2 {
+		return nil, userErr(http.StatusConflict, "Il faut au moins 2 cartes proposées pour essayer.")
+	}
+	return out, nil
 }
 
 // juryScore : moyenne des points, tirée vers 0 tant qu'il y a peu de classements.

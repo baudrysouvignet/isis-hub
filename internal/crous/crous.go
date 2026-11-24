@@ -1,9 +1,12 @@
 // Package crous fournit le menu du midi du Resto U' de Castres, lu sur des sources publiques :
 // l'API Croustillant, et à défaut la page du CROUS Toulouse. Aucune donnée personnelle n'est en jeu.
-// Les menus sont relus au plus toutes les 15 minutes ; ceux déjà vus restent connus 3 semaines.
+// Les menus sont relus au plus toutes les 15 minutes. Les sources ne donnent que le menu du jour :
+// ceux déjà vus sont gardés une semaine, dans un fichier du dossier de données (Persist), pour
+// survivre aux redémarrages du serveur. Ce sont des menus publics : rien de personnel.
 package crous
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +14,8 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -21,9 +26,9 @@ import (
 const (
 	croustillantURL = "https://api.croustillant.menu/v1/restaurants/117/menu"
 	crousURL        = "https://www.crous-toulouse.fr/restaurant/resto-u-castres/"
-	ttl             = 15 * time.Minute // le CROUS change parfois le menu dans la matinée : relu souvent
-	retry           = 15 * time.Minute // menu du jour pas encore connu
-	keep            = 21 * 24 * time.Hour
+	ttl             = 15 * time.Minute   // le CROUS change parfois le menu dans la matinée : relu souvent
+	retry           = 15 * time.Minute   // menu du jour pas encore connu
+	keep            = 7 * 24 * time.Hour // une semaine d'historique
 )
 
 var paris = func() *time.Location {
@@ -54,8 +59,56 @@ type Service struct {
 	fetched  time.Time
 	sources  []func(ctx context.Context) (map[string][]Category, string, error)
 	now      func() time.Time
+	file     string // menus gardés sur disque (Persist) ; vide : en mémoire seulement
+	saved    []byte
 	BaseCrou string
 	BaseAPI  string
+}
+
+// Persist garde les menus vus dans path (un fichier JSON, écrit d'un coup) et relit ceux qui y sont
+// déjà : l'historique de la semaine survit aux redémarrages.
+func (s *Service) Persist(path string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.file = path
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var m Menus
+	if err := json.Unmarshal(b, &m); err != nil {
+		return fmt.Errorf("%s illisible : %w", path, err)
+	}
+	for d, c := range m.Days {
+		if _, ok := s.menus.Days[d]; !ok {
+			s.menus.Days[d] = c
+		}
+	}
+	if s.menus.Source == "" {
+		s.menus.Source, s.menus.Updated = m.Source, m.Updated
+	}
+	s.saved = b
+	return nil
+}
+
+// save écrit les menus s'ils ont changé (verrou tenu). Un échec n'empêche pas de servir les menus.
+func (s *Service) save() {
+	if s.file == "" {
+		return
+	}
+	b, err := json.Marshal(s.menus)
+	if err != nil || bytes.Equal(b, s.saved) {
+		return
+	}
+	tmp := s.file + ".tmp"
+	if os.MkdirAll(filepath.Dir(s.file), 0o700) != nil || os.WriteFile(tmp, b, 0o600) != nil || os.Rename(tmp, s.file) != nil {
+		os.Remove(tmp)
+		return
+	}
+	s.saved = b
 }
 
 func New() *Service {
@@ -222,6 +275,7 @@ func (s *Service) Get(ctx context.Context) Menus {
 				delete(s.menus.Days, d)
 			}
 		}
+		s.save()
 	}
 	out := s.menus
 	out.Days = make(map[string][]Category, len(s.menus.Days))

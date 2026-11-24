@@ -179,6 +179,8 @@ type Wave struct {
 	PrintedAt      time.Time         `json:"printedAt,omitzero"`
 	Cards          []string          `json:"cards,omitempty"`
 	Overrides      map[string]Rarity `json:"overrides,omitempty"` // raretés choisies par l'administrateur
+	Mix            map[Rarity]int    `json:"mix,omitempty"`       // cartes par rareté choisies par l'administrateur (communes : le reste)
+	Runs           map[Rarity]int    `json:"runs,omitempty"`      // exemplaires par carte pour cette vague (sinon ceux de la saison)
 }
 
 // Season : réglages du jeu.

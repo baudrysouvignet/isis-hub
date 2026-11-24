@@ -264,3 +264,12 @@ test('rejouable ou non : lectures oui, envois non (sauf lecture déclarée), red
   await http('https://moodle.univ-jfc.fr/post', { method: 'POST', body: 'x' });
   assert.deepEqual(calls.map((c) => c.idempotent), [true, false, true, false, true]);
 });
+
+test('PDF : affiché dans la page seulement si le navigateur sait le faire (sinon un bouton « Ouvrir »)', async () => {
+  const { inlinePdf } = await import('../web/js/portals/files.js');
+  assert.equal(inlinePdf({ pdfViewerEnabled: true, userAgent: 'Mozilla/5.0 (Macintosh)' }), true);
+  assert.equal(inlinePdf({ pdfViewerEnabled: false, userAgent: 'Mozilla/5.0 (Macintosh)' }), false, 'Chrome réglé sur « Télécharger les PDF »');
+  assert.equal(inlinePdf({ pdfViewerEnabled: false, userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/140' }), false, 'Chrome Android');
+  assert.equal(inlinePdf({ userAgent: 'Mozilla/5.0 (Linux; Android 9) SamsungBrowser/12' }), false, 'vieux navigateur Android');
+  assert.equal(inlinePdf({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0)' }), true);
+});

@@ -42,6 +42,7 @@ export const api = {
   withdraw: (id) => post(`proposal/${encodeURIComponent(id)}/withdraw`),
   vote: (wave, ballot, rank) => post('jury', { wave, ballot, rank }),
   moreBallot: () => post('jury/more'),
+  tryJury: () => call('jury/try'),
   wish: (card, on) => post('wish', { card, on }),
   report: (card, reason) => post('report', { card, reason }),
   tradeNew: (invite = '') => post('trade/new', { invite }),

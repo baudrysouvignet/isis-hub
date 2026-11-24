@@ -268,7 +268,7 @@ export function createTCG(o) {
     const lastBallot = st?.jury?.ballots?.[st.jury.ballots.length - 1];
     const juryPending = Boolean(lastBallot && !lastBallot.rank?.length);
     dot.hidden = !((p === 'live' && (!st || st.me.boosterReady)) || juryPending);
-    dot.setAttribute('aria-label', juryPending && p !== 'live' ? 'Jury à classer' : 'Booster disponible');
+    dot.setAttribute('aria-label', juryPending && p !== 'live' ? 'Duels du jury à jouer' : 'Booster disponible');
     app.classList.toggle('tcg-soon', p === 'soon' || (p === 'live' && !st));
     if (p === 'off' && open) setMode(false);
     syncDock();
@@ -282,7 +282,7 @@ export function createTCG(o) {
     };
     badge('home', s?.me.boosterReady ? 1 : 0);
     const last = s?.jury?.ballots?.[s.jury.ballots.length - 1];
-    badge('jury', last && !last.rank?.length ? last.cards.length : 0);
+    badge('jury', last && !last.rank?.length ? 1 : 0);
     badge('trade', s?.invites?.length ?? 0);
     badge('collection', 0);
     badge('create', 0);
@@ -541,8 +541,10 @@ export function createTCG(o) {
     }
     // Jury de lancement ouvert : c'est l'action du moment.
     const juryOpen = w?.juryFrom && Date.now() >= new Date(w.juryFrom) && Date.now() < new Date(w.juryUntil);
-    const juryCta = juryOpen ? tbtn('Classer les cartes du jury', 'jury', 'tbtn--primary tbtn--xl', async () => (st || (await join())) && go('jury')) : null;
+    const juryCta = juryOpen ? tbtn('Jouer à « Tu préfères ? »', 'jury', 'tbtn--primary tbtn--xl', async () => (st || (await join())) && go('jury')) : null;
     const propose = tbtn('Proposer une carte', 'pen', juryCta ? 'tbtn--ghost tbtn--lg' : 'tbtn--primary tbtn--xl', () => $('#tsoon-form', wrap)?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' }));
+    // Administration, avant l'ouverture du jury : essayer les duels (rien n'est enregistré).
+    const tryDuels = !juryCta && st?.me?.admin ? tbtn('Essayer « Tu préfères ? »', 'jury', 'tbtn--ghost tbtn--lg', () => go('jury')) : null;
     const how = tbtn('Comment ça marche', 'info', 'tbtn--ghost tbtn--lg', () => $('#tsoon-steps', wrap)?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' }));
     const hero = h(
       'div.tsoon-hero',
@@ -554,7 +556,7 @@ export function createTCG(o) {
         h('h1.tsoon-h1', { tabIndex: -1 }, 'Le TCG arrive le ', h('em', { text: relDay }), '.'),
         h('p.tsoon-lead', { text: 'Un booster par jour, des cartes rares, des échanges en face à face. Et toutes les cartes viennent de vous : propose les tiennes dès maintenant, les plus attendues formeront la première vague.' }),
         count,
-        h('div.tsoon-ctas', {}, ...(juryCta ? [juryCta, propose] : [propose, how])),
+        h('div.tsoon-ctas', {}, ...(juryCta ? [juryCta, propose] : [propose, how, tryDuels].filter(Boolean))),
         consentCtas(),
       ),
       h('div.tsoon-visual', {}, h('span.th-halo'), mysteryFan(), lockedPack(rel ? dateShort(rel).replace('.', '') : 'Bientôt')),
@@ -575,7 +577,7 @@ export function createTCG(o) {
     const perDay = d?.perDay ?? 3;
     const steps = [
       ['pen', 'Propositions', w?.proposalsUntil ? `Jusqu’au ${dayLong(w.proposalsUntil)}. ${perDay} cartes par jour et par personne.` : `${perDay} cartes par jour et par personne, validées par un admin.`],
-      ['jury', 'Jury de lancement', w?.juryFrom ? `Du ${dateShort(w.juryFrom).replace('.', '')} au ${dateShort(w.juryUntil).replace('.', '')} : chacun classe 5 cartes, les plus attendues entrent dans le jeu.` : 'Chacun classe 5 cartes, les plus attendues entrent dans le jeu.'],
+      ['jury', 'Jury de lancement', w?.juryFrom ? `Du ${dateShort(w.juryFrom).replace('.', '')} au ${dateShort(w.juryUntil).replace('.', '')} : chaque jour, une série de « Tu préfères ? », les cartes préférées entrent dans le jeu.` : 'Chaque jour, une série de « Tu préfères ? » : les cartes préférées entrent dans le jeu.'],
       ['booster', 'Lancement', rel ? `${relDay.charAt(0).toUpperCase() + relDay.slice(1)}, ${hourText(rel)} : la Vague 1 et ton premier booster.` : 'La Vague 1 et ton premier booster.'],
       ['loop', 'Ensuite', 'Une nouvelle vague chaque semaine, avec les cartes proposées entre-temps.'],
     ];
@@ -652,7 +654,7 @@ export function createTCG(o) {
     for (const inv of st.invites) item('trade', 'trade', `${inv.from} t’invite à échanger`, `Code ${inv.code} · expire dans ${untilText(inv.expires)}`, () => joinTradeCode(ctx, inv.code));
     const jury = st.jury;
     const lastBallot = jury?.ballots?.[jury.ballots.length - 1];
-    if (jury && lastBallot && !lastBallot.rank?.length) item('jury', 'jury', 'Jury de la semaine', `${plural(lastBallot.cards.length, 'carte')} à classer · jusqu’à ${dayLong(jury.until).split(' ')[0]} ${hourText(jury.until)}`, () => go('jury'));
+    if (jury && lastBallot && !lastBallot.rank?.length) item('jury', 'jury', 'Jury de la semaine', `Tu préfères ? · une série de duels t’attend, jusqu’à ${dayLong(jury.until).split(' ')[0]} ${hourText(jury.until)}`, () => go('jury'));
     // « Mes apparitions » toujours là : en tête quand une carte attend mon accord.
     const toAnswer = pendingAppear(st);
     const appearSub = toAnswer.length ? `${plural(toAnswer.length, 'carte attend', 'cartes attendent')} ton accord` : (st.appear?.length ? `${plural(st.appear.length, 'carte')} où l’on t’a indiqué` : 'Les cartes où l’on t’indique sur la photo');

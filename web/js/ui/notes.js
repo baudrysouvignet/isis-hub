@@ -660,9 +660,13 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
   let coef = 1;
   let slot = null;
   let editId = null;
+  const coefLab = $('#nadd-coef-l', nadd);
   const setCoef = (c) => {
     coef = Math.max(0.5, Math.min(10, c));
     coefOut.textContent = fN(coef);
+    // Évaluation de la maquette : on rappelle son coefficient quand l'étudiant en choisit un autre.
+    const e = N?.EV?.[editId || slot];
+    coefLab.textContent = e && !e.extra && e.tplCoef !== undefined && coef !== e.tplCoef ? `Coefficient · maquette ×${fN(e.tplCoef)}` : 'Coefficient';
   };
   function fillMats() {
     const S = N.semById(semId);
@@ -714,7 +718,7 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
       setCoef(e.coef);
     }
     $$('[data-slot-pick]', slots).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.slotPick === id)));
-    $$('[data-coef]', nadd).forEach((b) => (b.disabled = Boolean(e) && !e.extra));
+    $$('[data-coef]', nadd).forEach((b) => (b.disabled = Boolean(e) && !e.extra && N.simOn));
     nadd.classList.toggle('is-slot', Boolean(e) && !e.extra);
     preview();
   }
@@ -739,6 +743,10 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
     const store = N.simOn ? N.sim : N.real;
     let tmp = null;
     let prevVal;
+    // Le coefficient choisi compte aussi dans l'aperçu (évaluation de la maquette comprise).
+    const shown = editId ? N.EV[editId] : slot && !proposalById(slot) ? N.EV[slot] : null;
+    const prevCoef = shown?.coef;
+    if (shown && !(N.simOn && !shown.extra)) shown.coef = coef;
     if (editId) {
       prevVal = store[editId];
       store[editId] = v;
@@ -757,6 +765,7 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
       M.evals.pop();
       delete store.__tmp;
     } else store[editId || slot] = prevVal;
+    if (shown) shown.coef = prevCoef;
     const row = (k, a, b, low) => {
       const r = el('span', 'nadd-pr');
       const d = b - (a === null ? b : a);
@@ -812,7 +821,7 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
       label.value = e.label;
       setCoef(e.coef);
       vIn.value = fN(N.val(e));
-      $$('[data-coef]', nadd).forEach((b) => (b.disabled = !e.extra));
+      $$('[data-coef]', nadd).forEach((b) => (b.disabled = !e.extra && N.simOn)); // coefficient personnel, pas en simulation
       nadd.classList.toggle('is-slot', !e.extra);
       label.disabled = N.simOn && !e.extra; // renommer est personnel : pas en simulation
     } else {
@@ -870,12 +879,14 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
     const v = candidate();
     // Évaluation de la maquette renommée sans note (pas encore passée) : seul le nom change.
     const named = !N.simOn && (editId || (slot && !proposalById(slot))) && N.EV[editId || slot];
-    if (v === null && named && !named.extra && !vIn.value.trim() && label.value.trim() !== named.label) {
+    if (v === null && named && !named.extra && !vIn.value.trim() && (label.value.trim() !== named.label || coef !== named.coef)) {
+      const renamed = label.value.trim() !== named.label;
       N.renameEval(named, label.value);
+      N.recoefEval(named, coef);
       save();
       addM.close();
       renderAll();
-      toast(`Renommée : ${named.label}`);
+      toast(renamed ? `Renommée : ${named.label}` : `Coefficient de « ${named.label} » : ${fN(named.coef)}`);
       return;
     }
     if (v === null) {
@@ -894,10 +905,16 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
       if (e.extra) {
         e.label = label.value.trim().slice(0, 40) || e.label;
         e.coef = coef;
-      } else if (!N.simOn) N.renameEval(e, label.value);
+      } else if (!N.simOn) {
+        N.renameEval(e, label.value);
+        N.recoefEval(e, coef);
+      }
     } else if (slot && !proposalById(slot)) {
       target[slot] = v;
-      if (!N.simOn) N.renameEval(N.EV[slot], label.value);
+      if (!N.simOn) {
+        N.renameEval(N.EV[slot], label.value);
+        N.recoefEval(N.EV[slot], coef);
+      }
     }
     else {
       const prop = proposalById(slot);

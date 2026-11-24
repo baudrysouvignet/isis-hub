@@ -1,6 +1,7 @@
 package tcg
 
 import (
+	"maps"
 	"math"
 	"net/http"
 	"sort"
@@ -151,6 +152,93 @@ func mixFor(n int) map[Rarity]int {
 	return m
 }
 
+// rarer : raretés réglables à l'impression, de la plus rare à la moins rare (communes : le reste).
+var rarer = []Rarity{Unique, Legendaire, Epique, Rare}
+
+// waveMix : cartes par rareté pour une vague de n cartes retenues. Choix de l'administrateur s'il
+// y en a un (dans l'ordre unique → rare, les communes complètent), sinon la répartition automatique.
+func waveMix(w *Wave, n int) map[Rarity]int {
+	if len(w.Mix) == 0 {
+		return mixFor(n)
+	}
+	m := map[Rarity]int{}
+	left := n
+	for _, r := range rarer {
+		k := min(max(w.Mix[r], 0), left)
+		m[r] = k
+		left -= k
+	}
+	m[Commune] = left
+	return m
+}
+
+// runOf : exemplaires numérotés d'une carte de cette rareté dans la vague (0 = commune, illimitée).
+func (g *Game) runOf(w *Wave, r Rarity) int {
+	switch {
+	case r == Commune:
+		return 0
+	case r == Unique:
+		return 1
+	case w.Runs[r] > 0:
+		return w.Runs[r]
+	}
+	return g.st.Season.Runs[r]
+}
+
+// SetMix : quantités de la vague, réglables jusqu'à l'impression. size : cartes au plus (0 = sans
+// changement) ; mix : cartes par rareté (nil = automatique) ; runs : exemplaires par carte (nil =
+// ceux de la saison). Une unique reste à 1 exemplaire, une commune illimitée.
+func (g *Game) SetMix(n, size int, mix, runs map[Rarity]int) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	w := g.wave(n)
+	if w == nil {
+		return ErrNotFound
+	}
+	if w.Printed {
+		return userErr(http.StatusConflict, "Cette vague est déjà imprimée.")
+	}
+	if size != 0 && (size < 3 || size > 200) {
+		return userErr(http.StatusBadRequest, "Une vague compte de 3 à 200 cartes.")
+	}
+	if size == 0 {
+		size = w.Size
+	}
+	var cm map[Rarity]int
+	if mix != nil {
+		cm = map[Rarity]int{}
+		total := 0
+		for _, r := range rarer {
+			k := mix[r]
+			if k < 0 || k > 200 {
+				return userErr(http.StatusBadRequest, "De 0 à 200 cartes par rareté.")
+			}
+			cm[r] = k // les zéros sont gardés : « aucune » n'est pas « automatique »
+			total += k
+		}
+		if total > size {
+			return userErr(http.StatusBadRequest, "%d cartes rares ou plus, pour une vague de %d cartes : augmente la taille de la vague.", total, size)
+		}
+	}
+	var cr map[Rarity]int
+	for _, r := range []Rarity{Legendaire, Epique, Rare} {
+		k, ok := runs[r]
+		if !ok {
+			continue
+		}
+		if k < 1 || k > 500 {
+			return userErr(http.StatusBadRequest, "De 1 à 500 exemplaires par carte.")
+		}
+		if cr == nil {
+			cr = map[Rarity]int{}
+		}
+		cr[r] = k
+	}
+	w.Size, w.Mix, w.Runs = size, cm, cr
+	g.dirty = true
+	return nil
+}
+
 // Candidate : carte candidate d'une vague, avec la rareté qu'elle aurait à l'impression.
 type Candidate struct {
 	Card     *Card
@@ -199,7 +287,7 @@ func (g *Game) plan(w *Wave) []Candidate {
 	if n > w.Size {
 		n = w.Size
 	}
-	mix := mixFor(n)
+	mix := waveMix(w, n)
 	for _, c := range cands {
 		if c.Override && c.Rarity != "" {
 			mix[c.Rarity]--
@@ -241,6 +329,7 @@ func (g *Game) Preview(n int) ([]Candidate, *Wave, error) {
 		out[i] = Candidate{Card: &cp, Score: c.Score, Rarity: c.Rarity, Override: c.Override}
 	}
 	cw := *w
+	cw.Mix, cw.Runs, cw.Overrides = maps.Clone(w.Mix), maps.Clone(w.Runs), nil
 	return out, &cw, nil
 }
 
@@ -293,10 +382,7 @@ func (g *Game) printWave(w *Wave, now time.Time) bool {
 		c.Status = StatusPrinted
 		c.Wave = w.N
 		c.No = i + 1
-		c.Run = g.st.Season.Runs[c.Rarity]
-		if c.Rarity == Commune {
-			c.Run = 0
-		}
+		c.Run = g.runOf(w, c.Rarity)
 		c.Decided = now
 		w.Cards = append(w.Cards, c.ID)
 	}

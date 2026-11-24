@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	maxTags      = 5              // personnes indiquées par carte
+	maxTags      = 10             // personnes indiquées par carte
 	mailingEvery = 24 * time.Hour // une même adresse ne reçoit pas deux mails d'accord en moins de 24 h
 	mailingChunk = 49             // copies cachées par mail (+ l'expéditeur en destinataire)
 )

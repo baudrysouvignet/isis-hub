@@ -467,6 +467,59 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, lo
     }
   }
 
+  // --------------------------------------------------------- mise à jour discrète
+
+  // Page visible : la boîte est relue toutes les 4 minutes, sans squelette ni perte de la position
+  // dans la liste (nouveaux mails ajoutés en tête, lus / non lus de la première page relus). Page
+  // cachée (onglet en arrière-plan, application fermée) : rien ; au retour, relue tout de suite si
+  // la dernière lecture date de plus de 4 minutes. Rien pendant la lecture d'un mail ou une
+  // sélection : on attend qu'ils soient finis.
+  const AUTO_REFRESH = 4 * 60_000;
+  let quiet = false;
+  async function refreshQuietly() {
+    if (quiet || !list || !reader.hidden || selecting() || retryTimer || pendingAttempt || failed) return;
+    if (sync.classList.contains('is-busy') || document.visibilityState !== 'visible') return;
+    quiet = true;
+    const gen = generation;
+    sync.classList.add('is-busy');
+    sync.textContent = 'Mise à jour…';
+    try {
+      const res = await mail.listInbox(box);
+      if (gen !== generation || !list) return;
+      const pos = new Map(res.ids.map((id, i) => [id, i]));
+      const old = new Map(mails.filter((m) => pos.has(m.id)).map((m) => [m.id, m]));
+      // Mails déjà affichés : de la tête de la boîte jusqu'au plus ancien chargé (la liste reste un
+      // début de la boîte, que « plus anciens » continue au défilement).
+      const last = Math.max(-1, ...[...old.keys()].map((id) => pos.get(id)));
+      const range = res.ids.slice(0, Math.max(last + 1, Math.min(PAGE, res.ids.length)));
+      const want = range.filter((id, i) => i < PAGE || !old.has(id));
+      if (!old.size || want.length > 2 * PAGE) return void load(); // beaucoup de changements : on recharge
+      ids = res.ids;
+      if (box === 'inbox') setUnread(res.unread);
+      const got = await withRules(await mail.getMails(want, box));
+      if (gen !== generation || !list) return;
+      const fresh = new Map([...old, ...got.map((m) => [m.id, m])]);
+      const still = new Set(ids); // les règles ont pu en mettre à la corbeille
+      const next = range.filter((id) => still.has(id) && fresh.has(id)).map((id) => fresh.get(id));
+      const shown = new Set(mails.map((m) => m.id));
+      const added = next.filter((m) => !shown.has(m.id)).length;
+      if (next.length !== mails.length || next.some((m, i) => m.id !== mails[i].id || Boolean(m.unread) !== Boolean(mails[i].unread))) {
+        mails = next;
+        redraw();
+        if (added) live.textContent = added > 1 ? `${added} nouveaux mails.` : '1 nouveau mail.';
+      }
+      if (mails.length >= ids.length) endOfList();
+      lastRefresh = Date.now();
+    } catch (error) {
+      if (gen === generation && error instanceof NotSignedIn) onSessionLost('mail');
+      // autre échec : rien n'est effacé, nouvel essai au tour suivant
+    } finally {
+      quiet = false;
+      if (gen === generation && !retryTimer) renderSync();
+    }
+  }
+  setInterval(() => lastRefresh && Date.now() - lastRefresh >= AUTO_REFRESH && refreshQuietly(), 20_000);
+
   // --------------------------------------------------------- état de mise à jour
 
   function renderSync() {
@@ -798,6 +851,26 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, lo
     );
   }
 
+  /** « À : » : jusqu'à 4 personnes en entier ; au-delà les 3 premières, puis « et N autres ». */
+  function showRecipients(target, people) {
+    if (!people.length) return void (target.textContent = '—');
+    const all = people.map(who).join(', ');
+    if (people.length <= 4) return void (target.textContent = all);
+    const more = h('button.reader-to-more', { type: 'button', attrs: { 'aria-expanded': 'false' } });
+    const short = () => {
+      more.textContent = `et ${people.length - 3} autres`;
+      more.setAttribute('aria-expanded', 'false');
+      target.replaceChildren(`${people.slice(0, 3).map(who).join(', ')} `, more);
+    };
+    more.addEventListener('click', () => {
+      if (more.getAttribute('aria-expanded') === 'true') return short();
+      more.textContent = 'réduire';
+      more.setAttribute('aria-expanded', 'true');
+      target.replaceChildren(`${all} `, more);
+    });
+    short();
+  }
+
   async function fill(i) {
     const m = mails[i];
     current = i;
@@ -805,7 +878,7 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, lo
     set('subject', m.subject);
     set('name', m.from.name || m.from.address);
     set('email', m.from.address && m.from.name ? `<${m.from.address}>` : '');
-    set('to', [...m.to, ...m.cc].map(who).join(', ') || '—');
+    showRecipients($('[data-r="to"]', reader), [...m.to, ...m.cc]);
     set('date', D.fullDate(m.date));
     const av = $('[data-r="avatar"]', reader);
     av.textContent = initials(m.from.name || m.from.address || '?');
@@ -1295,14 +1368,16 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, lo
   });
 
   // Retour sur l'application ou du réseau : essai reporté repris, tuile en erreur relancée, ou
-  // nouveau courrier (au plus toutes les 2 minutes). Au plus une relance toutes les 30 s.
+  // nouveau courrier si la dernière lecture a plus de 4 minutes (mise à jour discrète). Au plus une
+  // relance toutes les 30 s.
   function resume() {
     if (document.visibilityState !== 'visible' || retryTimer || sync.classList.contains('is-busy')) return;
     if (pendingAttempt) return load({ attempt: pendingAttempt });
-    const due = failed || (list && reader.hidden && Date.now() - lastRefresh > 120_000);
+    const due = failed || (list && Date.now() - lastRefresh >= AUTO_REFRESH);
     if (!due || Date.now() - lastResume < 30_000) return;
     lastResume = Date.now();
-    load();
+    if (failed) load();
+    else refreshQuietly();
   }
   document.addEventListener('visibilitychange', resume);
   addEventListener('online', resume);

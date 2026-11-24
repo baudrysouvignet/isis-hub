@@ -362,3 +362,21 @@ test('simulation : calculer avec les vraies notes n’efface ni les notes simul�
   N.simOn = false; // quitter la simulation, elle, efface tout
   assert.ok(!N.EV.sim1);
 });
+
+test('notes : coefficient d’une évaluation prévue changé par l’étudiant, rien que pour lui', () => {
+  const N = createGrades(DEF, { saved: { values: VALUES }, today: '2026-11-16' });
+  const M = N.MAT.cyber; // TP 9 (coef 1), Examen sans note : moyenne 9
+  N.real.c2 = 15;
+  assert.equal(N.avgM(M), 13); // (9×1 + 15×2) / 3
+  N.recoefEval(N.EV.c1, 2); // le TP (contrôle continu) compte double pour cet étudiant
+  assert.equal(N.avgM(M), 12); // (9×2 + 15×2) / 4
+  const dump = N.dump();
+  assert.deepEqual(dump.coefs, { c1: 2 });
+  const again = createGrades(DEF, { saved: dump, today: '2026-11-16' });
+  assert.equal(again.EV.c1.coef, 2);
+  assert.equal(DEF.semesters[0].ues[1].matieres[0].evals[0].coef, 1, 'la maquette ne change pas');
+  again.recoefEval(again.EV.c1, 1);
+  assert.deepEqual(again.dump().coefs, {}, 'même coefficient que la maquette : rien à garder');
+  again.recoefEval(again.EV.c1, -3);
+  assert.equal(again.EV.c1.coef, 1, 'coefficient invalide : celui de la maquette');
+});

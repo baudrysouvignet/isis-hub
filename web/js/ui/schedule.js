@@ -15,6 +15,7 @@ const LUNCH = { startMin: 12 * 60 + 30, endMin: 13 * 60 + 30 };
 
 const GRID_START = 8 * 60; // la grille de la maquette couvre 8 h – 19 h, par pas de 5 minutes
 const GRID_END = 19 * 60;
+const EVENING = 19 * 60; // à partir de 19 h, la tuile s'ouvre sur le lendemain
 const ROWS = (GRID_END - GRID_START) / 5;
 const CHUNK_WEEKS = 6; // ADE est interrogé par blocs de 6 semaines
 const EPOCH = '2024-01-01'; // un lundi : origine des blocs
@@ -247,10 +248,13 @@ export function createSchedule({ app, matcher, onData, onOpen, onLunch }) {
     const today = D.todayKey();
     const wn = D.isoWeek(monday);
     $('[data-day-title]', tile).textContent = D.dayTitle(key);
-    $('[data-day-sub]', tile).textContent = `${key === today ? 'aujourd’hui · ' : ''}semaine ${wn}`;
+    $('[data-day-sub]', tile).textContent = `${key === today ? 'aujourd’hui · ' : key === D.addDays(today, 1) ? 'demain · ' : ''}semaine ${wn}`;
     $('[data-week-title]', tile).textContent = `Semaine ${wn}`;
     $('[data-week-range]', tile).textContent = D.weekRange(monday);
     $('[data-week-chip]', tile).textContent = `S${wn}`;
+    // Le bouton de retour dit où il mène : aujourd'hui, demain (dès 19 h) ou lundi (week-end).
+    const hk = homeKey();
+    $('[data-nav="0"]', tile).textContent = hk === today ? 'Aujourd’hui' : hk === D.addDays(today, 1) ? 'Demain' : 'Lundi';
     const week = tile.dataset.view === 'week';
     $('[data-nav="-1"]', tile).setAttribute('aria-label', week ? 'Semaine précédente' : 'Jour précédent');
     $('[data-nav="1"]', tile).setAttribute('aria-label', week ? 'Semaine suivante' : 'Jour suivant');
@@ -513,15 +517,28 @@ export function createSchedule({ app, matcher, onData, onOpen, onLunch }) {
     return setWeek(D.addDays(monday, -7), 0).then(() => setDay(5 - k, -1));
   }
 
-  /** Aujourd'hui, ou le lundi suivant pendant le week-end. */
-  function home() {
-    const today = D.todayKey();
-    const wd = D.weekday(today);
-    return wd >= 5 ? { mon: D.addDays(D.mondayOf(today), 7), day: 0 } : { mon: D.mondayOf(today), day: wd };
+  /**
+   * Jour montré à l'ouverture : aujourd'hui ; à partir de 19 h, le lendemain (les cours du jour
+   * sont finis, on veut voir ceux de demain) ; le week-end, et le vendredi soir, le lundi suivant.
+   */
+  function home(now = new Date()) {
+    const { key, minutes } = D.paris(now);
+    const day = minutes >= EVENING ? D.addDays(key, 1) : key;
+    const wd = D.weekday(day);
+    return wd >= 5 ? { mon: D.addDays(D.mondayOf(day), 7), day: 0 } : { mon: D.mondayOf(day), day: wd };
   }
+  // Tant que l'étudiant n'a pas navigué, la tuile suit « home » : à 19 h, elle passe au lendemain.
+  let atHome = true;
+  const homeKey = () => {
+    const { mon, day } = home();
+    return D.addDays(mon, day);
+  };
+  let shownHome = '';
 
   async function goToday() {
     const { mon, day } = home();
+    atHome = true;
+    shownHome = D.addDays(mon, day);
     const dir = mon === monday ? Math.sign(day - active) : Math.sign(D.daysBetween(monday, mon));
     if (mon !== monday) await setWeek(mon, tile.dataset.view === 'week' ? dir : 0);
     setDay(day, tile.dataset.view === 'day' ? dir : 0);
@@ -587,19 +604,29 @@ export function createSchedule({ app, matcher, onData, onOpen, onLunch }) {
     b.addEventListener('click', () => {
       const n = Number(b.dataset.nav);
       if (n === 0) goToday();
-      else step(n);
+      else {
+        atHome = false;
+        step(n);
+      }
     }),
   );
-  dayBtns.forEach((b, i) => b.addEventListener('click', () => setDay(i, i > active ? 1 : -1)));
+  dayBtns.forEach((b, i) =>
+    b.addEventListener('click', () => {
+      atHome = false;
+      setDay(i, i > active ? 1 : -1);
+    }),
+  );
   $('[data-week-note-next]', tile).addEventListener('click', () => setWeek(D.addDays(monday, 7), 1));
   tile.addEventListener('keydown', (e) => {
     if (isTyping(e.target) || e.target.closest('a, button:not(.ds-btn)')) return;
     if (e.key === 'ArrowRight') {
       e.preventDefault();
+      atHome = false;
       step(1);
     }
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
+      atHome = false;
       step(-1);
     }
   });
@@ -632,12 +659,19 @@ export function createSchedule({ app, matcher, onData, onOpen, onLunch }) {
     const dx = e.clientX - sx;
     cols[active].style.removeProperty('transform');
     cols[active].style.removeProperty('opacity');
-    if (axis === 'x' && Math.abs(dx) > 48) setDay(active + (dx < 0 ? 1 : -1), dx < 0 ? 1 : -1);
+    if (axis === 'x' && Math.abs(dx) > 48) {
+      atHome = false;
+      setDay(active + (dx < 0 ? 1 : -1), dx < 0 ? 1 : -1);
+    }
   };
   body.addEventListener('pointerup', endSwipe);
   body.addEventListener('pointercancel', endSwipe);
 
-  setInterval(tick, 15_000);
+  setInterval(() => {
+    tick();
+    // 19 h (ou minuit) passé sans navigation : la tuile suit, comme à l'ouverture.
+    if (promo && atHome && shownHome && homeKey() !== shownHome && !tile.classList.contains('is-expanded')) goToday();
+  }, 15_000);
   phoneMQ.addEventListener('change', () => {
     if (!tile.classList.contains('is-expanded')) setView(phoneMQ.matches ? 'day' : prefs.get('edtView', 'day'), false);
   });
@@ -658,6 +692,8 @@ export function createSchedule({ app, matcher, onData, onOpen, onLunch }) {
       const { mon, day } = home();
       monday = mon;
       active = day;
+      atHome = true;
+      shownHome = D.addDays(mon, day);
       tile.dataset.view = 'day';
       seg.dataset.active = 'day';
       setView(phoneMQ.matches ? 'day' : prefs.get('edtView', 'day'), false);

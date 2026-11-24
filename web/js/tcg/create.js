@@ -16,6 +16,7 @@ const TW = 320;
 const TH = 240;
 const MAX = 380 * 1024;
 const MAX_THUMB = 76 * 1024;
+const CAT_ICONS = { meme: 'spark', moment: 'clock', lieu: 'pin', truc: 'cards' };
 
 function canvas(w, hgt) {
   const c = document.createElement('canvas');
@@ -74,7 +75,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
 
   // Aperçu en direct.
   const draft = { id: 'draft', title: '', desc: '', cat: 'meme', author: st?.me.pseudo || ctx.defaultPseudo() || 'toi' };
-  const preview = h('div.tcr-preview');
+  const preview = h('div.tcr-preview', {}, h('p.tcr-live', {}, h('span.tcr-live-dot'), 'Aperçu en direct'));
   let card;
   let artImg;
   const renderPreview = () => {
@@ -83,13 +84,16 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
       { size: 'lg', mystery: true, live: true, artSrc: photo ? photoURL : undefined },
     );
     if (card) card.replaceWith(next);
-    else preview.prepend(next);
+    else preview.querySelector('.tcr-live').after(next);
     card = next;
     artImg = card.querySelector('.tc-art img');
     bindArt(card.querySelector('.tc-art'));
   };
   const release = launch ? (pub?.waves ?? []).find((w) => !w.printed)?.releaseAt : null;
-  preview.append(h('p.tcr-note', {}, ic('info'), launch && release ? `La rareté sera révélée au lancement, le ${dayLong(release)}.` : 'La rareté sera décidée à l’impression, après le jury de la semaine.'));
+  preview.append(
+    h('span.tcr-floor', { attrs: { 'aria-hidden': 'true' } }),
+    h('p.tcr-secret', {}, h('b', { text: '?' }), h('span', {}, 'Rareté secrète', h('small', { text: launch && release ? `révélée au lancement, le ${dayLong(release)}` : 'décidée par le jury, révélée à l’impression' }))),
+  );
 
   // Photo.
   let photo = null; // HTMLImageElement chargée
@@ -98,7 +102,12 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
   const crop = { zoom: 1, cx: 0, cy: 0 };
   const fileIn = h('input.sr-only', { type: 'file', id: 'tcr-file', accept: 'image/*' });
   const dropTitle = h('b', { text: 'Ajoute une photo' });
-  const drop = h('label.tcr-drop', { htmlFor: 'tcr-file' }, ic('photo', 'ic'), h('span', {}, dropTitle, h('small', { text: 'JPG ou PNG · elle sera recadrée au format de la carte' })));
+  const drop = h(
+    'label.tcr-drop',
+    { htmlFor: 'tcr-file' },
+    h('span.tcr-drop-ic', {}, ic('camera', 'ic')),
+    h('span.tcr-drop-t', {}, dropTitle, h('small', { text: 'Touche pour choisir, ou glisse-la ici · JPG ou PNG' })),
+  );
   // Recadreur (comme dans les apps photo) : grand cadre 4:3 avec la grille des tiers.
   const zoomIn = h('input', { type: 'range', min: '0.3', max: String(MAX_ZOOM), step: '0.005', value: '1', id: 'tcr-zoom' });
   const cropCanvas = canvas(640, 480);
@@ -166,6 +175,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     err.hidden = true;
     photoURL = cropCanvas.toDataURL('image/jpeg', 0.82);
     renderPreview();
+    paintRail();
   }
   fileIn.addEventListener('change', () => loadFile(fileIn.files[0]));
   drop.addEventListener('dragover', (e) => e.preventDefault());
@@ -257,7 +267,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
 
   const chips = h('div.tchips', { attrs: { role: 'radiogroup', 'aria-label': 'Catégorie' } });
   for (const [k, label] of Object.entries(CATS)) {
-    const b = h(`button.tchip${k === draft.cat ? '.is-on' : ''}`, { type: 'button', attrs: { role: 'radio', 'aria-checked': String(k === draft.cat) }, text: label });
+    const b = h(`button.tchip.tcr-cat${k === draft.cat ? '.is-on' : ''}`, { type: 'button', attrs: { role: 'radio', 'aria-checked': String(k === draft.cat) } }, ic(CAT_ICONS[k] ?? 'cards', 'ic ic--xs'), h('span', { text: label }));
     b.addEventListener('click', () => {
       draft.cat = k;
       for (const x of chips.children) {
@@ -277,7 +287,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
   const [c2, l2] = check('tcr-c2', 'J’ai pris cette photo ou j’ai le droit de l’utiliser.');
   // Personnes sur la photo : même liste que le champ « Cc » d'un mail (récents, puis annuaire,
   // étudiants d'abord). L'équipe confirme à la validation, puis leur demande leur accord.
-  const people = peoplePicker({ id: 'tcr-people', search: ctx.searchContacts, recent: ctx.recentPeople });
+  const people = peoplePicker({ id: 'tcr-people', search: ctx.searchContacts, recent: ctx.recentPeople, onChange: () => paintRail() });
   const err = h('p.terr', { hidden: true, attrs: { role: 'alert' } });
   const showErr = (msg) => {
     err.textContent = msg;
@@ -300,27 +310,49 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     ),
   );
 
+  // Étapes numérotées et fil d'avancement : on voit ce qui reste avant l'envoi.
+  const step = (n, key, title, sub, ...body) =>
+    h(`section.tcr-step`, { data: { step: key } }, h('header.tcr-step-h', {}, h('span.tcr-num', {}, h('b', { text: String(n) }), ic('check', 'ic ic--xs')), h('div', {}, h('h2', { text: title }), sub ? h('p', { text: sub }) : null)), ...body);
+  const RAIL = [
+    ['photo', 'Photo'],
+    ['text', 'Texte'],
+    ['cat', 'Catégorie'],
+    ['send', 'Envoi'],
+  ];
+  const rail = h('ol.tcr-rail', { attrs: { 'aria-label': 'Avancement' } }, ...RAIL.map(([k, label]) => h('li', { data: { rail: k } }, h('i'), h('span', { text: label }))));
   const form = h(
     'form.tcr-form',
     { noValidate: true },
-    drop,
-    fileIn,
-    zoom,
-    h('div.tfield', {}, h('div.tfield-top', {}, h('label.tlabel', { htmlFor: 'tcr-title', text: 'Titre' }), titleCount), titleIn),
-    h('div.tfield', {}, h('div.tfield-top', {}, h('label.tlabel', { htmlFor: 'tcr-desc', text: 'Description' }), descCount), descIn, h('p.thelp', { text: '2 ou 3 phrases. Un mème, un moment, un truc : ce que tout le monde reconnaîtra.' })),
-    h('div.tfield', {}, h('p.tlabel', { text: 'Catégorie' }), chips),
-    h(
-      'div.tfield',
-      {},
-      h('label.tlabel', { htmlFor: 'tcr-people', text: 'Qui est sur la photo ? (facultatif)' }),
-      people.el,
-      h('p.thelp', { text: 'Nom ou adresse de l’université, 5 personnes au plus. Après la validation, l’équipe leur demande leur accord par mail (ton nom n’y figure pas) : ta carte attend leur réponse avant d’aller au jury.' }),
+    rail,
+    step(1, 'photo', 'La photo', 'Recadrée au format de la carte : fais-la glisser, zoome.', drop, fileIn, zoom),
+    step(
+      2,
+      'text',
+      'Le titre et l’histoire',
+      'Ce que toute la promo reconnaîtra en un coup d’œil.',
+      h('div.tfield', {}, h('div.tfield-top', {}, h('label.tlabel', { htmlFor: 'tcr-title', text: 'Titre' }), titleCount), titleIn),
+      h('div.tfield', {}, h('div.tfield-top', {}, h('label.tlabel', { htmlFor: 'tcr-desc', text: 'Description' }), descCount), descIn, h('p.thelp', { text: '2 ou 3 phrases. Un mème, un moment, un truc : ce que tout le monde reconnaîtra.' })),
     ),
-    l2,
-    err,
-    submit,
-    rules,
+    step(3, 'cat', 'La catégorie', null, chips),
+    step(
+      4,
+      'people',
+      'Qui est sur la photo ?',
+      'Facultatif. 10 personnes au plus : l’équipe leur demande leur accord par mail après la validation (ton nom n’y figure pas).',
+      h('label.sr-only', { htmlFor: 'tcr-people', text: 'Qui est sur la photo ?' }),
+      people.el,
+    ),
+    h('div.tcr-send', {}, l2, err, submit, rules),
   );
+  const paintRail = () => {
+    const done = { photo: Boolean(photo), text: [...draft.title].length >= 2 && [...draft.desc].length >= 4, cat: Boolean(draft.cat), send: c2.checked };
+    for (const li of rail.children) li.classList.toggle('is-done', done[li.dataset.rail]);
+    for (const sec of form.querySelectorAll('.tcr-step')) sec.classList.toggle('is-done', sec.dataset.step === 'people' ? people.count() > 0 : Boolean(done[sec.dataset.step]));
+    form.classList.toggle('is-ready', Object.values(done).every(Boolean));
+  };
+  form.addEventListener('input', paintRail);
+  form.addEventListener('change', paintRail);
+  form.addEventListener('click', () => requestAnimationFrame(paintRail));
   if (muted || left <= 0) {
     submit.disabled = true;
     submitLabel.textContent = muted ? 'Propositions suspendues' : 'Reviens demain';
@@ -369,10 +401,11 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
   });
 
   renderPreview();
+  paintRail();
   const head = h(
-    'header.tv-head',
+    'header.tv-head.tcr-head',
     {},
-    h('div', {}, h('p.tk', { text: 'Atelier' }), h(`${heading}.tv-h1`, { tabIndex: -1, text: launch ? 'Propose ta carte' : 'Créer une carte' })),
+    h('div', {}, h('p.tk', { text: 'Atelier' }), h(`${heading}.tv-h1`, { tabIndex: -1, text: launch ? 'Propose ta carte' : 'Crée ta carte' }), h('p.tcr-lead', { text: 'Une photo, un titre, deux phrases. La promo joue à « Tu préfères ? » : les cartes préférées deviennent les plus rares.' })),
     h('div.tcr-quota', {}, quota(left, perDay), h('span', { text: muted ? 'Propositions suspendues' : left > 0 ? `${plural(left, 'proposition')} aujourd’hui` : 'Reviens demain' })),
   );
   host.append(head, h('section.tcr', {}, h('div.tcr-grid', {}, form, preview), proposalsList(ctx, launch)));
@@ -416,7 +449,7 @@ export function proposalsList(ctx, launch) {
         text = launch ? 'Validée · elle passera au jury de lancement' : 'Validée · elle passera au prochain jury';
         break;
       case 'printed':
-        text = `Imprimée · Vague ${p.wave} · tirée ${plural(p.issued || 0, 'fois', 'fois')}`;
+        text = `Imprimée · Vague ${p.wave} · tirée ${plural(p.issued || 0, 'fois', 'fois')}${p.rarity ? '' : ' · rareté secrète : tire-la pour la découvrir'}`;
         break;
       case 'blocked':
         text = `Bloquée · ${(p.reason || 'motif').toLowerCase()}${p.message ? ` : « ${p.message} »` : ''}`;
@@ -425,7 +458,8 @@ export function proposalsList(ctx, launch) {
         text = p.reason === 'Refusée par une personne sur la photo' ? 'Retirée du jeu : une personne sur la photo a retiré son accord' : 'Retirée du jeu après signalements';
     }
     const it = h('div.tcr-it', {}, h('b', { text: p.title }), h('span', { text }));
-    if (['pending', 'consent', 'accepted', 'jury', 'blocked'].includes(key)) {
+    // Une carte validée est dans le jeu : seul ce qui attend la validation (ou a été bloqué) se retire.
+    if (['pending', 'blocked'].includes(key)) {
       const rm = h('button.tcr-rm', { type: 'button', text: 'Retirer' });
       rm.addEventListener('click', async () => {
         if (!confirm(`Retirer « ${p.title} » ? Elle ne sera pas imprimée.`)) return;

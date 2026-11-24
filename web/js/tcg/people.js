@@ -3,7 +3,7 @@
 
 import { h } from '../core/dom.js';
 
-export const MAX_PEOPLE = 5;
+export const MAX_PEOPLE = 10;
 const UNIV_MAIL = /^[a-z0-9][a-z0-9._%+-]{0,63}@([a-z0-9-]+\.)*univ-jfc\.fr$/;
 export const isUnivMail = (a) => UNIV_MAIL.test(a);
 const isStudent = (p) => p.cat === 'etud' || /@etud\./i.test(p.email);
@@ -37,7 +37,7 @@ const norm = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
  * Liste : d'abord les récents (indiqués sur des cartes, puis écrits), puis l'annuaire, étudiants
  * en premier. Rend { el, list(), focus() } ; list() = adresses retenues.
  */
-export function peoplePicker({ search, recent, initial = [], id = 'tad-people', onChange } = {}) {
+export function peoplePicker({ search, recent, initial = [], id = 'tad-people', onChange, onType } = {}) {
   let mailRecents = [];
   recent?.()
     .then((l) => (mailRecents = (l ?? []).filter((p) => isUnivMail(p.email))))
@@ -65,7 +65,7 @@ export function peoplePicker({ search, recent, initial = [], id = 'tad-people', 
   let items = [];
   let active = -1;
 
-  const changed = () => onChange?.(list());
+  const changed = () => onChange?.([...chosen.keys()]);
   const draw = () => {
     chips.replaceChildren(
       ...[...chosen].map(([addr, name]) => {
@@ -120,6 +120,7 @@ export function peoplePicker({ search, recent, initial = [], id = 'tad-people', 
     ac.hidden = !items.length;
   };
   input.addEventListener('input', () => {
+    onType?.();
     note.hidden = true;
     const q = input.value.trim();
     clearTimeout(timer);
@@ -185,5 +186,7 @@ export function peoplePicker({ search, recent, initial = [], id = 'tad-people', 
       return [...chosen.keys()];
     },
     focus: () => input.focus(),
+    /** Personnes retenues, plus 1 si une adresse est en cours de saisie. */
+    count: () => chosen.size + (input.value.trim() ? 1 : 0),
   };
 }

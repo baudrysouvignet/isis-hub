@@ -271,6 +271,13 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if s.readJSON(w, r, 1<<10, &in) {
 			s.result(w, s.Game.Consent(pid, in.Card, in.OK))
 		}
+	case p == "jury/try" && r.Method == http.MethodGet:
+		cards, err := s.Game.TryCards(pid)
+		if err != nil {
+			failErr(w, err)
+			return
+		}
+		reply(w, http.StatusOK, map[string]any{"cards": cards})
 	case p == "jury/more":
 		if s.guard(w, r) {
 			s.result(w, s.Game.MoreBallot(pid))
@@ -594,7 +601,28 @@ func (s *Service) serveAdmin(w http.ResponseWriter, r *http.Request, action stri
 				s.Game.mu.Unlock()
 				out[i].Planned, out[i].Override = c.Rarity, c.Override
 			}
-			reply(w, http.StatusOK, map[string]any{"wave": wv, "cards": out, "mix": mixFor(min(len(cands), wv.Size))})
+			picked := 0
+			for _, c := range cands {
+				if c.Rarity != "" {
+					picked++
+				}
+			}
+			s.Game.mu.Lock()
+			runs := map[Rarity]int{}
+			for _, r := range Rarities {
+				runs[r] = s.Game.runOf(wv, r)
+			}
+			s.Game.mu.Unlock()
+			reply(w, http.StatusOK, map[string]any{"wave": wv, "cards": out, "mix": waveMix(wv, picked), "auto": mixFor(picked), "custom": len(wv.Mix) > 0, "runs": runs, "picked": picked})
+		case "mix":
+			var in struct {
+				Size int            `json:"size"`
+				Mix  map[Rarity]int `json:"mix"`
+				Runs map[Rarity]int `json:"runs"`
+			}
+			if readJSON(1<<10, &in) {
+				s.result(w, s.Game.SetMix(n, in.Size, in.Mix, in.Runs))
+			}
 		case "rarity":
 			var in struct {
 				Card   string `json:"card"`

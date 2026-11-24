@@ -32,13 +32,16 @@ const addDays = (iso, n) => {
   return d.toISOString().slice(0, 10);
 };
 
+const validCoef = (c) => typeof c === 'number' && Number.isFinite(c) && c > 0 && c <= 100;
+
 /** Note valide sur 20 (ou null). */
 export const cleanGrade = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 20 ? r2(v) : null);
 
 /**
  * Carnet de notes d'une classe. `def` : maquette publiée par l'administration ;
  * `saved` : { values: { idÉval: note }, extra: [{ id, mat, label, coef, date, value }],
- *   meta: { idÉval: { mat, label, coef, date } }, labels: { idÉval: nom choisi par l'étudiant } }.
+ *   meta: { idÉval: { mat, label, coef, date } }, labels: { idÉval: nom choisi par l'étudiant },
+ *   coefs: { idÉval: coefficient choisi par l'étudiant } }.
  * `meta` décrit chaque note saisie sur une évaluation de la maquette : si l'administration retire
  * cette évaluation, la note reste, comme note personnelle de la même matière.
  */
@@ -65,6 +68,7 @@ export function createGrades(def, { saved = null, current = null, today = new Da
         M.evals.forEach((e) => {
           e.mat = M.id;
           e.tpl = e.label; // intitulé de la maquette (l'étudiant peut en choisir un autre)
+          e.tplCoef = e.coef; // coefficient de la maquette (l'étudiant peut en choisir un autre)
           EV[e.id] = e;
         });
       });
@@ -119,10 +123,21 @@ export function createGrades(def, { saved = null, current = null, today = new Da
     for (const [id, l] of Object.entries(saved.labels ?? {})) {
       if (EV[id] && !EV[id].extra && typeof l === 'string' && l.trim()) EV[id].label = l.trim().slice(0, 40);
     }
+    for (const [id, c] of Object.entries(saved.coefs ?? {})) {
+      if (EV[id] && !EV[id].extra && validCoef(c)) EV[id].coef = Number(c);
+    }
     for (const x of (saved.extra ?? []).slice(0, 400)) {
       const e = addEval(x);
       if (e) real[e.id] = cleanGrade(x.value);
     }
+  }
+  /**
+   * Coefficient choisi par l'étudiant pour une évaluation de la maquette (ex. un contrôle continu
+   * qui compte plus que prévu) ; invalide ou égal : celui de la maquette. Seul l'étudiant le voit.
+   */
+  function recoefEval(e, coef) {
+    if (e.extra) return;
+    e.coef = validCoef(coef) ? Number(coef) : e.tplCoef;
   }
   /** Nouvel intitulé d'une évaluation ; vide : celui de la maquette. Seul l'étudiant le voit. */
   function renameEval(e, label) {
@@ -143,8 +158,13 @@ export function createGrades(def, { saved = null, current = null, today = new Da
       meta[k] = { mat: e.mat, label: e.label, coef: e.coef, date: e.date || '' };
     }
     const labels = {};
-    for (const e of Object.values(EV)) if (!e.extra && e.label !== e.tpl) labels[e.id] = e.label;
-    return { values, extra, meta, labels };
+    const coefs = {};
+    for (const e of Object.values(EV)) {
+      if (e.extra) continue;
+      if (e.label !== e.tpl) labels[e.id] = e.label;
+      if (e.coef !== e.tplCoef) coefs[e.id] = e.coef;
+    }
+    return { values, extra, meta, labels, coefs };
   }
 
   // ---------------------------------------------------------------- calculs
@@ -437,6 +457,7 @@ export function createGrades(def, { saved = null, current = null, today = new Da
     addEval,
     removeEval,
     renameEval,
+    recoefEval,
     migrated,
     dump,
   };

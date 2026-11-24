@@ -181,7 +181,9 @@ type JuryView struct {
 	Jurors  int          `json:"jurors"`
 	Players int          `json:"players"`
 	Ballots []BallotView `json:"ballots"`
-	More    bool         `json:"more"` // un autre bulletin est possible
+	More    bool         `json:"more"`          // une autre série est ouverte
+	Next    time.Time    `json:"next,omitzero"` // ouverture de la série suivante (minuit)
+	Max     int          `json:"max"`           // séries au plus pendant ce jury
 }
 
 // FeedView : un événement de « Dans la promo ».
@@ -325,7 +327,8 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 			continue
 		}
 		pv := ProposalView{ID: c.ID, Num: c.Num, Title: c.Title, Desc: c.Desc, Cat: c.Cat, Img: ImgURL(c.Img), Thumb: ImgURL(c.Thumb), Status: c.Status, Reason: BlockReasons[c.Reason], Message: c.Message, Created: c.Created, Wave: c.Wave, Issued: c.Issued}
-		if c.Status == StatusPrinted || c.Status == StatusRemoved {
+		// Rareté : surprise, même pour l'auteur, jusqu'à ce qu'il tire sa carte.
+		if (c.Status == StatusPrinted || c.Status == StatusRemoved) && len(p.Owned[c.ID]) > 0 {
 			pv.Rarity = c.Rarity
 		}
 		if c.Status == StatusAccepted && jw != nil {
@@ -369,8 +372,13 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 				jv.Ballots = append(jv.Ballots, bv)
 			}
 		}
+		jv.Max = maxBallots
 		if n := len(p.Ballots[jw.N]); n > 0 && n < maxBallots && len(p.Ballots[jw.N][n-1].Rank) > 0 {
-			jv.More = true
+			if n < seriesOpen(jw, now) {
+				jv.More = true
+			} else {
+				jv.Next = nextSeries(jw, now)
+			}
 		}
 		if len(jv.Ballots) > 0 {
 			v.Jury = jv

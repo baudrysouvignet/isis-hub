@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -245,8 +246,12 @@ func serve() error {
 		s.Headers(w.Header())
 		api.ServeHTTP(w, r)
 	}))
-	// Menu public du Resto U' de Castres, relu au plus toutes les 12 heures.
+	// Menu public du Resto U' de Castres, relu au plus toutes les 15 minutes ; une semaine de menus
+	// déjà vus est gardée dans DATA_DIR/crous.json (les sources ne donnent que celui du jour).
 	menus := crous.New()
+	if err := menus.Persist(filepath.Join(env("DATA_DIR", "data"), "crous.json")); err != nil {
+		log.Printf("menus du CROUS : %v (historique repris de zéro)", err)
+	}
 	mux.Handle("/api/crous", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.Headers(w.Header())
 		menus.ServeHTTP(w, r)

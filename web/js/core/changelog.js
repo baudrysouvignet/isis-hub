@@ -10,6 +10,42 @@
 
 export const CHANGELOG = [
   {
+    version: '2.1.0',
+    date: '2026-11-24',
+    title: 'Le jury en « Tu préfères ? », et le Hub voit plus loin',
+    launch: {
+      art: 'duel',
+      requires: 'tcg', // écran montré seulement quand le TCG est ouvert aux étudiants
+      title: 'Le jury passe en « Tu préfères ? »',
+      sub: 'Deux cartes, un choix. Quelques duels par jour, et c’est la promo qui décide.',
+      steps: [
+        ['Tu préfères ?', 'Deux cartes de la promo : touche celle que tu veux le plus voir dans le jeu. 5 à 7 duels par jour suffisent.'],
+        ['La surprise jusqu’au bout', 'Une fois ta carte validée, elle est dans le jeu : même toi, tu découvres sa rareté en la tirant.'],
+        ['Et dans le Hub', 'L’emploi du temps du lendemain dès 19 h, les mails à jour toutes les 4 minutes, les PDF qui s’ouvrent sur Android.'],
+      ],
+      privacy: 'Tes choix de duels restent sur ton appareil jusqu’à la fin de la série : le jeu ne garde que ton classement des cartes, comme avant.',
+      go: { label: 'Ouvrir le TCG', to: 'tcg' },
+    },
+    short: [
+      'TCG : le jury se joue en « Tu préfères ? », 5 à 7 duels par jour ; nouvelle page « Crée ta carte ».',
+      'Emploi du temps : dès 19 h, il s’ouvre sur le lendemain.',
+      'Mails à jour toutes les 4 minutes, PDF ouvrables sur Android, menus du CROUS gardés une semaine.',
+    ],
+    details: [
+      'Jury du TCG : deux cartes du jeu à la fois, tu touches celle que tu préfères (ou ← / →). Une série porte sur 5 cartes et compte 7 duels au plus : ils suffisent à connaître ton classement complet de ces 5 cartes, enregistré comme avant. Une série par jour de jury (un jour manqué se rattrape), « Choix précédent » pour revenir en arrière, et une série commencée reprend où tu l’as laissée.',
+      'Créer une carte : nouvelle page en étapes (photo, texte, catégorie, personnes) avec l’aperçu de la carte en direct.',
+      'Une carte validée est dans le jeu : son auteur ne peut plus la retirer, et découvre sa rareté comme tout le monde, en la tirant.',
+      'Jusqu’à 10 personnes sur une photo (au lieu de 5).',
+      'Bascule Hub / TCG : sur téléphone, la mention « bientôt » ne déborde plus de l’en-tête.',
+      'Emploi du temps : à partir de 19 h, la tuile s’ouvre sur le lendemain (le vendredi soir, sur le lundi), et y passe toute seule à 19 h si tu n’as pas changé de jour. Le bouton dit où il mène : « Aujourd’hui », « Demain » ou « Lundi ».',
+      'Mails : la boîte se met à jour toute seule toutes les 4 minutes quand la page est ouverte, sans revenir en haut de la liste ; au retour sur le Hub, tout de suite si la dernière mise à jour a plus de 4 minutes.',
+      'Mails envoyés à beaucoup de monde : les 3 premiers destinataires, puis « et N autres » à déplier.',
+      'PDF (mails et Moodle) : sur les navigateurs qui ne savent pas afficher un PDF dans une page (Android, ou Chrome réglé sur « Télécharger les PDF »), plus d’écran gris : un bouton l’ouvre avec le lecteur du téléphone.',
+      'Menus du CROUS : ceux de la semaine passée restent consultables (le serveur garde une semaine de menus publics).',
+      'Notes : tu peux changer le coefficient d’une évaluation prévue (par exemple le contrôle continu). Il ne vaut que pour toi ; la maquette ne change pas.',
+    ],
+  },
+  {
     version: '2.0.6',
     date: '2026-11-24',
     title: 'TCG : recadrage des photos et formulaire plus fiable',

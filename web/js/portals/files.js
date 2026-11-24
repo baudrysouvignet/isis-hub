@@ -20,3 +20,10 @@ export const safeName = (n) =>
 
 /** Pièce jointe qu'on propose d'ouvrir (le contenu sera de toute façon vérifié par sniff). */
 export const viewable = (a) => /^(image\/(png|jpe?g|gif|webp)|application\/pdf)$/i.test(a.mime ?? '') || /\.(png|jpe?g|gif|webp|pdf)$/i.test(a.name ?? '');
+
+/**
+ * Le navigateur sait-il afficher un PDF dans la page ? Non sur Android (Chrome, Samsung Internet…)
+ * et quand l'étudiant a choisi « Télécharger les PDF » : un cadre y resterait gris. Le standard
+ * `navigator.pdfViewerEnabled` le dit ; à défaut (vieux navigateurs), Android n'en a pas.
+ */
+export const inlinePdf = (nav = globalThis.navigator) => (typeof nav?.pdfViewerEnabled === 'boolean' ? nav.pdfViewerEnabled : !/Android/i.test(nav?.userAgent ?? ''));
