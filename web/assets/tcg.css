@@ -1293,3 +1293,9 @@ html[data-vt="out"]::view-transition-new(root) { z-index: 1; }
 .app.is-tcg .tpp-tag { background: rgba(255, 255, 255, .08); }
 .app.is-tcg .tpp-tag.is-etud { background: rgba(76, 195, 211, .16); color: #8FEAF3; }
 .app.is-tcg .tpp-note { color: var(--err); }
+.tcs-desc { margin: 2px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(255, 255, 255, .05); border-left: 3px solid var(--brand); color: var(--text); font: 500 14.5px/1.5 var(--font); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tcs-zoom { display: block; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 14px; }
+.tcs-zoom:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.tcs-see { justify-self: start; }
+.tcs-big { display: grid; place-items: center; margin: 8px 0 14px; }
+.tcs-big .tc { width: min(320px, 78vw); }

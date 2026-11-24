@@ -10,6 +10,16 @@
 
 export const CHANGELOG = [
   {
+    version: '2.0.4',
+    date: '2026-11-24',
+    title: 'TCG : la carte entière avant de donner ton accord',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
+    short: ['TCG : « Mes apparitions » montre le titre, la photo et la description de chaque carte.'],
+    details: [
+      '« Mes apparitions » : la description de la carte est affichée en entier à côté du titre et de la catégorie, et « Voir en grand » ouvre la carte avec sa photo en grand, pour décider en connaissance de cause.',
+    ],
+  },
+  {
     version: '2.0.3',
     date: '2026-11-24',
     title: 'TCG : indique qui est sur ta photo',

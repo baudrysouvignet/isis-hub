@@ -8,7 +8,7 @@
 
 import { h, toast } from '../core/dom.js';
 import { api, adminApi, TcgError } from './api.js';
-import { cardEl, ic, sheet, tbtn, dayLong, hourText, plural } from './ui.js';
+import { cardEl, ic, sheet, tbtn, dayLong, hourText, plural, CATS } from './ui.js';
 
 
 export { consentLink } from './consent-text.js';
@@ -39,8 +39,25 @@ export function renderConsent(ctx) {
   return frag;
 }
 
+const asCard = (a) => ({ id: a.id, title: a.title, desc: a.desc, cat: a.cat, img: a.img, thumb: a.thumb, rarity: a.rarity });
+
+/** La carte en grand (photo en haute définition, texte lisible) avant de répondre. */
+function bigCard(a) {
+  sheet('consent-card', a.title, [
+    h('p.tk', { text: 'Ta réponse porte sur cette carte' }),
+    h('div.tcs-big', {}, cardEl(asCard(a), { size: 'xl', mystery: !a.printed, by: '' })),
+    h('h2.tdet-h', { text: a.title }),
+    h('p.tcs-desc', { text: a.desc }),
+  ]);
+}
+
 function item(ctx, a) {
-  const card = a.retired ? h('div.tcs-gone', {}, ic('x'), h('span', { text: 'Carte retirée' })) : cardEl({ id: a.id, title: a.title, desc: a.desc, cat: a.cat, img: a.img, thumb: a.thumb, rarity: a.rarity }, { size: 'md', mystery: !a.printed, by: '' });
+  let card;
+  if (a.retired) card = h('div.tcs-gone', {}, ic('x'), h('span', { text: 'Carte retirée' }));
+  else {
+    card = h('button.tcs-zoom', { type: 'button', attrs: { 'aria-label': `Voir « ${a.title} » en grand` } }, cardEl(asCard(a), { size: 'md', mystery: !a.printed, by: '' }));
+    card.addEventListener('click', () => bigCard(a));
+  }
   const state = a.retired
     ? h('p.tcs-state.is-no', {}, ic('x'), a.printed ? 'Accord retiré : la photo n’est plus montrée, les exemplaires restent marqués « Accord retiré ».' : 'Tu as refusé : la carte n’entrera pas dans le jeu.')
     : a.answer === 'ok'
@@ -62,7 +79,17 @@ function item(ctx, a) {
     `li.tcs-item${a.answer === 'ok' ? '.is-ok' : ''}${a.retired ? '.is-no' : ''}`,
     {},
     h('div.tcs-card', {}, card),
-    h('div.tcs-body', {}, h('b.tcs-title', { text: a.retired ? 'Carte retirée' : a.title }), h('span.tcs-meta', { text: `${a.printed ? 'En jeu' : 'Avant le jury'} · proposée par ${a.author}` }), state, acts),
+    h(
+      'div.tcs-body',
+      {},
+      h('b.tcs-title', { text: a.retired ? 'Carte retirée' : a.title }),
+      h('span.tcs-meta', { text: `${a.printed ? 'En jeu' : 'Avant le jury'} · ${CATS[a.cat] ?? a.cat ?? ''} · proposée par ${a.author}` }),
+      // Ce que dit la carte, en entier : la personne valide le titre, la photo ET la description.
+      !a.retired && a.desc ? h('p.tcs-desc', { text: a.desc }) : null,
+      !a.retired ? tbtn('Voir en grand', 'eye', 'tbtn--ghost tbtn--sm tcs-see', () => bigCard(a)) : null,
+      state,
+      acts,
+    ),
   );
 }
 
