@@ -541,7 +541,7 @@ export function createTCG(o) {
     }
     // Jury de lancement ouvert : c'est l'action du moment.
     const juryOpen = w?.juryFrom && Date.now() >= new Date(w.juryFrom) && Date.now() < new Date(w.juryUntil);
-    const juryCta = juryOpen ? tbtn('Jouer à « Tu préfères ? »', 'jury', 'tbtn--primary tbtn--xl', async () => (st || (await join())) && go('jury')) : null;
+    const juryCta = juryOpen ? tbtn('Vote pour tes cartes préférées', 'jury', 'tbtn--primary tbtn--xl', async () => (st || (await join())) && go('jury')) : null;
     const propose = tbtn('Proposer une carte', 'pen', juryCta ? 'tbtn--ghost tbtn--lg' : 'tbtn--primary tbtn--xl', () => $('#tsoon-form', wrap)?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' }));
     // Administration, avant l'ouverture du jury : essayer les duels (rien n'est enregistré).
     const tryDuels = !juryCta && st?.me?.admin ? tbtn('Essayer « Tu préfères ? »', 'jury', 'tbtn--ghost tbtn--lg', () => go('jury')) : null;
@@ -654,7 +654,7 @@ export function createTCG(o) {
     for (const inv of st.invites) item('trade', 'trade', `${inv.from} t’invite à échanger`, `Code ${inv.code} · expire dans ${untilText(inv.expires)}`, () => joinTradeCode(ctx, inv.code));
     const jury = st.jury;
     const lastBallot = jury?.ballots?.[jury.ballots.length - 1];
-    if (jury && lastBallot && !lastBallot.rank?.length) item('jury', 'jury', 'Jury de la semaine', `Tu préfères ? · une série de duels t’attend, jusqu’à ${dayLong(jury.until).split(' ')[0]} ${hourText(jury.until)}`, () => go('jury'));
+    if (jury && lastBallot && !lastBallot.rank?.length) item('jury', 'jury', 'Jury de la semaine', `Vote pour tes cartes préférées · une série t’attend, jusqu’à ${dayLong(jury.until).split(' ')[0]} ${hourText(jury.until)}`, () => go('jury'));
     // « Mes apparitions » toujours là : en tête quand une carte attend mon accord.
     const toAnswer = pendingAppear(st);
     const appearSub = toAnswer.length ? `${plural(toAnswer.length, 'carte attend', 'cartes attendent')} ton accord` : (st.appear?.length ? `${plural(st.appear.length, 'carte')} où l’on t’a indiqué` : 'Les cartes où l’on t’indique sur la photo');
