@@ -10,6 +10,16 @@
 
 export const CHANGELOG = [
   {
+    version: '2.0.5',
+    date: '2026-11-24',
+    title: 'TCG : jamais deux mails d’accord en 24 h',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
+    short: ['TCG : tu ne reçois jamais deux mails d’accord en moins de 24 heures.'],
+    details: [
+      'Si tu apparais sur plusieurs cartes, le mail « tu apparais sur une carte » ne t’arrive pas plus d’une fois par 24 heures : les cartes suivantes attendent le lendemain.',
+    ],
+  },
+  {
     version: '2.0.4',
     date: '2026-11-24',
     title: 'TCG : la carte entière avant de donner ton accord',
