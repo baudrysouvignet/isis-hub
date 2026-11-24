@@ -10,17 +10,28 @@
 
 export const CHANGELOG = [
   {
+    version: '2.0.2',
+    date: '2026-11-24',
+    title: 'TCG : l’accord demandé à la validation, un booster toutes les 24 h',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
+    short: ['TCG : l’accord des personnes sur la photo est demandé à la validation ; un booster toutes les 24 h.'],
+    details: [
+      'À la validation, l’équipe indique les personnes reconnaissables sur la photo. La carte attend l’accord de chacune (« Acceptée · en attente de l’accord des personnes sur la photo ») et passe au jury dès la dernière réponse.',
+      'Créer une carte : plus de champ « Qui est sur la photo ? » ni de case « les personnes sont d’accord » : l’accord leur est demandé directement.',
+      '« Mes apparitions » est toujours visible dans le TCG. Personne ne sait qui a refusé.',
+      'Accord retiré sur une carte en jeu : les exemplaires restent dans les collections, marqués « Accord retiré », sans photo ni texte.',
+      'Un booster toutes les 24 heures, comptées depuis le dernier ouvert (et non plus chaque matin).',
+    ],
+  },
+  {
     version: '2.0.1',
     date: '2026-11-24',
     title: 'TCG : l’accord des personnes sur la photo',
     quiet: true, // au journal seulement, sans pop-up « Nouveautés »
-    short: ['TCG : les personnes sur la photo d’une carte donnent leur accord dans « Mes apparitions ».'],
+    short: ['TCG : indique qui est sur ta photo, chacun donne son accord dans « Mes apparitions ».'],
     details: [
-      'À la validation, l’équipe indique les personnes reconnaissables sur la photo. La carte attend l’accord de chacune (« Acceptée · en attente de l’accord des personnes sur la photo ») et passe au jury dès la dernière réponse.',
-      'Ces personnes reçoivent un mail de l’équipe ISIS Hub (un seul, en copie cachée, au plus tous les deux jours) et répondent dans le TCG, « Mes apparitions », toujours visible. Personne ne sait qui a refusé.',
-      'Accord retiré sur une carte en jeu : les exemplaires restent dans les collections, marqués « Accord retiré », sans photo ni texte.',
-      'Créer une carte : plus de case « les personnes sont d’accord », l’accord leur est demandé directement.',
-      'Un booster toutes les 24 heures, comptées depuis le dernier ouvert.',
+      'Créer une carte : champ « Qui est sur la photo ? » (5 adresses de l’université au plus).',
+      'Une fois la carte validée, ces personnes reçoivent un mail de l’équipe ISIS Hub (un seul, en copie cachée, au plus tous les deux jours) et donnent ou refusent leur accord dans le TCG, « Mes apparitions ». Un refus retire la carte, sans dire qui a refusé.',
       'Le serveur ne garde qu’une empreinte de ces adresses, et leur version chiffrée seulement jusqu’au départ du mail.',
       'Correctif : l’icône des fichiers Moodle (PDF…) et les destinataires d’un mail retrouvent leur affichage.',
     ],
