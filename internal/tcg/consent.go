@@ -6,9 +6,8 @@ package tcg
 // visibles. La carte attend alors leur accord (« consent ») et passe au jury d'elle-même après la
 // dernière réponse positive. Les mails partent de SA messagerie (ISIS Hub, dans sa page), quand il
 // clique sur « Envoyer les mails » (rien d'automatique) : un seul mail, tous les destinataires en
-// copie cachée, et chaque adresse ne le reçoit qu'une fois par carte. Pas plus d'un envoi par
-// 24 heures, même au clic (le serveur refuse ; un envoi en plusieurs mails de 49 copies cachées
-// reste permis pendant l'heure qui suit son début). Chacun répond dans le TCG
+// copie cachée. Chaque adresse ne le reçoit qu'une fois par carte, et jamais deux fois en moins de
+// 24 heures : une personne déjà prévenue (pour une autre carte) attend, même au clic. Chacun répond dans le TCG
 // (« Mes apparitions ») ; un refus garde la carte en attente, à la décision de l'administrateur.
 //
 // Le serveur ne garde que l'empreinte de l'adresse (HMAC) et, jusqu'au départ du mail seulement,
@@ -31,10 +30,9 @@ import (
 )
 
 const (
-	maxTags      = 5               // personnes indiquées par carte
-	mailingEvery = 24 * time.Hour  // un envoi toutes les 24 heures au plus, sans exception
-	mailingBatch = 2 * time.Minute // suite d'un même envoi (plusieurs mails de 49 copies cachées, à la suite)
-	mailingChunk = 49              // copies cachées par mail (+ l'expéditeur en destinataire)
+	maxTags      = 5              // personnes indiquées par carte
+	mailingEvery = 24 * time.Hour // une même adresse ne reçoit pas deux mails d'accord en moins de 24 h
+	mailingChunk = 49             // copies cachées par mail (+ l'expéditeur en destinataire)
 )
 
 // Tag : une personne indiquée sur la photo d'une carte.
@@ -350,6 +348,7 @@ type MailTarget struct {
 // MailingView : l'envoi des mails d'accord, pour l'administrateur.
 type MailingView struct {
 	Open    bool         `json:"open"`
+	Held    int          `json:"held"` // prévenues il y a moins de 24 h : attendent (Next : la première libérée)
 	Next    time.Time    `json:"next,omitzero"`
 	Last    time.Time    `json:"last,omitzero"`
 	Chunk   int          `json:"chunk"`
@@ -360,20 +359,17 @@ type MailingView struct {
 	Sent    int          `json:"sent"`
 }
 
-// mailingOpen : un nouvel envoi est-il permis (24 h après le début du précédent) ?
-func (g *Game) mailingOpen(now time.Time) (bool, time.Time) {
-	m := g.st.Mailing
-	if m.Start.IsZero() {
-		return true, time.Time{}
+// mailedAt : dernier mail d'accord reçu par chaque adresse (toutes cartes confondues).
+func (g *Game) mailedAt() map[string]time.Time {
+	out := map[string]time.Time{}
+	for _, c := range g.st.Cards {
+		for _, t := range c.Tags {
+			if !t.Notified.IsZero() && t.Notified.After(out[t.Key]) {
+				out[t.Key] = t.Notified
+			}
+		}
 	}
-	next := m.Start.Add(mailingEvery)
-	return !now.Before(next), next
-}
-
-// mailingFollowUp : mail suivant d'un envoi en cours (lots de 49), quelques secondes après le précédent.
-func (g *Game) mailingFollowUp(now time.Time) bool {
-	m := g.st.Mailing
-	return !m.Last.IsZero() && now.Sub(m.Last) < mailingBatch
+	return out
 }
 
 // MailingState : adresses à prévenir (en clair, pour l'administrateur seulement) et compteurs.
@@ -381,9 +377,10 @@ func (g *Game) MailingState() MailingView {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := g.now()
-	open, next := g.mailingOpen(now)
-	v := MailingView{Open: open, Next: next, Last: g.st.Mailing.Last, Chunk: mailingChunk, Targets: []MailTarget{}, Sent: g.st.Mailing.Sent}
+	v := MailingView{Open: true, Last: g.st.Mailing.Last, Chunk: mailingChunk, Targets: []MailTarget{}, Sent: g.st.Mailing.Sent}
 	idx := map[string]int{}
+	held := map[string]bool{}
+	mailed := g.mailedAt()
 	for _, c := range g.st.Cards {
 		for _, t := range c.Tags {
 			switch {
@@ -394,6 +391,17 @@ func (g *Game) MailingState() MailingView {
 			case !t.Notified.IsZero():
 				v.Waiting++
 			case askable(c) && t.Enc != "":
+				// Déjà prévenue il y a moins de 24 h (pour une autre carte) : elle attend.
+				if at, ok := mailed[t.Key]; ok && now.Sub(at) < mailingEvery {
+					if !held[t.Key] {
+						held[t.Key] = true
+						v.Held++
+						if next := at.Add(mailingEvery); v.Next.IsZero() || next.Before(v.Next) {
+							v.Next = next
+						}
+					}
+					continue
+				}
 				if i, ok := idx[t.Key]; ok {
 					v.Targets[i].Cards++
 					continue
@@ -420,14 +428,13 @@ func (g *Game) MailingSent(keys []string) (int, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := g.now()
-	open, next := g.mailingOpen(now)
-	followUp := !open && g.mailingFollowUp(now)
-	if !open && !followUp {
-		return 0, userErr(http.StatusConflict, "Un mail d’accord est déjà parti il y a moins de 24 heures : prochain envoi possible le %s.", next.In(Paris).Format("02/01 à 15h04"))
-	}
+	// Une adresse prévenue il y a moins de 24 h n'est pas marquée (elle attend, même au clic).
+	mailed := g.mailedAt()
 	want := map[string]bool{}
 	for _, k := range keys {
-		want[k] = true
+		if at, ok := mailed[k]; !ok || now.Sub(at) >= mailingEvery {
+			want[k] = true
+		}
 	}
 	n := 0
 	done := map[string]bool{}
@@ -448,9 +455,6 @@ func (g *Game) MailingSent(keys []string) (int, error) {
 	}
 	if n == 0 {
 		return 0, nil
-	}
-	if !followUp {
-		g.st.Mailing.Start = now // nouvel envoi : les 24 heures partent d'ici
 	}
 	g.st.Mailing.Last = now
 	g.st.Mailing.Sent += n

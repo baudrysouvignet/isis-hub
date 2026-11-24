@@ -144,7 +144,9 @@ export async function openMailing(ctx) {
     const n = m.targets.length;
     const stats = h('div.tml-stats', {}, stat(n, 'à prévenir'), stat(m.waiting, 'sans réponse'), stat(m.ok, 'd’accord'), stat(m.no, 'refus'));
     const last = m.last ? `Dernier envoi le ${dayLong(m.last)} à ${hourText(m.last)}.` : 'Aucun mail envoyé pour l’instant.';
-    const when = h('p.tml-when', {}, ic('clock'), !m.open && m.next ? `${last} Prochain envoi possible le ${dayLong(m.next)} à ${hourText(m.next)} (un envoi toutes les 24 h).` : last);
+    // Une personne prévenue il y a moins de 24 h attend : elle n'est pas dans la liste.
+    const held = m.held ? ` ${plural(m.held, 'personne')} déjà ${m.held > 1 ? 'prévenues' : 'prévenue'} il y a moins de 24 h ${m.held > 1 ? 'attendent' : 'attend'} (à partir du ${dayLong(m.next)} à ${hourText(m.next)}).` : '';
+    const when = h('p.tml-when', {}, ic('clock'), last + held);
     const parts = [stats, when];
     if (n) {
       const lots = Math.ceil(n / m.chunk);
@@ -156,8 +158,8 @@ export async function openMailing(ctx) {
         h('details.tml-who', {}, h('summary', { text: 'Voir le mail' }), h('p.tml-subj', { text: MAIL_SUBJECT }), h('pre.tml-text', { text: mailText(ctx.userName()) })),
       );
     }
-    const send = tbtn(!m.open ? 'Envoi possible dans 24 h' : n ? `Envoyer les mails (${n})` : 'Rien à envoyer', 'send', 'tbtn--primary tbtn--lg', () => run(send));
-    send.disabled = !n || !m.open;
+    const send = tbtn(n ? `Envoyer les mails (${n})` : 'Rien à envoyer', 'send', 'tbtn--primary tbtn--lg', () => run(send));
+    send.disabled = !n;
     parts.push(send);
     body.replaceChildren(...parts);
   };

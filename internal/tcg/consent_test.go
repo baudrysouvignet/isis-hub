@@ -85,21 +85,32 @@ func TestConsentFlow(t *testing.T) {
 		t.Fatalf("après envoi : %v", m)
 	}
 
-	// Une nouvelle personne quelques heures plus tard : elle attend les 24 heures, même « forcé ».
+	// Léa, déjà prévenue il y a 5 h, est indiquée sur une autre carte, avec Zoé (jamais prévenue) :
+	// Zoé peut être prévenue tout de suite, Léa attend ses 24 h, même si on envoie sa clé.
 	clk.add(5 * time.Hour)
-	admin.must("POST", "/api/tcg/admin/card/"+alone, map[string]any{"action": "people", "people": "lea.martin@etud.univ-jfc.fr"}, 200)
+	admin.must("POST", "/api/tcg/admin/card/"+alone, map[string]any{"action": "people", "people": "lea.martin@etud.univ-jfc.fr, zoe.z@etud.univ-jfc.fr"}, 200)
 	if p := hugo.state().Proposals[0]; p.Status != StatusConsent {
 		t.Fatalf("personne ajoutée à une carte validée : %s", p.Status)
 	}
 	m = admin.must("GET", "/api/tcg/admin/mailing", nil, 200)
-	if m["open"] != false || len(m["targets"].([]any)) != 1 {
-		t.Fatalf("envoi trop tôt permis : %v", m)
+	if tg := m["targets"].([]any); len(tg) != 1 || tg[0].(map[string]any)["email"] != "zoe.z@etud.univ-jfc.fr" || m["held"] != float64(1) {
+		t.Fatalf("à prévenir (Léa doit attendre ses 24 h) : %v", m)
 	}
-	key := m["targets"].([]any)[0].(map[string]any)["key"].(string)
-	admin.must("POST", "/api/tcg/admin/mailing/sent", map[string]any{"keys": []string{key}}, 409)
-	admin.must("POST", "/api/tcg/admin/mailing/sent", map[string]any{"keys": []string{key}, "force": true}, 409)
-	clk.add(19 * time.Hour) // 24 h après le premier envoi
-	admin.must("POST", "/api/tcg/admin/mailing/sent", map[string]any{"keys": []string{key}}, 200)
+	leaKey := svc.Game.mailKey("lea.martin@etud.univ-jfc.fr")
+	zoeKey := m["targets"].([]any)[0].(map[string]any)["key"].(string)
+	if out := admin.must("POST", "/api/tcg/admin/mailing/sent", map[string]any{"keys": []string{leaKey, zoeKey}, "force": true}, 200); out["marked"] != float64(1) {
+		t.Fatalf("seule Zoé doit être marquée : %v", out)
+	}
+	clk.add(19 * time.Hour) // 24 h après le mail de Léa : elle revient dans la liste
+	m = admin.must("GET", "/api/tcg/admin/mailing", nil, 200)
+	if tg := m["targets"].([]any); len(tg) != 1 || tg[0].(map[string]any)["email"] != "lea.martin@etud.univ-jfc.fr" || m["held"] != float64(0) {
+		t.Fatalf("Léa après 24 h : %v", m)
+	}
+	admin.must("POST", "/api/tcg/admin/mailing/sent", map[string]any{"keys": []string{leaKey}}, 200)
+	// Le lendemain, Zoé a 24 h : rien ne reste à envoyer.
+	if m := admin.must("GET", "/api/tcg/admin/mailing", nil, 200); len(m["targets"].([]any)) != 0 {
+		t.Fatalf("après les deux envois : %v", m)
+	}
 
 	// Réponses : Léa accepte « Au foyer », Hugo aussi → la carte passe au jury d'elle-même.
 	lea.must("POST", "/api/tcg/consent", map[string]any{"card": card, "ok": true}, 200)
@@ -126,9 +137,14 @@ func TestConsentFlow(t *testing.T) {
 	if refused == nil || refused["consent"].(map[string]any)["no"] != float64(1) {
 		t.Fatalf("indicateurs d'accord : %v", refused)
 	}
-	// L'administration retire cette personne : la carte repart, sans être bloquée.
-	tags := refused["consent"].(map[string]any)["people"].([]any)
-	admin.must("POST", "/api/tcg/admin/card/"+alone, map[string]any{"action": "untag", "key": tags[0].(map[string]any)["key"]}, 200)
+	// L'administration retire les personnes qui manquent (Léa a refusé, Zoé n'a pas répondu) :
+	// la carte repart, sans être bloquée.
+	for _, x := range refused["consent"].(map[string]any)["people"].([]any) {
+		admin.must("POST", "/api/tcg/admin/card/"+alone, map[string]any{"action": "untag", "key": x.(map[string]any)["key"]}, 200)
+		if p := hugo.state().Proposals[0]; p.Status == StatusBlocked {
+			t.Fatal("carte bloquée en retirant une personne")
+		}
+	}
 	if p := hugo.state().Proposals[0]; p.Status != StatusAccepted {
 		t.Fatalf("après retrait de la personne : %s", p.Status)
 	}
