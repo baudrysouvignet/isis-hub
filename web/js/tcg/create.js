@@ -6,6 +6,7 @@
 import { h, toast, motionOK } from '../core/dom.js';
 import { api, TcgError } from './api.js';
 import { cardEl, ic, quota, tbtn, CATS, dayLong, dateShort, rchip, plural } from './ui.js';
+import { peoplePicker } from './people.js';
 
 const W = 960;
 const H = 720;
@@ -225,6 +226,9 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     return [input, h('label.tcheck', {}, input, h('span.tcheck-box', {}, ic('check', 'ic ic--xs')), h('span', { text }))];
   };
   const [c2, l2] = check('tcr-c2', 'J’ai pris cette photo ou j’ai le droit de l’utiliser.');
+  // Personnes sur la photo : même liste que le champ « Cc » d'un mail (récents, puis annuaire,
+  // étudiants d'abord). L'équipe confirme à la validation, puis leur demande leur accord.
+  const people = peoplePicker({ id: 'tcr-people', search: ctx.searchContacts, recent: ctx.recentPeople });
   const err = h('p.terr', { hidden: true, attrs: { role: 'alert' } });
   const showErr = (msg) => {
     err.textContent = msg;
@@ -256,7 +260,13 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     h('div.tfield', {}, h('div.tfield-top', {}, h('label.tlabel', { htmlFor: 'tcr-title', text: 'Titre' }), titleCount), titleIn),
     h('div.tfield', {}, h('div.tfield-top', {}, h('label.tlabel', { htmlFor: 'tcr-desc', text: 'Description' }), descCount), descIn, h('p.thelp', { text: '2 ou 3 phrases. Un mème, un moment, un truc : ce que tout le monde reconnaîtra.' })),
     h('div.tfield', {}, h('p.tlabel', { text: 'Catégorie' }), chips),
-    h('p.thelp.tcr-people-note', {}, 'Quelqu’un est reconnaissable sur la photo ? Pas besoin de cocher quoi que ce soit : à la validation, l’équipe lui demande son accord, et la carte attend sa réponse.'),
+    h(
+      'div.tfield',
+      {},
+      h('label.tlabel', { htmlFor: 'tcr-people', text: 'Qui est sur la photo ? (facultatif)' }),
+      people.el,
+      h('p.thelp', { text: 'Nom ou adresse de l’université, 5 personnes au plus. Après la validation, l’équipe leur demande leur accord par mail (ton nom n’y figure pas) : ta carte attend leur réponse avant d’aller au jury.' }),
+    ),
     l2,
     err,
     submit,
@@ -277,6 +287,8 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     if (!photo) return showErr('Ajoute une photo.');
     if ([...draft.title].length < 2) return showErr('Donne un titre à ta carte.') || titleIn.focus();
     if ([...draft.desc].length < 4) return showErr('Écris deux ou trois phrases.') || descIn.focus();
+    const tagged = people.list();
+    if (tagged === null) return showErr('Une adresse de la liste « Qui est sur la photo ? » n’est pas une adresse de l’université.') || people.focus();
     if (!c2.checked) return showErr('Confirme que tu as le droit d’utiliser cette photo.');
     submit.disabled = true;
     submitLabel.textContent = 'Envoi…';
@@ -288,6 +300,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
       fd.append('desc', draft.desc);
       fd.append('cat', draft.cat);
       fd.append('consentRights', '1');
+      if (tagged.length) fd.append('people', tagged.join(','));
       const ext = big.type === 'image/webp' ? 'webp' : 'jpg';
       fd.append('photo', big, `photo.${ext}`);
       fd.append('thumb', small, `vignette.${small.type === 'image/webp' ? 'webp' : 'jpg'}`);

@@ -397,6 +397,11 @@ func (s *Service) handlePropose(w http.ResponseWriter, r *http.Request, pid stri
 		failErr(w, err)
 		return
 	}
+	people, err := CleanPeople(r.FormValue("people"))
+	if err != nil {
+		failErr(w, err)
+		return
+	}
 	read := func(field string, max int) ([]byte, error) {
 		f, _, err := r.FormFile(field)
 		if err != nil {
@@ -439,7 +444,7 @@ func (s *Service) handlePropose(w http.ResponseWriter, r *http.Request, pid stri
 			return
 		}
 	}
-	id, err := s.Game.Propose(pid, NewProposal{Title: title, Desc: desc, Cat: cat, Img: img.Name, Thumb: thumb.Name, Bytes: int64(len(img.Data) + len(thumb.Data))})
+	id, err := s.Game.Propose(pid, NewProposal{Title: title, Desc: desc, Cat: cat, People: people, Img: img.Name, Thumb: thumb.Name, Bytes: int64(len(img.Data) + len(thumb.Data))})
 	if err != nil {
 		failErr(w, err)
 		return

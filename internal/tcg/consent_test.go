@@ -137,6 +137,39 @@ func TestConsentFlow(t *testing.T) {
 	if p := ines.state().Proposals[0]; p.Status != StatusAccepted {
 		t.Fatalf("validation forcée : %s", p.Status)
 	}
+	// L'autrice peut indiquer des personnes : rien ne part avant la validation, et l'administration
+	// retrouve sa liste pour la confirmer.
+	clk.add(time.Minute)
+	pimg, pth := photo(9)
+	if code, out := ines.proposeWith("Proposée avec Léa", pimg, pth, true, "lea.martin@etud.univ-jfc.fr"); code != 201 {
+		t.Fatalf("proposition avec personnes : %d %v", code, out)
+	}
+	var withLea string
+	for _, p := range ines.state().Proposals {
+		if p.Title == "Proposée avec Léa" {
+			withLea = p.ID
+		}
+	}
+	for _, ap := range lea.state().Appear {
+		if ap.ID == withLea {
+			t.Fatal("carte pas encore validée montrée à la personne indiquée")
+		}
+	}
+	for _, x := range admin.must("GET", "/api/tcg/admin/mailing", nil, 200)["targets"].([]any) {
+		if x.(map[string]any)["email"] == "lea.martin@etud.univ-jfc.fr" {
+			t.Fatal("mail prévu avant la validation")
+		}
+	}
+	var proposed []any
+	for _, x := range admin.must("GET", "/api/tcg/admin/cards?filter=pending", nil, 200)["list"].([]any) {
+		if c := x.(map[string]any); c["id"] == withLea {
+			proposed, _ = c["proposed"].([]any)
+		}
+	}
+	if len(proposed) != 1 || proposed[0] != "lea.martin@etud.univ-jfc.fr" {
+		t.Fatalf("personnes proposées par l'autrice : %v", proposed)
+	}
+	admin.must("POST", "/api/tcg/admin/card/"+withLea, map[string]any{"action": "block", "reason": "doublon"}, 200)
 }
 
 // Accord retiré sur une carte en jeu : elle sort du jeu, mais ceux qui l'ont gardent leur exemplaire,

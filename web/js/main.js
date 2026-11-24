@@ -378,6 +378,8 @@ function setupDashboard() {
     // mails d'accord depuis la messagerie de l'administrateur, et sa session d'administration.
     userEmail: () => state.user?.email || '',
     sendMail: (msg) => mail.send(msg),
+    searchContacts: (q, n) => mail.searchContacts(q, n),
+    recentRecipients: () => mail.recentRecipients(),
     adminSession: openAdminSession,
     beforeOpen: () => {
       closeMenus();

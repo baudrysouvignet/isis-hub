@@ -1288,3 +1288,8 @@ html[data-vt="out"]::view-transition-new(root) { z-index: 1; }
 .tpp-opt b { display: flex; align-items: center; gap: 6px; }
 .tpp-tag { padding: 2px 6px; border-radius: 99px; background: var(--sunken); color: var(--text-3); font: 650 10.5px/1.2 var(--font); font-style: normal; }
 .tpp-tag.is-etud { background: #E6EEFB; color: #2B5BD7; }
+.app.is-tcg .tpp-box { background: rgba(0, 0, 0, .28); }
+.app.is-tcg .tpp-ac { background: var(--surface-2); border-color: var(--line-2); box-shadow: var(--shadow-3); }
+.app.is-tcg .tpp-tag { background: rgba(255, 255, 255, .08); }
+.app.is-tcg .tpp-tag.is-etud { background: rgba(76, 195, 211, .16); color: #8FEAF3; }
+.app.is-tcg .tpp-note { color: var(--err); }

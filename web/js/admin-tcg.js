@@ -546,6 +546,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
   function peopleForm(c, kind) {
     const picker = peoplePicker({
       id: 'tad-people',
+      initial: kind === 'validate' ? (c.proposed ?? []) : [],
       search: async (q) => (await mailBridge()).searchContacts(q, 12),
       recent: async () => (await mailBridge()).recentRecipients(),
     });
@@ -561,6 +562,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     const withPeople = h('button.btn.btn--lg', { type: 'submit' }, ic('person'), h('span', { text: kind === 'people' ? 'Ajouter et demander leur accord' : 'Valider et demander leur accord' }));
     form.append(
       h('p.label', { text: kind === 'people' ? 'Qui ajouter sur la photo ?' : 'Y a-t-il des personnes reconnaissables sur la photo ?' }),
+      kind === 'validate' && c.proposed?.length ? h('p.tad-help', { text: `L’auteur a indiqué ${plural(c.proposed.length, 'personne')} : vérifie la liste, retire ou ajoute qui il faut.` }) : null,
       h('label.tad-help', { htmlFor: 'tad-people', text: 'Nom ou adresse de l’université : suggestions de l’annuaire, comme pour un mail. 5 personnes au plus.' }),
       picker.el,
       h('div.tad-row', {}, btn('btn--ghost', 'Annuler', null, () => ((mode = ''), renderDetail())), kind === 'validate' ? none : null, withPeople),

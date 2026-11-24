@@ -828,6 +828,9 @@ export function createTCG(o) {
     openCard,
     userName: () => o.userName(),
     userEmail: () => o.userEmail?.() ?? '',
+    // Liste « Qui est sur la photo ? » : annuaire et destinataires récents de ma messagerie.
+    searchContacts: (q) => o.searchContacts(q, 12),
+    recentPeople: () => o.recentRecipients(),
     sendMail: (msg) => o.sendMail(msg),
     adminSession: () => o.adminSession(),
     setMailing: (m) => {

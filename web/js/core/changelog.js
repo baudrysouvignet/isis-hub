@@ -10,6 +10,17 @@
 
 export const CHANGELOG = [
   {
+    version: '2.0.3',
+    date: '2026-11-24',
+    title: 'TCG : indique qui est sur ta photo',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
+    short: ['TCG : en créant une carte, indique qui est sur la photo, avec les suggestions de ta messagerie.'],
+    details: [
+      'Créer une carte : « Qui est sur la photo ? », avec la même liste que le champ « Cc » d’un mail (personnes récentes d’abord, puis l’annuaire, étudiants en premier). 5 personnes au plus.',
+      'L’équipe vérifie cette liste à la validation, puis demande leur accord à ces personnes : rien ne part avant.',
+    ],
+  },
+  {
     version: '2.0.2',
     date: '2026-11-24',
     title: 'TCG : l’accord demandé à la validation, un booster toutes les 24 h',

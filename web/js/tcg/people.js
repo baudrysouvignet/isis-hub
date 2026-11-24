@@ -37,7 +37,7 @@ const norm = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
  * Liste : d'abord les récents (indiqués sur des cartes, puis écrits), puis l'annuaire, étudiants
  * en premier. Rend { el, list(), focus() } ; list() = adresses retenues.
  */
-export function peoplePicker({ search, recent, id = 'tad-people', onChange } = {}) {
+export function peoplePicker({ search, recent, initial = [], id = 'tad-people', onChange } = {}) {
   let mailRecents = [];
   recent?.()
     .then((l) => (mailRecents = (l ?? []).filter((p) => isUnivMail(p.email))))
@@ -174,6 +174,7 @@ export function peoplePicker({ search, recent, id = 'tad-people', onChange } = {
   input.addEventListener('focus', () => !input.value.trim() && openRecents(''));
   input.addEventListener('blur', () => setTimeout(closeAc, 120));
   box.addEventListener('click', () => input.focus());
+  for (const a of initial) if (isUnivMail(a) && chosen.size < MAX_PEOPLE) chosen.set(a, '');
   draw();
   return {
     el,

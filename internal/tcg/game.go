@@ -371,6 +371,7 @@ func (g *Game) addFeed(f FeedItem) {
 // NewProposal : une carte proposée (images déjà enregistrées). Rend son identifiant.
 type NewProposal struct {
 	Title, Desc, Cat string
+	People           []string // personnes sur la photo indiquées par l'auteur (CleanPeople), à confirmer par l'administration
 	Img, Thumb       string
 	Bytes            int64
 }
@@ -471,6 +472,7 @@ func (g *Game) Propose(pid string, in NewProposal) (string, error) {
 		Title: title, Desc: desc, Cat: cat, Img: in.Img, Thumb: in.Thumb, Bytes: in.Bytes,
 		Status: StatusPending, Created: g.now(),
 	}
+	c.Tags = g.newTags(pid, in.People) // aucun mail avant la validation (askable)
 	g.st.Cards[c.ID] = c
 	g.st.Used += in.Bytes
 	g.dirty = true

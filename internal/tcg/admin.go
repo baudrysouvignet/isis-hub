@@ -54,6 +54,7 @@ func (g *Game) ModerateCard(id string, m Moderate) error {
 		if err != nil {
 			return err
 		}
+		// La liste confirmée par l'administration remplace celle de l'auteur.
 		c.Tags = g.newTags(c.Author, people)
 		c.Status, c.Decided, c.Reason, c.Message = StatusConsent, now, "", ""
 		g.settleConsent(c)
@@ -244,7 +245,8 @@ type AdminCard struct {
 	Flags    []string       `json:"flags,omitempty"` // points à vérifier, repérés automatiquement
 	Planned  Rarity         `json:"planned,omitempty"`
 	Override bool           `json:"override,omitempty"`
-	Consent  *ConsentView   `json:"consent,omitempty"` // accords des personnes sur la photo
+	Consent  *ConsentView   `json:"consent,omitempty"`  // accords des personnes sur la photo
+	Proposed []string       `json:"proposed,omitempty"` // carte à valider : personnes indiquées par l'auteur (à confirmer)
 }
 
 // AdminAuthor : auteur d'une carte (pseudo et historique, jamais l'identifiant universitaire).
@@ -266,6 +268,13 @@ func (g *Game) adminCard(c *Card, img func(string) string) AdminCard {
 		a.Flags = Flags(c.Title, c.Desc)
 	}
 	a.Consent = g.consentOf(c)
+	if c.Status == StatusPending || c.Status == StatusBlocked {
+		for _, t := range c.Tags {
+			if addr, err := g.openMail(t.Enc); err == nil {
+				a.Proposed = append(a.Proposed, addr)
+			}
+		}
+	}
 	if w := g.wave(c.Wave); w != nil {
 		a.Total = len(w.Cards)
 	}
