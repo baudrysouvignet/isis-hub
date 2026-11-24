@@ -228,7 +228,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
   const [c2, l2] = check('tcr-c2', 'J’ai pris cette photo ou j’ai le droit de l’utiliser.');
   // Personnes sur la photo : même liste que le champ « Cc » d'un mail (récents, puis annuaire,
   // étudiants d'abord). L'équipe confirme à la validation, puis leur demande leur accord.
-  const people = peoplePicker({ id: 'tcr-people', search: ctx.searchContacts, recent: ctx.recentPeople, isIsis: ctx.isIsis() });
+  const people = peoplePicker({ id: 'tcr-people', search: ctx.searchContacts, recent: ctx.recentPeople });
   const err = h('p.terr', { hidden: true, attrs: { role: 'alert' } });
   const showErr = (msg) => {
     err.textContent = msg;

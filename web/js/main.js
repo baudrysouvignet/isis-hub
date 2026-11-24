@@ -7,7 +7,7 @@ import { openVault } from './net/vault.js';
 import { initCache, clearCache } from './net/cache.js';
 import { http, jar, ready } from './net/engine.js';
 import { useTransport } from './net/http.js';
-import { loadClasses, classOf, isComplete, choiceLabel, classes } from './portals/classes.js';
+import { loadClasses, classOf, isComplete, choiceLabel } from './portals/classes.js';
 import { casLogin, casLogout, hasCasSession, adminTicket } from './portals/cas.js';
 import * as moodle from './portals/moodle.js';
 import * as mail from './portals/mail.js';
@@ -43,7 +43,6 @@ import { fetchContent, renderLinks } from './ui/content.js';
 import { setupTransparency, versionLabel } from './ui/transparency.js';
 import { startTour, tourActive } from './ui/tour.js';
 import { createTCG } from './tcg/app.js';
-import { isisMatcher } from './tcg/isis.js';
 
 if (window.top !== window.self) throw new Error('ISIS Hub refuse de s’afficher dans un cadre.');
 
@@ -381,7 +380,6 @@ function setupDashboard() {
     sendMail: (msg) => mail.send(msg),
     searchContacts: (q, n) => mail.searchContacts(q, n),
     recentRecipients: () => mail.recentRecipients(),
-    isisMatcher: () => isisMatcher({ moodle, mail, codes: Object.keys(classes() ?? {}) }),
     adminSession: openAdminSession,
     beforeOpen: () => {
       closeMenus();

@@ -386,28 +386,9 @@ export async function searchContacts(query, size = 20) {
       name: v.formatedName || email,
       email,
       cat: v.kind === 'group' ? 'liste' : STUDENT_DOMAIN.test(email) ? 'etud' : 'staff',
-      // Référence de la fiche (pour lire les membres d'une liste de diffusion).
-      ...(item.containerUid && item.uid && { ref: { container: item.containerUid, uid: item.uid } }),
     });
   }
   return out;
-}
-
-/**
- * Membres d'une liste de diffusion de l'annuaire (fiche complète du groupe). Rend
- * [{ name, email, ref }] ; ref permet de déplier une liste incluse dans une autre.
- */
-export async function groupMembers(ref) {
-  if (!ref?.container || !ref?.uid) return [];
-  const res = await api(`addressbooks/${encodeURIComponent(ref.container)}/${encodeURIComponent(ref.uid)}/complete`);
-  const members = res?.value?.organizational?.member ?? [];
-  return members
-    .map((m) => ({
-      name: m.commonName || m.mailto || '',
-      email: (m.mailto || '').trim().toLowerCase(),
-      ...(m.itemUid && { ref: { container: m.containerUid || ref.container, uid: m.itemUid } }),
-    }))
-    .filter((m) => m.email || m.ref);
 }
 
 // -------------------------------------------------------------- envoi
