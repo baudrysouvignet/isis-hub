@@ -543,18 +543,41 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     );
   }
 
-  // Gens d'ISIS (participants des cours « ISIS-… » de Moodle), chargés une fois par visite.
-  let isis = null;
+  // Gens d'ISIS, toutes classes : listes de diffusion ISIS de l'annuaire et participants des cours
+  // Moodle « ISIS-… ». Chargés une fois par visite, à la première liste ouverte.
+  let isisTest = null;
+  const isisLoad = () =>
+    (isisTest ??= Promise.all([mailBridge(), moodleBridge(), import('./portals/classes.js')]).then(async ([mail, moodle, cls]) => {
+      const data = await cls.loadClasses();
+      const t = isisMatcher({ mail, moodle, codes: Object.keys(data?.classes ?? {}) });
+      await t.ready;
+      return t;
+    }));
+  let isisReady = null;
   const isIsis = (p) => {
-    isis ??= (() => {
-      let test = () => false;
-      moodleBridge()
-        .then((m) => (test = isisMatcher(m)))
-        .catch(() => {});
-      return (x) => test(x);
-    })();
-    return isis(p);
+    if (!isisReady) {
+      isisLoad()
+        .then((t) => (isisReady = t))
+        .catch(() => (isisReady = Object.assign(() => false, { info: () => ({ lists: [], emails: 0, names: 0, courses: 0, ready: true, error: true }) })));
+      isisReady = Object.assign(() => false, { info: () => ({ ready: false }) });
+      isisReady.pending = true;
+    }
+    return isisReady(p);
   };
+  // Ce qui a été reconnu (pour vérifier que les listes ISIS de l'annuaire sont bien trouvées).
+  function isisNote() {
+    const note = h('p.tad-help.tad-isis-note', { text: 'Gens d’ISIS : recherche dans l’annuaire et Moodle…' });
+    const fill = () => {
+      const i = isisReady?.info?.() ?? { ready: false };
+      if (!i.ready) return setTimeout(fill, 600);
+      if (i.error) return (note.textContent = 'Gens d’ISIS : annuaire ou Moodle indisponible (connecte-toi au Hub sur cet appareil).');
+      const lists = i.lists.length ? `listes de l’annuaire : ${i.lists.map((l) => `« ${l.name} » (${l.count})`).join(', ')}` : 'aucune liste ISIS trouvée dans l’annuaire';
+      note.textContent = `Gens d’ISIS reconnus : ${plural(i.emails, 'adresse')} (${lists}) · ${plural(i.names, 'nom')} de ${plural(i.courses, 'cours', 'cours')} Moodle d’ISIS.`;
+    };
+    isIsis(null);
+    fill();
+    return note;
+  }
 
   // « Y a-t-il des personnes sur la photo ? » : personne → validée ; sinon elle attend leur accord.
   function peopleForm(c, kind) {
@@ -580,6 +603,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       kind === 'validate' && c.proposed?.length ? h('p.tad-help', { text: `L’auteur a indiqué ${plural(c.proposed.length, 'personne')} : vérifie la liste, retire ou ajoute qui il faut.` }) : null,
       h('label.tad-help', { htmlFor: 'tad-people', text: 'Nom ou adresse de l’université : suggestions de l’annuaire, comme pour un mail. 5 personnes au plus.' }),
       picker.el,
+      isisNote(),
       h('div.tad-row', {}, btn('btn--ghost', 'Annuler', null, () => ((mode = ''), renderDetail())), kind === 'validate' ? none : null, withPeople),
       h('p.tad-help', { text: 'Elles reçoivent un mail depuis ta messagerie (copie cachée, quand tu cliques sur « Envoyer les mails ») et répondent dans le TCG. La carte passe au jury dès que toutes ont accepté.' }),
     );

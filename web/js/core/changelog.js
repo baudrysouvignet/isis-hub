@@ -10,6 +10,16 @@
 
 export const CHANGELOG = [
   {
+    version: '2.0.4',
+    date: '2026-11-24',
+    title: 'TCG : les gens de tout ISIS dans la liste',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
+    short: ['TCG : la mention « ISIS » couvre maintenant toutes les classes d’ISIS.'],
+    details: [
+      '« Qui est sur la photo ? » : la mention « ISIS » s’appuie aussi sur les listes de diffusion d’ISIS de l’annuaire de l’université (toutes les classes), en plus des participants de tes cours Moodle d’ISIS. Tout est lu dans ta page.',
+    ],
+  },
+  {
     version: '2.0.3',
     date: '2026-11-24',
     title: 'TCG : indique qui est sur ta photo',
