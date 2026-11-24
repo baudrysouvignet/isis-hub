@@ -37,7 +37,10 @@ const norm = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
  * Liste : d'abord les récents (indiqués sur des cartes, puis écrits), puis l'annuaire, étudiants
  * en premier. Rend { el, list(), focus() } ; list() = adresses retenues.
  */
-export function peoplePicker({ search, recent, initial = [], id = 'tad-people', onChange } = {}) {
+export function peoplePicker({ search, recent, isIsis = () => false, initial = [], id = 'tad-people', onChange } = {}) {
+  // Ordre de l'annuaire : étudiants d'ISIS, personnel d'ISIS, autres étudiants, puis le reste.
+  const rank = (p) => (isIsis(p) ? 0 : 2) + (isStudent(p) ? 0 : 1);
+  const byRank = (list) => list.map((p, i) => [p, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([p]) => p);
   let mailRecents = [];
   recent?.()
     .then((l) => (mailRecents = (l ?? []).filter((p) => isUnivMail(p.email))))
@@ -108,8 +111,8 @@ export function peoplePicker({ search, recent, initial = [], id = 'tad-people', 
   const showAc = () => {
     ac.replaceChildren(
       ...items.map((p, i) => {
-        const tag = p.recent ? h('em.tpp-tag', { text: 'Récent' }) : isStudent(p) ? h('em.tpp-tag.is-etud', { text: 'Étudiant' }) : null;
-        const li = h(`li.tpp-opt${i === active ? '.is-on' : ''}`, { attrs: { role: 'option' } }, h('b', {}, p.name || p.email, tag), h('span', { text: p.email }));
+        const tags = [isIsis(p) ? h('em.tpp-tag.is-isis', { text: 'ISIS' }) : null, p.recent ? h('em.tpp-tag', { text: 'Récent' }) : isStudent(p) ? h('em.tpp-tag.is-etud', { text: 'Étudiant' }) : null];
+        const li = h(`li.tpp-opt${i === active ? '.is-on' : ''}`, { attrs: { role: 'option' } }, h('b', {}, p.name || p.email, ...tags), h('span', { text: p.email }));
         li.addEventListener('mousedown', (e) => {
           e.preventDefault();
           add(p.email, p.name);
@@ -132,7 +135,7 @@ export function peoplePicker({ search, recent, initial = [], id = 'tad-people', 
     timer = setTimeout(async () => {
       try {
         const near = recents(q).slice(0, 4);
-        const dir = studentsFirst((await search(q)).filter((p) => isUnivMail(p.email) && !chosen.has(p.email) && !near.some((r) => r.email === p.email)));
+        const dir = byRank((await search(q)).filter((p) => isUnivMail(p.email) && !chosen.has(p.email) && !near.some((r) => r.email === p.email)));
         const found = [...near, ...dir].slice(0, 10);
         if (mine !== token) return;
         items = found;

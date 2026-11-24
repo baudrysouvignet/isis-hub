@@ -76,7 +76,8 @@ export function createTCG(o) {
   let pendingCode = null;
   let mailTried = false; // adresse de la messagerie envoyée une fois par visite
   let mailing = null; // mails d'accord (administrateur), dernier état connu
-  let autoTried = false; // envoi automatique des mails d'accord : une tentative par visite
+  let autoTried = false;
+  let isisTest = null; // gens d'ISIS, d'après les participants des cours Moodle « ISIS-… » // envoi automatique des mails d'accord : une tentative par visite
   let joining = null;
   const cards = new Map();
 
@@ -831,6 +832,8 @@ export function createTCG(o) {
     // Liste « Qui est sur la photo ? » : annuaire et destinataires récents de ma messagerie.
     searchContacts: (q) => o.searchContacts(q, 12),
     recentPeople: () => o.recentRecipients(),
+    // Gens d'ISIS (cours « ISIS-… » de Moodle) : chargé une fois, à la première liste ouverte.
+    isIsis: () => (isisTest ??= o.isisMatcher?.() ?? (() => false)),
     sendMail: (msg) => o.sendMail(msg),
     adminSession: () => o.adminSession(),
     setMailing: (m) => {

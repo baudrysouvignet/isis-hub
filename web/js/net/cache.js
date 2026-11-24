@@ -24,7 +24,7 @@ function scheduleSave() {
       keys.sort((a, b) => entries[a].t - entries[b].t);
       for (const k of keys.slice(0, keys.length - MAX_ENTRIES)) delete entries[k];
     }
-    persist(entries);
+    persist?.(entries); // page /admin : cache en mémoire seulement
   }, 400);
 }
 

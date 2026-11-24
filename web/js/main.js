@@ -43,6 +43,7 @@ import { fetchContent, renderLinks } from './ui/content.js';
 import { setupTransparency, versionLabel } from './ui/transparency.js';
 import { startTour, tourActive } from './ui/tour.js';
 import { createTCG } from './tcg/app.js';
+import { isisMatcher } from './tcg/isis.js';
 
 if (window.top !== window.self) throw new Error('ISIS Hub refuse de s’afficher dans un cadre.');
 
@@ -380,6 +381,7 @@ function setupDashboard() {
     sendMail: (msg) => mail.send(msg),
     searchContacts: (q, n) => mail.searchContacts(q, n),
     recentRecipients: () => mail.recentRecipients(),
+    isisMatcher: () => isisMatcher(moodle),
     adminSession: openAdminSession,
     beforeOpen: () => {
       closeMenus();

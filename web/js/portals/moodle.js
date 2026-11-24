@@ -136,6 +136,28 @@ export function searchCourses(query) {
 const text = (el) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
 
 /**
+ * Noms des participants d'un cours (page « Participants », comme l'étudiant la voit), pour
+ * reconnaître les gens d'ISIS dans l'annuaire. Pas d'adresse : Moodle ne les montre pas aux
+ * étudiants. Cache 24 h, chiffré comme le reste du cache.
+ */
+export function participants(courseId, { force = false } = {}) {
+  return cached(`moodle:people:${courseId}`, 24 * HOUR, async () => {
+    if (!session) await connect();
+    const res = await http(`${HOSTS.moodle}/user/index.php?id=${encodeURIComponent(courseId)}&perpage=5000`);
+    if (new URL(res.url).pathname.startsWith('/login')) throw await lost('');
+    const doc = parse(await res.text());
+    const names = new Set();
+    for (const a of doc.querySelectorAll('#participants a[href*="/user/view.php"], table.generaltable a[href*="/user/view.php"]')) {
+      // Le lien contient parfois les initiales (« BS ») avant le nom : on ne garde que le nom.
+      for (const extra of a.querySelectorAll('.userinitials, .sr-only, .accesshide, img')) extra.remove();
+      const name = text(a);
+      if (name && name.length <= 80) names.add(name);
+    }
+    return [...names];
+  }, { force });
+}
+
+/**
  * Notes d'un cours, lues dans le carnet de notes de Moodle (rapport « utilisateur »), comme
  * l'étudiant les voit. Cache 30 min par matière. Rend [{ name, grade, range, average, percentage }].
  */

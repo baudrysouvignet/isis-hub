@@ -8,7 +8,8 @@
 import { $, $$, h, toast, isTyping } from './core/dom.js';
 import { cardEl, ic, rchip, RLABEL, RARITIES, CATS, ago, dayLong, hourText, plural } from './tcg/ui.js';
 import { peoplePicker } from './tcg/people.js';
-import { mailBridge } from './tcg/mailbridge.js';
+import { mailBridge, moodleBridge } from './tcg/mailbridge.js';
+import { isisMatcher } from './tcg/isis.js';
 import { sendConsentMails, mailText, MAIL_SUBJECT } from './tcg/consent.js';
 
 const REASONS = {
@@ -542,6 +543,19 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     );
   }
 
+  // Gens d'ISIS (participants des cours « ISIS-… » de Moodle), chargés une fois par visite.
+  let isis = null;
+  const isIsis = (p) => {
+    isis ??= (() => {
+      let test = () => false;
+      moodleBridge()
+        .then((m) => (test = isisMatcher(m)))
+        .catch(() => {});
+      return (x) => test(x);
+    })();
+    return isis(p);
+  };
+
   // « Y a-t-il des personnes sur la photo ? » : personne → validée ; sinon elle attend leur accord.
   function peopleForm(c, kind) {
     const picker = peoplePicker({
@@ -549,6 +563,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       initial: kind === 'validate' ? (c.proposed ?? []) : [],
       search: async (q) => (await mailBridge()).searchContacts(q, 12),
       recent: async () => (await mailBridge()).recentRecipients(),
+      isIsis,
     });
     const form = h('form.tad-peopleform', { noValidate: true });
     const submit = (alone) => {

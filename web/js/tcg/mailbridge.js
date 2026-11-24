@@ -29,3 +29,6 @@ export function mailBridge() {
   });
   return opening;
 }
+
+/** Module moodle.js avec la même session (pour reconnaître les gens d'ISIS). */
+export const moodleBridge = () => mailBridge().then(() => import('../portals/moodle.js'));

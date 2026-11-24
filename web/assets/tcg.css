@@ -1293,3 +1293,5 @@ html[data-vt="out"]::view-transition-new(root) { z-index: 1; }
 .app.is-tcg .tpp-tag { background: rgba(255, 255, 255, .08); }
 .app.is-tcg .tpp-tag.is-etud { background: rgba(76, 195, 211, .16); color: #8FEAF3; }
 .app.is-tcg .tpp-note { color: var(--err); }
+.tpp-tag.is-isis { background: #0B6E7F; color: #FFFFFF; letter-spacing: .04em; }
+.app.is-tcg .tpp-tag.is-isis { background: #4CC3D3; color: #032025; }

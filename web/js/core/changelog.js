@@ -17,6 +17,7 @@ export const CHANGELOG = [
     short: ['TCG : en créant une carte, indique qui est sur la photo, avec les suggestions de ta messagerie.'],
     details: [
       'Créer une carte : « Qui est sur la photo ? », avec la même liste que le champ « Cc » d’un mail (personnes récentes d’abord, puis l’annuaire, étudiants en premier). 5 personnes au plus.',
+      'Les gens d’ISIS passent en tête de la liste, avec la mention « ISIS » : ils sont reconnus d’après les participants de tes cours Moodle d’ISIS, dans ta page (aucun nom n’est envoyé au serveur d’ISIS Hub).',
       'L’équipe vérifie cette liste à la validation, puis demande leur accord à ces personnes : rien ne part avant.',
     ],
   },
