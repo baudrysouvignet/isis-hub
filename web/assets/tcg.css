@@ -60,11 +60,11 @@
   color-scheme: dark;
 }
 .app.is-tcg .toast { z-index: 260; bottom: 104px; }
-.rchip--commune, .tf--commune, .tfilter--commune, .tdet--commune { --rc: #B9C6CA; }
-.rchip--rare, .tf--rare, .tfilter--rare, .tdet--rare { --rc: #4CC3D3; }
-.rchip--epique, .tf--epique, .tfilter--epique, .tdet--epique { --rc: #A98BFF; }
-.rchip--legendaire, .tf--legendaire, .tfilter--legendaire, .tdet--legendaire { --rc: #FF8A65; }
-.rchip--unique, .tf--unique, .tfilter--unique, .tdet--unique { --rc: #F5C451; }
+.trchip--commune, .tf--commune, .tfilter--commune, .tdet--commune { --rc: #B9C6CA; }
+.trchip--rare, .tf--rare, .tfilter--rare, .tdet--rare { --rc: #4CC3D3; }
+.trchip--epique, .tf--epique, .tfilter--epique, .tdet--epique { --rc: #A98BFF; }
+.trchip--legendaire, .tf--legendaire, .tfilter--legendaire, .tdet--legendaire { --rc: #FF8A65; }
+.trchip--unique, .tf--unique, .tfilter--unique, .tdet--unique { --rc: #F5C451; }
 
 .tcg { position: relative; isolation: isolate; min-height: calc(100dvh - var(--head-h)); padding: 22px 24px 128px; overflow-x: clip; color: var(--text); }
 .tcg :focus-visible, .op :focus-visible, .tsh-layer :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
@@ -391,9 +391,9 @@
 .th-fi-when { font-size: 12px; color: var(--text-3); white-space: nowrap; }
 .th-fi.is-big { margin: 0 -10px; padding: 10px; border-radius: 14px; background: linear-gradient(90deg, rgba(245, 196, 81, .12), transparent 80%); border-top-color: transparent; }
 .th-fi.is-mine p b:first-child { color: #8FEAF3; }
-.rchip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 99px; vertical-align: 1px; background: color-mix(in srgb, var(--rc) 18%, transparent); color: var(--rc); font: 750 11px/1 var(--font); white-space: nowrap; }
-.rchip-pips { display: inline-flex; gap: 1px; }
-.rchip-pips .pip { width: 9px; height: 9px; fill: currentColor; }
+.trchip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 99px; vertical-align: 1px; background: color-mix(in srgb, var(--rc) 18%, transparent); color: var(--rc); font: 750 11px/1 var(--font); white-space: nowrap; }
+.trchip-pips { display: inline-flex; gap: 1px; }
+.trchip-pips .pip { width: 9px; height: 9px; fill: currentColor; }
 
 /* ==========================================================================
    TCG · ouverture du booster (plein écran)
@@ -409,9 +409,9 @@
 .op-dim { position: absolute; inset: 0; background: rgba(0, 0, 0, .62); opacity: 0; pointer-events: none; }
 .op-flash { position: absolute; inset: 0; z-index: 4; background: radial-gradient(circle, #FFFFFF, rgba(255, 255, 255, .55) 38%, transparent 72%); opacity: 0; pointer-events: none; }
 .op-fx { position: fixed; inset: 0; z-index: 250; pointer-events: none; overflow: hidden; }
-.fx { position: absolute; width: var(--s, 6px); height: var(--s, 6px); border-radius: 50%; background: var(--c); box-shadow: 0 0 10px var(--c); }
-.fx--star { border-radius: 0; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); box-shadow: none; }
-.fx--conf { width: 8px; height: 14px; border-radius: 2px; box-shadow: none; }
+.tfx { position: absolute; width: var(--s, 6px); height: var(--s, 6px); border-radius: 50%; background: var(--c); box-shadow: 0 0 10px var(--c); }
+.tfx--star { border-radius: 0; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); box-shadow: none; }
+.tfx--conf { width: 8px; height: 14px; border-radius: 2px; box-shadow: none; }
 .op-stage { position: relative; z-index: 3; display: grid; place-items: center; gap: 26px; }
 .op-deck { position: relative; width: min(340px, 74vw, 52vh); aspect-ratio: 5 / 7; }
 .op-deck .tc { --w: 100%; position: absolute; inset: 0; transform: translate(calc(var(--i) * 4px), calc(var(--i) * -4px)) rotate(calc(var(--i) * 1.3deg)); }
@@ -469,7 +469,7 @@
 .tdet-dl dd { margin: 0; color: var(--text); }
 .tdet-acts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
 .tghost { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 26px; align-items: center; }
-.tghost .rchip { margin-top: 4px; }
+.tghost .trchip { margin-top: 4px; }
 /* Récap */
 .rc { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
 .rc-h { font: 900 30px/1.12 var(--font); letter-spacing: -.025em; }
@@ -1068,8 +1068,8 @@
   .tad-keys { display: none; }
 }
 .tad-it span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tad .rchip--commune { --rc: #5E6E73; } .tad .rchip--rare { --rc: #0B6E7F; } .tad .rchip--epique { --rc: #6B4BD6; }
-.tad .rchip--legendaire { --rc: #C2410C; } .tad .rchip--unique { --rc: #8A5D00; }
+.tad .trchip--commune { --rc: #5E6E73; } .tad .trchip--rare { --rc: #0B6E7F; } .tad .trchip--epique { --rc: #6B4BD6; }
+.tad .trchip--legendaire { --rc: #C2410C; } .tad .trchip--unique { --rc: #8A5D00; }
 .tad-flags p { flex-wrap: wrap; }
 @media (max-width: 759.98px) {
   .tad-preview { padding: 12px; }
@@ -1171,7 +1171,7 @@ html[data-vt="out"]::view-transition-new(root) { z-index: 1; }
   .tad-wave { grid-template-columns: minmax(0, 1fr); }
   .tad-wave-acts { grid-row: auto; grid-column: 1; justify-content: flex-start; }
   .tad-plan li { grid-template-columns: 22px 48px minmax(0, 1fr); }
-  .tad-plan li > .rchip, .tad-plan li > .tad-pill { grid-column: 3; justify-self: start; }
+  .tad-plan li > .trchip, .tad-plan li > .tad-pill { grid-column: 3; justify-self: start; }
   .tad-plan li > select { grid-column: 1 / -1; }
 }
 .tad-fields { align-items: start; }

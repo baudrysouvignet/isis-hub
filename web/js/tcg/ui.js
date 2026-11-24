@@ -1,5 +1,5 @@
 // ISIS · TCG : briques d'interface partagées (carte, raretés, feuilles, icônes, dates).
-// Même balisage que la maquette v9 (classes tc-*, tsh-*, rchip…). Aucun innerHTML : tout est
+// Même balisage que la maquette v9 (classes tc-*, tsh-*, trchip…). Aucun innerHTML : tout est
 // construit nœud par nœud, le texte des cartes (écrit par les étudiants) n'est jamais du HTML.
 
 import { h, motionOK, lockScroll } from '../core/dom.js';
@@ -105,7 +105,7 @@ function pip(kind) {
 export const pips = (rarity, cls) => h(`span.${cls}`, { attrs: { role: 'img', 'aria-label': RLABEL[rarity] } }, ...(PIPS[rarity] ?? []).map(pip));
 
 /** Pastille « Légendaire » colorée. */
-export const rchip = (rarity) => h(`span.rchip.rchip--${rarity}`, {}, pips(rarity, 'rchip-pips'), h('span', { text: RLABEL[rarity] }));
+export const rchip = (rarity) => h(`span.trchip.trchip--${rarity}`, {}, pips(rarity, 'trchip-pips'), h('span', { text: RLABEL[rarity] }));
 
 // ------------------------------------------------------------------ images
 

@@ -47,8 +47,8 @@ function burst(fx, rarity, strong) {
   const cx = window.innerWidth / 2;
   const cy = window.innerHeight * 0.45;
   for (let i = 0; i < n; i++) {
-    const kind = strong && i % 3 === 0 ? 'fx--conf' : i % 4 === 0 ? 'fx--star' : '';
-    const p = h(`span.fx${kind ? '.' + kind : ''}`);
+    const kind = strong && i % 3 === 0 ? 'tfx--conf' : i % 4 === 0 ? 'tfx--star' : '';
+    const p = h(`span.tfx${kind ? '.' + kind : ''}`);
     p.style.setProperty('--c', colors[i % colors.length]);
     p.style.setProperty('--s', `${4 + Math.random() * (strong ? 9 : 6)}px`);
     p.style.setProperty('left', `${cx}px`);
