@@ -33,7 +33,7 @@ func (g *Game) Join(login, pseudo string) (tok string, created bool, err error) 
 	if !ok || g.st.Players[id] == nil {
 		ps, valid := CleanPseudo(pseudo)
 		if !valid {
-			return "", false, userErr(http.StatusBadRequest, "Choisis un nom de 2 à 24 caractères.")
+			return "", false, userErr(http.StatusBadRequest, "Ton prénom n’a pas pu être lu depuis ton compte : reconnecte-toi au Hub, puis réessaie.")
 		}
 		if len(g.st.Players) >= maxPlayers {
 			return "", false, userErr(http.StatusServiceUnavailable, "Le jeu est complet pour l’instant.")
@@ -71,23 +71,6 @@ func (g *Game) Logout(tok string) {
 		delete(g.st.Sessions, hashToken(tok))
 		g.dirty = true
 	}
-}
-
-// SetPseudo : change le nom affiché dans le jeu.
-func (g *Game) SetPseudo(pid, pseudo string) error {
-	ps, ok := CleanPseudo(pseudo)
-	if !ok {
-		return userErr(http.StatusBadRequest, "Choisis un nom de 2 à 24 caractères.")
-	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	p := g.st.Players[pid]
-	if p == nil {
-		return ErrNotFound
-	}
-	p.Pseudo = ps
-	g.dirty = true
-	return nil
 }
 
 // Leave : le joueur quitte le jeu. Sa collection, ses votes et ses propositions non imprimées sont

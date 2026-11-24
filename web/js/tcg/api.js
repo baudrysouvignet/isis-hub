@@ -37,7 +37,6 @@ export const api = {
   join: (ticket, pseudo) => post('join', { ticket, pseudo }),
   logout: () => post('logout'),
   leave: () => post('leave'),
-  pseudo: (pseudo) => post('pseudo', { pseudo }),
   booster: () => post('booster'),
   propose: (form) => call('propose', { method: 'POST', form }),
   withdraw: (id) => post(`proposal/${encodeURIComponent(id)}/withdraw`),

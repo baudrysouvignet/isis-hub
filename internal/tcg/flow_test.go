@@ -416,7 +416,7 @@ func TestFullLaunchFlow(t *testing.T) {
 	}
 
 	// 9. Après la sortie, les propositions continuent (pour la vague suivante).
-	players["yanis"].must("POST", "/api/tcg/pseudo", map[string]any{"pseudo": "Yanis K."}, 200)
+	players["yanis"].must("POST", "/api/tcg/pseudo", map[string]any{"pseudo": "Yanis K."}, 404) // le nom ne se change pas
 	if code, _ := players["yanis"].propose("Pour la vague deux", photo, thumb, true); code != 201 {
 		t.Fatal("proposition après le lancement")
 	}
@@ -544,7 +544,7 @@ func TestCampusSharedIP(t *testing.T) {
 	admin.must("POST", "/api/tcg/admin/wave", map[string]any{"n": 0, "releaseAt": clk.now().Add(time.Hour), "size": 20}, 200)
 	for i := 0; i < 120; i++ {
 		p := &api{t: t, svc: svc} // httptest : même adresse IP pour toutes les requêtes
-		p.must("POST", "/api/tcg/join", map[string]any{"ticket": fmt.Sprintf("ST-etu%03d-123456789", i), "pseudo": fmt.Sprintf("Étudiant %d", i)}, 200)
+		p.must("POST", "/api/tcg/join", map[string]any{"ticket": fmt.Sprintf("ST-etu%03d-123456789", i), "pseudo": "Étudiant E."}, 200)
 		for k := 0; k < 8; k++ {
 			p.must("GET", "/api/tcg/state", nil, 200)
 			p.must("GET", "/api/tcg/public", nil, 200)

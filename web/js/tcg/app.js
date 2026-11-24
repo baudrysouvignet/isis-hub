@@ -30,7 +30,7 @@ export function defaultPseudo(name = '') {
   if (!words.length) return '';
   const first = words.find((w) => /\p{Ll}/u.test(w)) ?? words[0];
   const other = words.find((w) => w !== first);
-  const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  const cap = (w) => w.toLowerCase().replace(/(^|[-'’])(\p{L})/gu, (_, sep, l) => sep + l.toUpperCase()); // Jean-Pierre
   return other ? `${cap(first)} ${other.charAt(0).toUpperCase()}.` : cap(first);
 }
 
@@ -150,7 +150,9 @@ export function createTCG(o) {
       return false;
     }
     if (silent) {
-      await doJoin(defaultPseudo(o.userName()) || 'Joueur');
+      const name = defaultPseudo(o.userName());
+      if (!name) return false; // nom du compte pas encore connu : la fenêtre d'arrivée le dira
+      await doJoin(name);
       return true;
     }
     if (joining) return joining;
@@ -161,7 +163,9 @@ export function createTCG(o) {
   function welcomeSheet() {
     return new Promise((resolve) => {
       const soon = phase() === 'soon';
-      const input = h('input.tinput', { id: 'twel-pseudo', maxLength: 24, value: defaultPseudo(o.userName()), autocomplete: 'off', attrs: { autofocus: '' } });
+      // Le nom n'est pas choisi : « Prénom N. », tiré du compte ENT, et il ne se change pas.
+      const pseudo = defaultPseudo(o.userName());
+      const shown = h('p.tinput.tpseudo', { id: 'twel-pseudo', text: pseudo || '—', attrs: { 'aria-readonly': 'true' } });
       const err = h('p.terr', { hidden: true, attrs: { role: 'alert' } });
       const go = tbtn('Rejoindre la partie', 'arrow', 'tbtn--primary tbtn--lg');
       const fan = h('div.twel-fan');
@@ -194,9 +198,9 @@ export function createTCG(o) {
           h(
             'div.tfield',
             {},
-            h('label.tlabel', { htmlFor: 'twel-pseudo', text: 'Ton nom dans le jeu' }),
-            input,
-            h('p.thelp', { text: soon ? 'Visible par la promo sur tes cartes. Avant le lancement, le jeu n’enregistre que tes propositions et ce nom, rien d’autre de ton compte.' : 'Visible par la promo dans les échanges et sur tes cartes. Le jeu enregistre ta collection, tes propositions et tes votes, rien d’autre de ton compte.' }),
+            h('span.tlabel', { text: 'Ton nom dans le jeu' }),
+            shown,
+            h('p.thelp', { text: `Ton prénom et l’initiale de ton nom, tirés de ton compte : il ne se change pas, pour que chacun sache avec qui il échange. ${soon ? 'Avant le lancement, le jeu n’enregistre que tes propositions et ce nom, rien d’autre de ton compte.' : 'Le jeu enregistre ta collection, tes propositions et tes votes, rien d’autre de ton compte.'}` }),
           ),
           err,
           go,
@@ -204,11 +208,11 @@ export function createTCG(o) {
         { onClose: () => resolve(ok) },
       );
       const submit = async () => {
-        const name = input.value.trim();
-        if (name.length < 2) {
-          err.textContent = 'Choisis un nom de 2 caractères au moins.';
+        const name = pseudo;
+        if (!name) {
+          err.textContent = 'Ton prénom n’a pas pu être lu depuis ton compte : reconnecte-toi au Hub, puis réessaie.';
           err.hidden = false;
-          return input.focus();
+          return;
         }
         go.disabled = true;
         go.querySelector('span').textContent = 'Vérification par l’université…';
@@ -225,7 +229,6 @@ export function createTCG(o) {
         }
       };
       go.addEventListener('click', submit);
-      input.addEventListener('keydown', (e) => e.key === 'Enter' && submit());
       if (motionOK()) [...fan.children].forEach((c, i) => c.animate([{ opacity: 0, transform: 'translateY(40px)' }, { opacity: 1 }], { duration: 500, delay: 90 * i, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' }));
     });
   }

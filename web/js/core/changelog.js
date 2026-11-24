@@ -23,7 +23,7 @@ export const CHANGELOG = [
         ['Classe celles des autres', 'Le jury de la semaine choisit les cartes qui entrent dans le jeu, et leur rareté.'],
         ['Un booster par jour', 'Cinq cartes, de Commune à Unique, et des échanges en face à face avec un QR code.'],
       ],
-      privacy: 'Le jeu garde ton pseudo, ta collection, tes propositions et tes votes, rattachés à une empreinte de ton identifiant : jamais l’identifiant lui-même.',
+      privacy: 'Tu y apparais sous ton prénom et l’initiale de ton nom. Le jeu garde ce nom, ta collection, tes propositions et tes votes, rattachés à une empreinte de ton identifiant : jamais l’identifiant lui-même.',
       go: { label: 'Ouvrir le TCG', to: 'tcg' },
     },
     short: [
@@ -36,6 +36,7 @@ export const CHANGELOG = [
       'TCG de la promo (connexion requise) : avant le lancement, page d’attente avec compte à rebours et propositions ouvertes ; ensuite, un booster de 5 cartes par jour, avec une ouverture animée.',
       'Créer une carte : photo recadrée et compressée dans ta page (les métadonnées de la photo, dont la position GPS, sont retirées), titre, deux phrases, catégorie ; relue par un administrateur.',
       'Jury de la semaine : 5 cartes à classer, auteurs masqués, jamais les tiennes ; les plus attendues entrent dans la vague suivante et deviennent les plus rares.',
+      'Nom dans le jeu : ton prénom et l’initiale de ton nom (« Léa M. »), tirés de ton compte ; il ne se change pas.',
       'Collection par vague, cartes manquantes (numéro et rareté), « Je cherche », doubles, signalement d’une carte.',
       'Une carte refusée ou retirée n’est plus montrée à personne ; sa photo est effacée du stockage au bout de 7 jours (refusée) ou de 30 jours (retirée).',
       'Échanges en face à face : QR code ou code à 4 caractères, table en direct, « Maintiens pour échanger » ; toute modification annule les deux « prêt ».',

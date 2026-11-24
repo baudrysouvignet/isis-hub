@@ -220,13 +220,6 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		reply(w, http.StatusOK, v)
-	case p == "pseudo":
-		var in struct {
-			Pseudo string `json:"pseudo"`
-		}
-		if s.readJSON(w, r, 1<<10, &in) {
-			s.result(w, s.Game.SetPseudo(pid, in.Pseudo))
-		}
 	case p == "leave":
 		if !s.guard(w, r) {
 			return

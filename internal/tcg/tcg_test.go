@@ -75,6 +75,11 @@ func TestJoinKeepsNoLogin(t *testing.T) {
 	if !bytes.Contains(raw, []byte("Léa M.")) {
 		t.Fatal("pseudo absent")
 	}
+	for _, bad := range []string{"a", "Le Boss du 3e", "xX_Dark_Xx", "léa M.", "Léa MARTIN"} {
+		if _, _, err := g.Join("x"+bad, bad); err == nil {
+			t.Fatalf("nom %q accepté : seul « Prénom N. » l'est", bad)
+		}
+	}
 	if _, _, err := g.Join("x", "a"); err == nil {
 		t.Fatal("pseudo trop court accepté")
 	}
@@ -133,7 +138,7 @@ func TestJuryPrintAndBoosters(t *testing.T) {
 	}
 	var players []string
 	for i := 0; i < 12; i++ {
-		players = append(players, mustJoin(t, g, fmt.Sprintf("etu%d", i), fmt.Sprintf("Joueur %d", i)))
+		players = append(players, mustJoin(t, g, fmt.Sprintf("etu%d", i), "Joueur J."))
 	}
 	var cards []string
 	for i := 0; i < 24; i++ {

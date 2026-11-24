@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -425,11 +426,14 @@ func cleanText(s string, multiline bool) string {
 
 func runes(s string) int { return utf8.RuneCountInString(s) }
 
-// CleanPseudo : nom affiché dans le jeu (2 à 24 caractères).
+// Le nom dans le jeu n'est pas choisi : c'est « Prénom N. » (prénom, initiale du nom), tiré du
+// nom du compte ENT par la page, et il ne se modifie pas. Le serveur n'accepte que cette forme.
+var pseudoRE = regexp.MustCompile(`^\p{Lu}[\p{L}\p{M}'’-]{1,22}( \p{Lu}\.)?$`)
+
+// CleanPseudo : nom « Prénom N. » valide (2 à 24 caractères).
 func CleanPseudo(s string) (string, bool) {
 	s = cleanText(s, false)
-	n := runes(s)
-	return s, n >= 2 && n <= 24
+	return s, runes(s) <= 24 && pseudoRE.MatchString(s)
 }
 
 func sortWaves(ws []*Wave) {
