@@ -17,6 +17,7 @@ export const CHANGELOG = [
     short: ['TCG : tu ne reçois jamais deux mails d’accord en moins de 24 heures.'],
     details: [
       'Si tu apparais sur plusieurs cartes, le mail « tu apparais sur une carte » ne t’arrive pas plus d’une fois par 24 heures : les cartes suivantes attendent le lendemain.',
+      '« Refuser » dans « Mes apparitions » retire la carte tout de suite : elle n’entrera pas dans le jeu.',
     ],
   },
   {
