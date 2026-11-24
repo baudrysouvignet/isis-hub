@@ -10,16 +10,6 @@
 
 export const CHANGELOG = [
   {
-    version: '2.0.4',
-    date: '2026-11-24',
-    title: 'TCG : les gens de tout ISIS dans la liste',
-    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
-    short: ['TCG : la mention « ISIS » couvre maintenant toutes les classes d’ISIS.'],
-    details: [
-      '« Qui est sur la photo ? » : la mention « ISIS » s’appuie aussi sur les listes de diffusion d’ISIS de l’annuaire de l’université (toutes les classes), en plus des participants de tes cours Moodle d’ISIS. Tout est lu dans ta page.',
-    ],
-  },
-  {
     version: '2.0.3',
     date: '2026-11-24',
     title: 'TCG : indique qui est sur ta photo',
@@ -27,7 +17,7 @@ export const CHANGELOG = [
     short: ['TCG : en créant une carte, indique qui est sur la photo, avec les suggestions de ta messagerie.'],
     details: [
       'Créer une carte : « Qui est sur la photo ? », avec la même liste que le champ « Cc » d’un mail (personnes récentes d’abord, puis l’annuaire, étudiants en premier). 5 personnes au plus.',
-      'Les gens d’ISIS passent en tête de la liste, avec la mention « ISIS » : ils sont reconnus d’après les participants de tes cours Moodle d’ISIS, dans ta page (aucun nom n’est envoyé au serveur d’ISIS Hub).',
+      'Les gens d’ISIS, toutes classes, passent en tête de la liste avec la mention « ISIS » : ils sont reconnus d’après les listes de diffusion d’ISIS de l’annuaire de l’université et les participants de tes cours Moodle d’ISIS, dans ta page (aucun nom n’est envoyé au serveur d’ISIS Hub).',
       'L’équipe vérifie cette liste à la validation, puis demande leur accord à ces personnes : rien ne part avant.',
     ],
   },
