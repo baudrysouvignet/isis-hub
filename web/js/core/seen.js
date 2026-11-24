@@ -6,7 +6,8 @@
 import * as UD from './userdata.js';
 import { prefs } from './store.js';
 
-const LOCAL = { tour: 'tourDone', install: 'installSeen', changelog: 'changelogSeen' };
+// tcg : a déjà rejoint le TCG (un nouvel appareil s'y reconnecte sans repasser par l'accueil du jeu).
+const LOCAL = { tour: 'tourDone', install: 'installSeen', changelog: 'changelogSeen', tcg: 'tcgJoined' };
 
 /** Valeur enregistrée (true, ou numéro de version pour les nouveautés), sinon null. */
 export function seen(key) {

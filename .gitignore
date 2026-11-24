@@ -24,6 +24,7 @@ pnpm-debug.log*
 .env.*
 !.env.example
 !.env.example.prod
+!.env.test.example
 
 # Données locales d'exécution et logs
 /data/

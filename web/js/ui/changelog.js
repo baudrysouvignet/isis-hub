@@ -11,7 +11,7 @@ const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long'
 const when = (iso) => dateFmt.format(new Date(`${iso}T12:00:00`));
 const tag = (v) => (v.startsWith('0.') ? `bêta v${v}` : `v${v}`);
 
-export function setupChangelog({ onLaunch } = {}) {
+export function setupChangelog({ onLaunch, canLaunch = () => true } = {}) {
   const newsDialog = $('dialog[data-news]');
   const launchDialog = $('dialog[data-launch]');
   let go = null; // destination du bouton « Accéder », suivie une fois la fenêtre fermée
@@ -103,6 +103,10 @@ export function setupChangelog({ onLaunch } = {}) {
       if (newcomer) return void markSeen('changelog', LATEST);
       const entries = unseen(last);
       if (!entries.length) return;
+      // Version qui présente une fonction pas encore ouverte (TCG masqué) : rien n'est montré ni
+      // marqué vu ; l'écran apparaîtra le jour où la fonction s'ouvre.
+      const needs = entries[0].launch?.requires;
+      if (needs && !canLaunch(needs)) return;
       const wait = setInterval(() => {
         if (tourActive() || document.querySelector('dialog[open]')) return;
         clearInterval(wait);

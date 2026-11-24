@@ -7,6 +7,7 @@
 
 import { $, $$, h, toast, motionOK, EASE } from './core/dom.js';
 import { setupGradesAdmin } from './admin-grades.js';
+import { setupTcgAdmin } from './admin-tcg.js';
 
 if (window.top !== window.self) throw new Error('Refus d’affichage dans un cadre.');
 
@@ -44,11 +45,34 @@ async function api(path, body) {
 
 // ------------------------------------------------------------ onglets, compte
 
-$$('[data-adm-tab]').forEach((r) =>
-  r.addEventListener('change', () => {
-    for (const p of $$('[data-adm-panel]')) p.hidden = p.dataset.admPanel !== r.value;
-  }),
-);
+const tabs = $$('[data-adm-tab]');
+function selectTab(v, focus) {
+  for (const b of tabs) {
+    const on = b.dataset.admTab === v;
+    b.setAttribute('aria-selected', String(on));
+    b.tabIndex = on ? 0 : -1;
+    if (on && focus) b.focus();
+  }
+  for (const p of $$('[data-adm-panel]')) p.hidden = p.dataset.admPanel !== v;
+  if (v === 'tcg') tcgAdmin.show();
+  history.replaceState(null, '', v === 'feedback' ? location.pathname : `#${v}`);
+}
+tabs.forEach((b, i) => {
+  b.addEventListener('click', () => selectTab(b.dataset.admTab));
+  b.addEventListener('keydown', (e) => {
+    const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    selectTab(tabs[(i + d + tabs.length) % tabs.length].dataset.admTab, true);
+  });
+});
+/** Pastille de nombre sur un onglet (0 : masquée). */
+function tabCount(v, n) {
+  const el = $(`[data-adm-tab-n="${v}"]`);
+  if (!el) return;
+  el.hidden = !n;
+  el.textContent = n ? String(n) : '';
+}
 $('[data-adm-logout]').addEventListener('click', async () => {
   await api('logout', {}).catch(() => {});
   location.assign('./');
@@ -67,6 +91,7 @@ let current = null;
 
 function counts() {
   for (const k of Object.keys(LAB)) $(`[data-kpi-n="${k}"]`).textContent = String(items.filter((f) => f.status === k).length);
+  tabCount('feedback', items.filter((f) => f.status === 'new').length);
 }
 
 function filter() {
@@ -575,10 +600,16 @@ $('[data-st-class]').addEventListener('change', (e) => {
 
 const gradesAdmin = setupGradesAdmin({ api, getClasses: () => classes });
 
+// TCG : lancement, vagues, modération des cartes (admin-tcg.js).
+const tcgAdmin = setupTcgAdmin({ root: $('[data-tcg-admin]'), onCount: (n) => tabCount('tcg', n), onLeave: leave });
+const fromHash = location.hash.slice(1);
+if (tabs.some((b) => b.dataset.admTab === fromHash)) selectTab(fromHash);
+
 // ------------------------------------------------------------ départ
 
 async function load() {
   const me = await api('me');
+  tcgAdmin.counts();
   $('[data-adm-user]').textContent = `Connecté : ${me.user}`;
   items = await api('feedback');
   renderList();

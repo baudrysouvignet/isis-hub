@@ -7,8 +7,8 @@ services:
     build:
       context: .
       args:
-        VERSION: "1.2.0"
-    image: isis-hub:1.2.0
+        VERSION: "2.0.0"
+    image: isis-hub:2.0.0
     restart: unless-stopped
     environment:
       PUBLIC_ORIGIN: "https://${DOMAIN:?définir DOMAIN, par ex. DOMAIN=hub.exemple.fr}"
@@ -16,6 +16,11 @@ services:
       # Identifiants universitaires administrateurs (vérifiés par le CAS) ; vide = pas d'administration.
       ADMIN_USERS: "${ADMIN_USERS:-}"
       VAULT_PEPPER: "${VAULT_PEPPER:-}"
+      # Images du TCG dans Cloudflare R2 (facultatif ; sinon dans le volume hub_data).
+      R2_ACCOUNT_ID: "${R2_ACCOUNT_ID:-}"
+      R2_BUCKET: "${R2_BUCKET:-}"
+      R2_ACCESS_KEY_ID: "${R2_ACCESS_KEY_ID:-}"
+      R2_SECRET_ACCESS_KEY: "${R2_SECRET_ACCESS_KEY:-}"
     volumes:
       - hub_data:/data # les retours des étudiants, seule donnée conservée
     expose:

@@ -1,0 +1,43 @@
+# Essai local « comme en production » : la même image que celle que ./build envoie (construite ici,
+# avec go vet et tous les tests du serveur pendant la construction), le conteneur verrouillé comme en
+# production (lecture seule, aucun privilège), servi sur http://localhost:8090.
+#
+# La connexion passe par le VRAI CAS de l'université (le relais du conteneur joint les portails),
+# comme en production : connecte-toi avec ton compte. Rien n'est partagé avec la production : autre
+# adresse (donc autre stockage du navigateur), autre volume de données, autre secret.
+#
+#   cp .env.test.example .env.test     # puis remplir (VAULT_PEPPER, ADMIN_USERS, R2_* facultatif)
+#   docker compose -f compose.test.yaml up -d --build
+#   docker compose -f compose.test.yaml logs        # ligne de démarrage : images du TCG : r2 ou local
+#   docker compose -f compose.test.yaml down        # arrêt (les données restent dans le volume)
+#   docker compose -f compose.test.yaml down -v     # arrêt et effacement des données de test
+#
+# Ouvrir http://localhost:8090 (et non 127.0.0.1 : l'adresse doit être exactement PUBLIC_ORIGIN).
+
+name: isis-hub-test
+
+services:
+  isis-hub:
+    build:
+      context: .
+      args:
+        VERSION: "2.0.0-test"
+    image: isis-hub:test
+    container_name: isis-hub-test
+    restart: "no"
+    env_file: .env.test
+    environment:
+      # Seule cette origine peut utiliser le relais et l'API (comme le domaine en production).
+      PUBLIC_ORIGIN: "http://localhost:8090"
+    ports:
+      - "127.0.0.1:8090:8080" # cette machine seulement
+    volumes:
+      - isis-hub-test-data:/data # tcg.json, tcg-backups/, tcg-img/ (sans R2), retours, coffre…
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # Différence volontaire avec la production (logging: none) : on garde la ligne de démarrage
+    # pour vérifier « images du TCG : r2 ». Le serveur n'écrit rien d'autre.
+
+volumes:
+  isis-hub-test-data:

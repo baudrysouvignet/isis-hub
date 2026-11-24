@@ -4,11 +4,14 @@
 //	isis-hub manifest         affiche les empreintes des fichiers intégrés
 //	isis-hub verify <url>     compare un site en ligne à ce binaire, fichier par fichier
 //	isis-hub healthcheck      vérifie que le serveur local répond (sonde Docker)
+//	isis-hub r2check          vérifie l'accès au seau Cloudflare R2 des images du TCG (R2_*)
 //
 // Variables : ADDR (:8080), PUBLIC_ORIGIN (https://hub.exemple.fr), TRUST_PROXY (1 derrière un
 // proxy inverse), MAX_CONNS_PER_IP (8), MAX_CONNS (2000), MAX_STREAMS (64), DATA_DIR (data) pour les
 // retours et la répartition des classes, ADMIN_USERS (identifiants universitaires administrateurs,
-// séparés par des virgules ; vide = pas d'administration). CAS_URL ne sert qu'aux tests (faux CAS).
+// séparés par des virgules ; vide = pas d'administration), R2_ACCOUNT_ID, R2_BUCKET,
+// R2_ACCESS_KEY_ID et R2_SECRET_ACCESS_KEY (images du TCG ; sans elles, dans DATA_DIR/tcg-img).
+// CAS_URL ne sert qu'aux tests (faux CAS).
 package main
 
 import (
@@ -33,6 +36,7 @@ import (
 	"isishub/internal/crous"
 	"isishub/internal/feedback"
 	"isishub/internal/site"
+	"isishub/internal/tcg"
 	"isishub/internal/wisp"
 	"isishub/web"
 )
@@ -83,6 +87,8 @@ func main() {
 		}
 	case "healthcheck":
 		err = healthcheck()
+	case "r2check":
+		err = r2check()
 	default:
 		err = fmt.Errorf("commande inconnue : %s", cmd)
 	}
@@ -180,8 +186,44 @@ func serve() error {
 		SecureCookie:   strings.HasPrefix(os.Getenv("PUBLIC_ORIGIN"), "https://"),
 	})
 
+	// TCG de la promo : images dans Cloudflare R2 si configuré, sinon dans le dossier de données.
+	var blobs tcg.Blobs = tcg.Local{Dir: env("DATA_DIR", "data") + "/tcg-img"}
+	r2, err := tcg.R2FromEnv(os.Getenv)
+	if err != nil {
+		return err
+	}
+	if r2 != nil {
+		blobs = tcg.NewCached(r2, 96<<20)
+	}
+	game, err := tcg.Open(env("DATA_DIR", "data"), os.Getenv("VAULT_PEPPER"), blobs)
+	if err != nil {
+		return fmt.Errorf("TCG : %w", err)
+	}
+	recovered := ""
+	if game.Recovered != "" {
+		recovered = " · TCG repris de la sauvegarde " + game.Recovered
+	}
+	stopGame := make(chan struct{})
+	gameDone := make(chan struct{})
+	go func() {
+		game.Run(stopGame)
+		close(gameDone)
+	}()
+	tcgAPI := (&tcg.Service{
+		Game:           game,
+		CASValidate:    feedback.CASValidator(env("CAS_URL", "https://auth.univ-jfc.fr"), feedback.ENTService),
+		IsAdmin:        api.IsAdmin,
+		AllowedOrigins: origins,
+		TrustProxy:     os.Getenv("TRUST_PROXY") == "1",
+		SecureCookie:   strings.HasPrefix(os.Getenv("PUBLIC_ORIGIN"), "https://"),
+	}).Init()
+
 	mux := http.NewServeMux()
 	mux.Handle("/wisp/", relay)
+	mux.Handle("/api/tcg/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.Headers(w.Header())
+		tcgAPI.ServeHTTP(w, r)
+	}))
 	mux.Handle("/calendar/", calendars)
 	// Page d'administration : elle n'existe que pour une session administrateur. Sinon, retour à
 	// l'accueil avec « #admin » : si l'étudiant connecté figure dans ADMIN_USERS, la page fait
@@ -229,24 +271,32 @@ func serve() error {
 	}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	// Arrêt (mise à jour, redémarrage) : le processus attend que tout soit écrit avant de sortir.
+	// ListenAndServe rend la main dès l'appel à Shutdown : sans cette attente, les dernières
+	// secondes (compteurs, examens, actions du TCG) pouvaient être perdues.
+	flushed := make(chan struct{})
 	go func() {
+		defer close(flushed)
 		<-stop
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		srv.Shutdown(ctx)
 		stats.Flush() // compteurs du jour écrits avant l'arrêt
 		exams.Flush()
+		close(stopGame) // tcg.json écrit avant l'arrêt
+		<-gameDone
 	}()
 	// Seule ligne écrite par le serveur : de quoi comparer avec le dépôt, rien sur les visiteurs.
 	admin := "administration désactivée"
 	if len(admins) > 0 {
 		admin = fmt.Sprintf("administration : %d identifiant(s)", len(admins))
 	}
-	log.Printf("ISIS Hub %s sur %s · empreinte %s · %d fichiers · relais limité à %s · %s",
-		Version, srv.Addr, s.Manifest.Fingerprint, len(s.Manifest.Files), strings.Join(Portals, ", "), admin)
+	log.Printf("ISIS Hub %s sur %s · empreinte %s · %d fichiers · relais limité à %s · %s · images du TCG : %s",
+		Version, srv.Addr, s.Manifest.Fingerprint, len(s.Manifest.Files), strings.Join(Portals, ", "), admin, blobs.Kind()+recovered)
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
+	<-flushed
 	return nil
 }
 
@@ -334,6 +384,23 @@ func verify(base string) error {
 		return fmt.Errorf("%d écart(s) : le site ne sert pas exactement ce code", bad)
 	}
 	fmt.Printf("\nLe site sert exactement ce code (%d fichiers, empreinte %s).\n", len(names), s.Manifest.Fingerprint)
+	return nil
+}
+
+// r2check : écrit, relit et efface un objet de test dans le seau R2 (variables R2_*).
+func r2check() error {
+	r2, err := tcg.R2FromEnv(os.Getenv)
+	if err != nil {
+		return err
+	}
+	if r2 == nil {
+		return errors.New("R2 non configuré : définir R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID et R2_SECRET_ACCESS_KEY")
+	}
+	fmt.Printf("Seau %s sur %s…\n", r2.Bucket, r2.Endpoint)
+	if err := r2.Check(); err != nil {
+		return err
+	}
+	fmt.Println("✓ écriture, lecture et suppression : le TCG peut ranger ses images dans R2.")
 	return nil
 }
 

@@ -42,6 +42,7 @@ import { setupFeedback } from './ui/feedback.js';
 import { fetchContent, renderLinks } from './ui/content.js';
 import { setupTransparency, versionLabel } from './ui/transparency.js';
 import { startTour, tourActive } from './ui/tour.js';
+import { createTCG } from './tcg/app.js';
 
 if (window.top !== window.self) throw new Error('ISIS Hub refuse de s’afficher dans un cadre.');
 
@@ -230,9 +231,7 @@ async function loadUser() {
 
 function renderHeader() {
   app.dataset.auth = state.signedIn ? 'in' : 'out';
-  const today = D.todayKey();
-  $('[data-today-day]').textContent = D.dayTitle(today);
-  $('[data-today-week]').textContent = `· semaine ${D.isoWeek(today)}`;
+  $$('[data-tcg-leave]').forEach((b) => (b.hidden = !state.signedIn));
   const detail = state.promo ? choiceLabel(state.promo, state.choice) : '';
   $$('[data-class-chip]').forEach((el) => (el.textContent = state.promo ?? ''));
   $$('[data-class-label]').forEach((el) => (el.textContent = [state.promo, detail].filter(Boolean).join(' · ')));
@@ -257,6 +256,7 @@ let changelog;
 let bento;
 let rendus;
 let moodleView;
+let tcg;
 
 function setupDashboard() {
   if (dashboardReady) return;
@@ -334,8 +334,8 @@ function setupDashboard() {
   setupMailRules({ onRuleAdded: () => mails.applyRulesNow() });
   install = setupInstall();
   // Écran « nouvelle version » : où mène « Accéder » (launch.go.to dans core/changelog.js).
-  const launchTargets = { moodle: () => moodleView?.openHome(null) };
-  changelog = setupChangelog({ onLaunch: (to) => launchTargets[to]?.() });
+  const launchTargets = { moodle: () => moodleView?.openHome(null), tcg: () => tcg.enter() };
+  changelog = setupChangelog({ onLaunch: (to) => launchTargets[to]?.(), canLaunch: (what) => what !== 'tcg' || Boolean(tcg?.visible()) });
   $$('[data-compose]').forEach((b) => b.addEventListener('click', () => composer.open()));
   moodleView = createMoodleView({
     app,
@@ -362,6 +362,27 @@ function setupDashboard() {
   });
   courses = createMoodle({ matcher, schedule, onSessionLost: sessionLost, onLogin: openLogin, onCourses: (list) => moodleView.setEnrolled(list) });
   rendus = createDeadlines({ onSessionLost: sessionLost, onLogin: openLogin });
+  // TCG de la promo : bascule Hub / TCG de l'en-tête. L'identité de l'étudiant est prouvée par un
+  // ticket CAS (pour l'ENT, comme l'administration) que le serveur fait valider par l'université.
+  tcg = createTCG({
+    app,
+    isSignedIn: () => state.signedIn,
+    userName: () => state.user?.name || '',
+    // Connexion demandée depuis le jeu : on y revient après (« #tcg », lu par enterDashboard).
+    onLogin: (hash = '#tcg') => {
+      history.replaceState(null, '', `${location.pathname}${location.search}${hash}`);
+      openLogin();
+    },
+    getTicket: adminTicket,
+    beforeOpen: () => {
+      closeMenus();
+      mails.close();
+      notes.close();
+      if (moodleView?.isOpen()) moodleView.close();
+      if (schedule.isExpanded()) schedule.collapse();
+      if (state.signedIn) loadUser().catch(() => {}); // prénom pour le nom proposé dans le jeu
+    },
+  });
   setupMenus();
   bento = setupBento();
   fetchContent().then((content) => {
@@ -379,8 +400,6 @@ function setupDashboard() {
   );
   $$('[data-logout]').forEach((b) => b.addEventListener('click', logout));
   $$('[data-start-tour]').forEach((b) => b.addEventListener('click', () => startTour(app)));
-  // Minuit passé : la date de l'en-tête suit.
-  setInterval(renderHeader, 60_000);
 }
 
 // Premiers pas, une fois par connexion : visite guidée et installation (une seule fois par
@@ -395,6 +414,7 @@ async function welcome() {
   adoptLocal();
   const newcomer = !seen('tour');
   if (newcomer) setTimeout(() => !document.querySelector('dialog[open]') && state.screen === 'dash' && startTour(app), 600);
+  await tcg?.whenReady(); // la 2.0.0 attend de savoir si le TCG est ouvert
   changelog.maybeShow({ newcomer });
   install.maybeOffer(); // après la visite guidée : installer l'application sur le téléphone
 }
@@ -424,8 +444,10 @@ async function enterDashboard(promoChanged = true) {
   } else {
     mails.showSignedOut(false);
     courses.showSignedOut(false);
-  rendus.showSignedOut(false);
+    rendus.showSignedOut(false);
   }
+  // Lien vers le jeu : « #tcg », ou « #echange=K7Q2 » (QR code d'un échange en face à face).
+  if (!tcg.handleHash() && state.signedIn) tcg.signedIn();
 }
 
 function openLogin() {
@@ -440,6 +462,7 @@ function sessionLost() {
   lostOnce = true;
   state.signedIn = false;
   state.user = null;
+  tcg?.leave(); // pas connecté = pas de TCG
   jar.clear();
   vault.clear();
   clearCache();
@@ -475,6 +498,8 @@ async function logout() {
   vault.forgetSync();
   forgetLocal();
   prefs.set('feedback', null); // « Mes propositions » : rien ne reste pour la personne suivante
+  await tcg?.signedOut(); // session de jeu de cet appareil oubliée (cookie effacé par le serveur)
+  tcg?.leave();
   welcomed = false;
   resetMailPrefs();
   notes?.load(state.promo, state.choice);
@@ -498,6 +523,20 @@ async function logout() {
 // ------------------------------------------------------------ Transparence
 
 const transparency = setupTransparency({ sessionPlace: () => vault.place, syncId: UD.syncId, infinite: () => infinite.enabled() });
+// « Quitter le TCG » (Transparence) : les données de jeu de l'étudiant sont effacées du serveur.
+$$('[data-tcg-leave]').forEach((b) =>
+  b.addEventListener('click', async () => {
+    if (!tcg) return;
+    if (!confirm('Quitter le TCG ? Ta collection, tes votes, tes propositions pas encore imprimées et ton pseudo sont effacés du serveur. Les cartes déjà imprimées restent dans le jeu, sans ton nom. C’est définitif.')) return;
+    try {
+      const done = await tcg.leaveGame();
+      toast(done ? 'Tu as quitté le TCG : tes données de jeu sont effacées.' : 'Tu n’as pas de compte de jeu sur ce Hub.', 'check');
+    } catch (err) {
+      toast(`Impossible pour l’instant : ${err.message}`, 'alert');
+    }
+  }),
+);
+
 // « Supprimer mes données sauvegardées » (Transparence) : appareil et sauvegarde anonyme.
 $$('[data-erase-data]').forEach((b) =>
   b.addEventListener('click', async () => {
@@ -532,6 +571,7 @@ document.addEventListener('keydown', (e) => {
   if (anyMenuOpen()) return closeMenus();
   if (document.querySelector('dialog[open]') || tourActive()) return; // géré par « cancel » du dialog
   if (composer?.isOpen()) return; // géré par le compositeur
+  if (tcg?.isOpen()) return; // feuilles et ouverture du booster : gérées par le TCG
   if (moodleView?.isOpen()) return moodleView.close();
   if (mails?.isOpen()) return mails.close();
   if (notes?.isOpen()) return notes.close();
@@ -563,6 +603,7 @@ watchUpdates({
         notes?.isOpen() ||
         moodleView?.isOpen() ||
         document.querySelector('dialog[open]') ||
+        document.querySelector('.op, .tsh-layer, .ttb') || // booster en cours d'ouverture, feuille ou table d'échange du TCG
         tourActive() ||
         (state.screen === 'login' && [...document.querySelectorAll('[data-screen="login"] input')].some((i) => i.value)),
     ),

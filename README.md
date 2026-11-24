@@ -223,6 +223,86 @@ La répartition est vérifiée avant d'être acceptée, puis appliquée aussitô
 étudiants et à leurs abonnements d'agenda. Elle est gardée dans le volume `/data` ; tant qu'elle n'a
 pas été modifiée, c'est celle de `web/data/classes.json` qui s'applique.
 
+## TCG de la promo
+
+Jeu de cartes à collectionner dont **toutes les cartes viennent des étudiants**. Il faut être
+connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
+
+1. **Lancement depuis `/admin`, onglet *Cartes TCG*** : programmer la vague 1 (dates des
+   propositions, du jury de lancement et de la sortie ; 10 propositions par jour par défaut pour
+   cette vague, puis le réglage de la saison, 3), puis cocher « TCG visible des étudiants ». La
+   bascule Hub / TCG apparaît alors avec « bientôt », et la page d'attente affiche le compte à
+   rebours jusqu'à la date de sortie de la vague 1.
+2. **Propositions** : photo recadrée et compressée **dans la page** (960 × 720 et vignette 320 × 240,
+   WebP sinon JPEG, métadonnées retirées), titre de 28 caractères, deux phrases, catégorie, deux
+   engagements sur la photo. Le serveur revérifie tout (nature et dimensions de l'image, EXIF retiré).
+3. **Modération** (onglet *Cartes TCG*) : on valide par défaut (touche V), on bloque (touche B) avec
+   un motif et un message bienveillant visible par l'auteur ; points à vérifier repérés
+   automatiquement ; correction du texte ; suspension des propositions d'un joueur.
+4. **Jury** : pendant ses dates, chacun classe 5 cartes validées (auteurs masqués, jamais les
+   siennes, jusqu'à 3 bulletins). **Aperçu de l'impression** : cartes classées par le jury, rareté
+   prévue (les plus attendues deviennent les plus rares), rareté forçable carte par carte.
+5. **Sortie** : à la date prévue la vague s'imprime seule (ou « Imprimer maintenant ») ; sans carte
+   validée, la sortie est repoussée d'un jour. Avec « Une vague chaque semaine », la vague suivante
+   est programmée aussitôt.
+6. **Jeu** : un booster de 5 cartes par jour (nouveau à 6 h). Exemplaires numérotés : Rare 25,
+   Épique 10, Légendaire 3, Unique 1 (réglables) ; ils sont répartis sur 14 jours après la sortie au
+   lieu de partir le premier jour. Collection, « Je cherche », signalements, échanges en face à face
+   (QR code ou code à 4 caractères, table en direct, échange atomique côté serveur).
+
+**Ce que le serveur garde** (`tcg.json` du volume `/data`, droits 600, copie quotidienne dans
+`tcg-backups/`, 14 jours) : pseudo, collection, propositions, votes, signalements et échanges de
+chaque joueur, rattachés à une **empreinte** de l'identifiant universitaire (HMAC avec un secret tiré
+de `VAULT_PEPPER`) ; l'identifiant n'est jamais écrit. Sessions de jeu : cookie HttpOnly limité à
+`/api/tcg/`, seul son hachage est gardé. Un `tcg.json` abîmé est mis de côté et la dernière copie
+reprise ; sans copie, le serveur refuse de démarrer plutôt que d'écraser le jeu. « Quitter le TCG »
+(Transparence) efface les données de jeu de l'étudiant.
+
+### Images : Cloudflare R2
+
+Sans configuration, les photos sont gardées dans `DATA_DIR/tcg-img`. Pour les mettre dans R2
+(10 Go gratuits ; une carte pèse environ 60 à 120 Ko, photo et vignette comprises, soit plus de
+80 000 cartes) :
+
+1. Tableau de bord Cloudflare → **R2 Object Storage** → *Create bucket* (ex. `isis-hub-tcg`), en
+   laissant l'accès public **désactivé** : c'est le serveur qui lit et sert les images.
+2. **Account ID** : sur la page d'accueil de R2, colonne de droite (« Account ID »), 32 caractères.
+3. *Manage R2 API Tokens* → *Create API token* → droits **Object Read & Write**, limité à ce seau.
+   Cloudflare affiche une seule fois l'**Access Key ID** et le **Secret Access Key**.
+4. Dans le `.env` du serveur : `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`,
+   `R2_SECRET_ACCESS_KEY` (ne jamais les mettre dans le dépôt). Vérifier, puis redémarrer :
+
+```bash
+docker compose -f compose.prod.yaml run --rm isis-hub r2check
+```
+
+La ligne de démarrage du serveur indique `images du TCG : r2` (ou `local`).
+
+### Tester le TCG en local
+
+Faux CAS (accepte tout ticket `ST-<identifiant>-…`, jamais en production) et serveur de
+développement. Dans la page, le jeu se rejoint avec un vrai ticket CAS ; en local, rejoindre depuis
+la console du navigateur : `fetch('api/tcg/join', {method: 'POST', headers: {'Content-Type':
+'application/json', 'X-Hub-TCG': '1'}, body: JSON.stringify({ticket: 'ST-lmartin-123456789', pseudo:
+'Léa M.'})})`, et ouvrir l'administration avec `api/admin/cas` et le ticket `ST-bsouvign-123456789`.
+
+```bash
+python3 -I test/fakecas.py   # écoute 127.0.0.1:8098, développement seulement
+```
+
+```bash
+CAS_URL=http://127.0.0.1:8098 ADMIN_USERS=bsouvign DATA_DIR=/tmp/hub-tcg go run ./cmd/isis-hub
+```
+
+Pour tester R2 avant la production, mettre les quatre variables `R2_*` d'un seau de test dans
+l'environnement et lancer `go run ./cmd/isis-hub r2check`. Les tests automatiques déroulent tout le
+parcours par l'API (lancement depuis l'administration, propositions avec et sans photo, modération,
+jury, impression à la date, boosters, signalement, échange, redémarrage et sauvegardes) :
+
+```bash
+go test ./internal/tcg/
+```
+
 ## Mettre en ligne
 
 ### Avec un proxy inverse existant (production)
@@ -272,6 +352,52 @@ cp .env.example .env    # puis mettre le domaine et ADMIN_USERS dans .env
 docker compose up -d --build
 ```
 
+### Essai local « comme en production »
+
+`compose.test.yaml` lance la même image que la production (construite ici, tests compris), avec le
+même verrouillage (lecture seule, aucun privilège, utilisateur non-root), sur
+**http://localhost:8090** et avec le **vrai CAS** de l'université. Rien n'est partagé avec la
+production : autre adresse, autre volume, autre secret.
+
+```bash
+cp .env.test.example .env.test
+```
+
+Remplir `.env.test` (`ADMIN_USERS`, un `VAULT_PEPPER` propre à l'essai, `R2_*` facultatifs), puis :
+
+```bash
+docker compose -f compose.test.yaml up -d --build
+```
+
+```bash
+docker compose -f compose.test.yaml logs
+```
+
+La ligne de démarrage dit `images du TCG : r2` ou `local`. Ouvrir http://localhost:8090 (pas
+127.0.0.1), se connecter, puis `/admin` → *Cartes TCG*. Pour tout effacer :
+`docker compose -f compose.test.yaml down -v`.
+
+### Mettre le TCG en production (2.0.0)
+
+Rien n'apparaît aux étudiants tant que le TCG n'est pas rendu visible dans l'administration : la
+mise en ligne peut se faire à tout moment.
+
+1. **Sauvegarder le volume** sur le serveur (avant toute mise à jour) :
+   `docker run --rm --volumes-from isis-hub -v "$PWD":/b alpine tar czf /b/isis-hub-data-$(date +%F).tgz -C /data .`
+2. **`.env` du serveur** : ajouter `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`,
+   `R2_SECRET_ACCESS_KEY`. **Ne jamais changer `VAULT_PEPPER`** : les sauvegardes des étudiants et
+   les comptes du TCG en dépendent.
+3. **Construire et envoyer l'image** (sur ta machine) : `./build` (les tests tournent pendant la
+   construction ; une image ne sort que s'ils passent).
+4. **Sur le serveur** : `docker compose -f compose.prod.yaml run --rm isis-hub r2check`, puis
+   `docker compose -f compose.prod.yaml pull && docker compose -f compose.prod.yaml up -d`.
+   À l'arrêt de l'ancien conteneur, tout est écrit sur le disque avant qu'il ne s'arrête.
+5. **Vérifier** : `go run ./cmd/isis-hub verify https://<domaine>/`. Dans `/admin` (reconnexion
+   nécessaire : les sessions d'administration ne survivent pas à un redémarrage), onglet *Cartes
+   TCG* : « Photos · Cloudflare R2 ».
+6. **Lancer** : programmer la vague 1 (dates, 10 propositions par jour), puis « TCG visible des
+   étudiants ». L'écran de la version 2.0.0 attend ce moment pour s'afficher aux étudiants.
+
 ### Après la mise en ligne
 
 ```bash
@@ -320,11 +446,13 @@ internal/feedback/  retours « Une idée ? », raccourcis, répartition des clas
                     sauvegarde anonyme (vault.go), fréquentation, administration (CAS)
 internal/calendar/  calendriers filtrés par groupe, langue, parcours (abonnement des agendas)
 internal/crous/     menu du midi du Resto U' de Castres (Croustillant, secours CROUS), relu toutes les 15 min
+internal/tcg/       TCG de la promo : joueurs, cartes, vagues, jury, boosters, échanges, images (R2 ou disque)
 web/data/           classes.json : ressources ADE et règles de filtrage, lues par la page et le serveur
 web/                la page (servie telle quelle)
   js/net/           moteur TLS, cookies et redirections, coffre de session chiffré
   js/portals/       CAS, ADE, Moodle, messagerie, correspondance des cours, nettoyage des mails
   js/ui/            écrans et tuiles
+  js/tcg/           TCG de la promo (accueil, ouverture du booster, collection, création, jury, échanges, QR code)
   assets/           styles (hub.css = maquette, intacte), police, icônes
   vendor/libcurl/   libcurl.js 0.7.5 (curl + mbedTLS en WebAssembly, LGPL-3.0)
 deploy/Caddyfile    frontal HTTPS (compose.yaml)

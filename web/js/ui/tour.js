@@ -12,7 +12,8 @@ const STEPS = [
   { sel: '#notes', t: 'Tes notes, tes moyennes', p: 'Saisis tes notes au bon endroit : moyennes par UE et par semestre, rattrapages repérés. Le mode simulation répond à « est-ce que je valide ? ». Tout est chiffré : personne d’autre ne les lit.' },
   { sel: '#moodle', t: 'Le bon cours au bon moment', p: 'Le cours en cours, ou le prochain, est mis en avant. Tape « / » pour chercher parmi tous tes cours.' },
   { sel: '[data-menu="view-menu"]', t: 'À ta façon', p: 'Affiche ou masque les tuiles. Le reste de la grille s’adapte.' },
-  { sel: '.top [data-open-transparence]', t: 'Tout est vérifiable', p: 'L’écran Transparence montre ce que fait la page, ce qui est gardé, et lance des contrôles en direct.', go: 'C’est parti' },
+  { sel: '[data-mode-sw]', t: 'Le TCG de la promo', p: 'Passe du Hub au jeu de cartes : un booster par jour, et des cartes que la promo crée elle-même.' },
+  { sel: '[data-avatar-btn]', t: 'Tout est vérifiable', p: 'Dans ton compte, l’écran Transparence montre ce que fait la page, ce qui est gardé, et lance des contrôles en direct.', go: 'C’est parti' },
 ];
 
 const visible = (sel) => $$(sel).find((x) => !x.closest('[hidden]') && x.getBoundingClientRect().width > 0) || null;

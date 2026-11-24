@@ -10,6 +10,39 @@
 
 export const CHANGELOG = [
   {
+    version: '2.0.0',
+    date: '2026-11-24',
+    title: 'Le TCG de la promo',
+    launch: {
+      art: 'tcg',
+      requires: 'tcg', // écran montré seulement quand le TCG est ouvert aux étudiants
+      title: 'Le TCG de la promo arrive',
+      sub: 'Des cartes à collectionner, créées par la promo elle-même.',
+      steps: [
+        ['Propose tes cartes', 'Une photo, un titre, deux phrases : un mème, un moment, un lieu de l’école.'],
+        ['Classe celles des autres', 'Le jury de la semaine choisit les cartes qui entrent dans le jeu, et leur rareté.'],
+        ['Un booster par jour', 'Cinq cartes, de Commune à Unique, et des échanges en face à face avec un QR code.'],
+      ],
+      privacy: 'Le jeu garde ton pseudo, ta collection, tes propositions et tes votes, rattachés à une empreinte de ton identifiant : jamais l’identifiant lui-même.',
+      go: { label: 'Ouvrir le TCG', to: 'tcg' },
+    },
+    short: [
+      'Nouvel en-tête : bascule Hub / TCG au centre ; Transparence est dans ton compte.',
+      'Le TCG de la promo : propose tes cartes, classe celles des autres, un booster par jour.',
+      'Échanges en face à face : un QR code, et l’échange se fait d’un coup.',
+    ],
+    details: [
+      'En-tête : bascule Hub / TCG au centre, la date n’y est plus, Transparence est rangée dans le menu du compte. Sur un écran moyen, les boutons du Hub ne gardent que leur icône.',
+      'TCG de la promo (connexion requise) : avant le lancement, page d’attente avec compte à rebours et propositions ouvertes ; ensuite, un booster de 5 cartes par jour, avec une ouverture animée.',
+      'Créer une carte : photo recadrée et compressée dans ta page (les métadonnées de la photo, dont la position GPS, sont retirées), titre, deux phrases, catégorie ; relue par un administrateur.',
+      'Jury de la semaine : 5 cartes à classer, auteurs masqués, jamais les tiennes ; les plus attendues entrent dans la vague suivante et deviennent les plus rares.',
+      'Collection par vague, cartes manquantes (numéro et rareté), « Je cherche », doubles, signalement d’une carte.',
+      'Une carte refusée ou retirée n’est plus montrée à personne ; sa photo est effacée du stockage au bout de 7 jours (refusée) ou de 30 jours (retirée).',
+      'Échanges en face à face : QR code ou code à 4 caractères, table en direct, « Maintiens pour échanger » ; toute modification annule les deux « prêt ».',
+      'Ce qui est gardé : voir Transparence. Ton identifiant universitaire n’est jamais enregistré ; le jeu en garde une empreinte pour qu’il n’y ait qu’un compte par étudiant.',
+    ],
+  },
+  {
     version: '1.2.0',
     date: '2026-11-22',
     title: 'Moodle dans ISIS Hub',
