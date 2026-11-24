@@ -6,12 +6,53 @@ import { h } from '../core/dom.js';
 export const MAX_PEOPLE = 5;
 const UNIV_MAIL = /^[a-z0-9][a-z0-9._%+-]{0,63}@([a-z0-9-]+\.)*univ-jfc\.fr$/;
 export const isUnivMail = (a) => UNIV_MAIL.test(a);
+const isStudent = (p) => p.cat === 'etud' || /@etud\./i.test(p.email);
+/** Étudiants d'abord (ordre d'origine gardé à l'intérieur de chaque groupe). */
+const studentsFirst = (list) => [...list.filter(isStudent), ...list.filter((p) => !isStudent(p))];
+
+// Personnes déjà indiquées sur des cartes : gardées sur cet appareil seulement (confort de
+// l'administrateur), 20 au plus, la plus récente d'abord.
+const RECENT_KEY = 'hub.tcg.people';
+function localRecents() {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    return Array.isArray(list) ? list.filter((p) => p && isUnivMail(p.email)) : [];
+  } catch {
+    return [];
+  }
+}
+function remember(email, name) {
+  try {
+    const list = [{ email, name: name || '' }, ...localRecents().filter((p) => p.email !== email)].slice(0, 20);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+  } catch {
+    // stockage indisponible (navigation privée) : pas de récents, rien d'autre ne change
+  }
+}
+const norm = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 
 /**
- * search(q) → [{ name, email }] (annuaire), peut échouer : la saisie libre reste possible.
- * Rend { el, list(), focus() } ; list() = adresses retenues (texte en cours compris s'il est valide).
+ * search(q) → [{ name, email, cat }] (annuaire) ; recent() → personnes à qui l'on a écrit
+ * (boîte « Envoyés ») ; les deux peuvent échouer : la saisie libre reste possible.
+ * Liste : d'abord les récents (indiqués sur des cartes, puis écrits), puis l'annuaire, étudiants
+ * en premier. Rend { el, list(), focus() } ; list() = adresses retenues.
  */
-export function peoplePicker({ search, id = 'tad-people', onChange } = {}) {
+export function peoplePicker({ search, recent, id = 'tad-people', onChange } = {}) {
+  let mailRecents = [];
+  recent?.()
+    .then((l) => (mailRecents = (l ?? []).filter((p) => isUnivMail(p.email))))
+    .catch(() => {});
+  const recents = (q) => {
+    const n = norm(q);
+    const seen = new Set();
+    return studentsFirst(
+      [...localRecents(), ...mailRecents].filter((p) => {
+        if (seen.has(p.email) || chosen.has(p.email)) return false;
+        seen.add(p.email);
+        return !n || norm(`${p.name} ${p.email}`).includes(n);
+      }),
+    ).map((p) => ({ ...p, recent: true }));
+  };
   const chosen = new Map(); // adresse → nom
   const chips = h('span.tpp-chips');
   const input = h('input.tpp-input', { id, type: 'email', autocomplete: 'off', placeholder: 'Nom ou adresse…', attrs: { spellcheck: 'false', autocapitalize: 'off', 'aria-autocomplete': 'list' } });
@@ -52,6 +93,7 @@ export function peoplePicker({ search, id = 'tad-people', onChange } = {}) {
     if (chosen.size >= MAX_PEOPLE) return false;
     note.hidden = true;
     chosen.set(addr, name);
+    remember(addr, name);
     input.value = '';
     closeAc();
     draw();
@@ -66,7 +108,8 @@ export function peoplePicker({ search, id = 'tad-people', onChange } = {}) {
   const showAc = () => {
     ac.replaceChildren(
       ...items.map((p, i) => {
-        const li = h(`li.tpp-opt${i === active ? '.is-on' : ''}`, { attrs: { role: 'option' } }, h('b', { text: p.name || p.email }), h('span', { text: p.email }));
+        const tag = p.recent ? h('em.tpp-tag', { text: 'Récent' }) : isStudent(p) ? h('em.tpp-tag.is-etud', { text: 'Étudiant' }) : null;
+        const li = h(`li.tpp-opt${i === active ? '.is-on' : ''}`, { attrs: { role: 'option' } }, h('b', {}, p.name || p.email, tag), h('span', { text: p.email }));
         li.addEventListener('mousedown', (e) => {
           e.preventDefault();
           add(p.email, p.name);
@@ -84,11 +127,13 @@ export function peoplePicker({ search, id = 'tad-people', onChange } = {}) {
       add(q.replace(/[,;]$/, ''));
       return;
     }
-    if (q.length < 2 || !search) return closeAc();
+    if (q.length < 2 || !search) return openRecents(q);
     const mine = ++token;
     timer = setTimeout(async () => {
       try {
-        const found = (await search(q)).filter((p) => isUnivMail(p.email) && !chosen.has(p.email)).slice(0, 8);
+        const near = recents(q).slice(0, 4);
+        const dir = studentsFirst((await search(q)).filter((p) => isUnivMail(p.email) && !chosen.has(p.email) && !near.some((r) => r.email === p.email)));
+        const found = [...near, ...dir].slice(0, 10);
         if (mine !== token) return;
         items = found;
         active = found.length ? 0 : -1;
@@ -120,6 +165,13 @@ export function peoplePicker({ search, id = 'tad-people', onChange } = {}) {
       closeAc();
     }
   });
+  // Champ vide ou une lettre : les récents d'abord (comme le champ « Cc » d'un mail).
+  function openRecents(q) {
+    items = document.activeElement === input ? recents(q).slice(0, 8) : [];
+    active = items.length ? 0 : -1;
+    showAc();
+  }
+  input.addEventListener('focus', () => !input.value.trim() && openRecents(''));
   input.addEventListener('blur', () => setTimeout(closeAc, 120));
   box.addEventListener('click', () => input.focus());
   draw();

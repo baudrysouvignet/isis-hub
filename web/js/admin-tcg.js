@@ -544,7 +544,11 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
 
   // « Y a-t-il des personnes sur la photo ? » : personne → validée ; sinon elle attend leur accord.
   function peopleForm(c, kind) {
-    const picker = peoplePicker({ id: 'tad-people', search: async (q) => (await mailBridge()).searchContacts(q, 8) });
+    const picker = peoplePicker({
+      id: 'tad-people',
+      search: async (q) => (await mailBridge()).searchContacts(q, 12),
+      recent: async () => (await mailBridge()).recentRecipients(),
+    });
     const form = h('form.tad-peopleform', { noValidate: true });
     const submit = (alone) => {
       const people = alone ? [] : picker.list();
