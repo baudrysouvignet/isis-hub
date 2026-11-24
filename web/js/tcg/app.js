@@ -15,7 +15,7 @@ import { renderCreate, createForm, proposalsList } from './create.js';
 import { renderCollection } from './collection.js';
 import { renderJury } from './jury.js';
 import { renderTrade, startTrade, joinTradeCode, openJoinSheet } from './trade.js';
-import { renderConsent, openMailing, pendingAppear, sendConsentMails } from './consent.js';
+import { renderConsent, openMailing, pendingAppear } from './consent.js';
 
 const DOCK = [
   ['home', 'Booster', 'booster'],
@@ -76,8 +76,7 @@ export function createTCG(o) {
   let pendingCode = null;
   let mailTried = false; // adresse de la messagerie envoyée une fois par visite
   let mailing = null; // mails d'accord (administrateur), dernier état connu
-  let autoTried = false;
-  let isisTest = null; // gens d'ISIS, d'après les participants des cours Moodle « ISIS-… » // envoi automatique des mails d'accord : une tentative par visite
+  let isisTest = null; // gens d'ISIS, d'après les participants des cours Moodle « ISIS-… »
   let joining = null;
   const cards = new Map();
 
@@ -119,29 +118,6 @@ export function createTCG(o) {
       }, () => {});
     }
     return st;
-  }
-
-  // Mails d'accord, administrateur seulement : à chaque visite du Hub, si des personnes sont à
-  // prévenir et que les deux jours sont passés, le mail part tout seul de SA messagerie (sa session
-  // est dans cette page : le serveur ne peut pas envoyer de mail). Aucun effet pour les autres.
-  async function autoMail() {
-    if (autoTried || !o.isSignedIn() || !(prefs.get('tcgJoined') || st)) return;
-    const email = o.userEmail?.();
-    if (!email) return;
-    autoTried = true;
-    try {
-      if (!st) await loadState();
-      if (!st?.me?.admin) return;
-      const m = await adminApi.mailing(o.adminSession);
-      mailing = m;
-      if (!m.open || !m.targets.length) return;
-      const sent = await sendConsentMails({ m, me: email, name: o.userName(), send: (msg) => o.sendMail(msg), markSent: (keys, force) => adminApi.mailingSent(keys, force, o.adminSession) });
-      toast(`Mails d’accord envoyés depuis ta messagerie : ${plural(sent, 'personne')}, en copie cachée.`, 'check');
-      mailing = await adminApi.mailing().catch(() => mailing);
-      if (open && view === 'home' && !ctx.editing && !sheetOpen()) render();
-    } catch {
-      // messagerie ou session d'administration indisponible : nouvel essai à la prochaine visite
-    }
   }
 
   // Personnes sur la photo : le jeu retrouve les cartes où l'on m'a indiqué grâce à l'adresse de ma
@@ -540,7 +516,7 @@ export function createTCG(o) {
     if (!mailing) return 'qui prévenir, et quand';
     const n = mailing.targets.length;
     if (!n) return 'personne à prévenir';
-    return mailing.open ? `${plural(n, 'personne')} à prévenir · envoi possible` : `${plural(n, 'personne')} à prévenir · le ${dateShort(mailing.next)}`;
+    return `${plural(n, 'personne')} à prévenir`;
   }
 
   function withBack(content) {
@@ -879,10 +855,7 @@ export function createTCG(o) {
   return {
     enter,
     /** Adresse de la messagerie connue (lue après l'ouverture du jeu) : rattachement au joueur. */
-    mailReady: () => {
-      linkMail();
-      autoMail();
-    },
+    mailReady: () => linkMail(),
     leave: () => setMode(false),
     isOpen: () => open,
     /** Vue publique chargée (pour savoir si le TCG est ouvert), 3 s au plus. */

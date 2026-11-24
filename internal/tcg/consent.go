@@ -4,9 +4,10 @@ package tcg
 //
 // En validant une carte, l'administrateur indique les adresses universitaires des personnes
 // visibles. La carte attend alors leur accord (« consent ») et passe au jury d'elle-même après la
-// dernière réponse positive. Les mails partent de SA messagerie (ISIS Hub, dans sa page) : un seul
-// mail, tous les destinataires en copie cachée, au plus une fois tous les deux jours (sauf envoi
-// forcé), et chaque adresse ne le reçoit qu'une fois par carte. Chacun répond dans le TCG
+// dernière réponse positive. Les mails partent de SA messagerie (ISIS Hub, dans sa page), quand il
+// clique sur « Envoyer les mails » (rien d'automatique) : un seul mail, tous les destinataires en
+// copie cachée, et chaque adresse ne le reçoit qu'une fois par carte. (Le serveur garde une limite
+// de deux jours entre deux envois, que le bouton de l'administrateur lève : « force ».) Chacun répond dans le TCG
 // (« Mes apparitions ») ; un refus garde la carte en attente, à la décision de l'administrateur.
 //
 // Le serveur ne garde que l'empreinte de l'adresse (HMAC) et, jusqu'au départ du mail seulement,

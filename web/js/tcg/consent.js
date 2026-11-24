@@ -2,8 +2,9 @@
 //
 // « Mes apparitions » : les cartes validées où l'on m'a indiqué, avec « D'accord » / « Refuser ».
 // « Mails d'accord » (administrateur) : un seul mail, envoyé depuis SA messagerie (dans cette
-// page, comme tout mail du Hub), tous les destinataires en copie cachée, au plus tous les deux
-// jours ; le serveur marque ensuite ces adresses comme prévenues et efface leur version en clair.
+// page, comme tout mail du Hub) quand il clique sur « Envoyer les mails », tous les destinataires
+// en copie cachée ; le serveur marque ensuite ces adresses comme prévenues (jamais renvoyées pour
+// ces cartes) et efface leur version en clair.
 
 import { h, toast } from '../core/dom.js';
 import { api, adminApi, TcgError } from './api.js';
@@ -133,9 +134,7 @@ export async function openMailing(ctx) {
   const draw = () => {
     const n = m.targets.length;
     const stats = h('div.tml-stats', {}, stat(n, 'à prévenir'), stat(m.waiting, 'sans réponse'), stat(m.ok, 'd’accord'), stat(m.no, 'refus'));
-    const when = m.open
-      ? h('p.tml-when.is-open', {}, ic('check'), n ? 'Envoi possible maintenant.' : 'Personne à prévenir pour l’instant.')
-      : h('p.tml-when', {}, ic('clock'), `Prochain envoi possible le ${dayLong(m.next)} à ${hourText(m.next)} (un mail tous les deux jours au plus).`);
+    const when = h('p.tml-when', {}, ic('clock'), m.last ? `Dernier envoi le ${dayLong(m.last)} à ${hourText(m.last)}.` : 'Aucun mail envoyé pour l’instant.');
     const parts = [stats, when];
     if (n) {
       const lots = Math.ceil(n / m.chunk);
@@ -147,16 +146,15 @@ export async function openMailing(ctx) {
         h('details.tml-who', {}, h('summary', { text: 'Voir le mail' }), h('p.tml-subj', { text: MAIL_SUBJECT }), h('pre.tml-text', { text: mailText(ctx.userName()) })),
       );
     }
-    const send = tbtn(!n ? 'Rien à envoyer' : m.open ? 'Envoyer depuis ma messagerie' : 'Forcer l’envoi maintenant', 'send', m.open ? 'tbtn--primary tbtn--lg' : 'tbtn--ghost tbtn--lg', () => run(send, !m.open));
+    const send = tbtn(n ? `Envoyer les mails (${n})` : 'Rien à envoyer', 'send', 'tbtn--primary tbtn--lg', () => run(send));
     send.disabled = !n;
     parts.push(send);
-    if (n && m.open) parts.push(h('p.thelp', { text: 'Sinon, l’envoi se fait tout seul à ta prochaine visite du Hub, depuis ta messagerie.' }));
     body.replaceChildren(...parts);
   };
-  const run = async (btn, force) => {
+  const run = async (btn) => {
     const me = ctx.userEmail();
     if (!me) return toast('Ta messagerie n’est pas ouverte : ouvre tes mails dans le Hub, puis réessaie.', 'alert');
-    if (force && !confirm(`Forcer l’envoi maintenant, avant la fin des deux jours ? ${plural(m.targets.length, 'personne')} en copie cachée.`)) return;
+    if (!confirm(`Envoyer le mail d’accord depuis ta messagerie à ${plural(m.targets.length, 'personne')}, en copie cachée ?`)) return;
     btn.disabled = true;
     const label = btn.querySelector('span');
     try {
@@ -165,8 +163,7 @@ export async function openMailing(ctx) {
         me,
         name: ctx.userName(),
         send: ctx.sendMail,
-        markSent: (keys, f) => adminApi.mailingSent(keys, f, ctx.adminSession),
-        force,
+        markSent: (keys) => adminApi.mailingSent(keys, true, ctx.adminSession),
         onProgress: (n, total) => (label.textContent = `Envoi… ${n} / ${total}`),
       });
       toast(`Mail envoyé à ${plural(sent, 'personne')}, en copie cachée.`, 'check');

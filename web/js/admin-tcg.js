@@ -581,7 +581,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       h('label.tad-help', { htmlFor: 'tad-people', text: 'Nom ou adresse de l’université : suggestions de l’annuaire, comme pour un mail. 5 personnes au plus.' }),
       picker.el,
       h('div.tad-row', {}, btn('btn--ghost', 'Annuler', null, () => ((mode = ''), renderDetail())), kind === 'validate' ? none : null, withPeople),
-      h('p.tad-help', { text: 'Elles reçoivent un mail depuis ta messagerie (copie cachée, au plus tous les deux jours) et répondent dans le TCG. La carte passe au jury dès que toutes ont accepté.' }),
+      h('p.tad-help', { text: 'Elles reçoivent un mail depuis ta messagerie (copie cachée, quand tu cliques sur « Envoyer les mails ») et répondent dans le TCG. La carte passe au jury dès que toutes ont accepté.' }),
     );
     form.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -611,8 +611,9 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     }
     mailing.hidden = false;
     const n = m.targets.length;
-    const status = !n ? 'Personne à prévenir pour l’instant.' : m.open ? `${plural(n, 'personne')} à prévenir : le mail part tout seul à ta prochaine visite du Hub, ou maintenant.` : `${plural(n, 'personne')} à prévenir · prochain envoi automatique le ${when(m.next)}.`;
-    const send = btn(m.open ? 'btn--primary' : '', m.open ? 'Envoyer maintenant' : 'Forcer l’envoi', 'send', () => sendNow(send, !m.open));
+    // Rien ne part tout seul : le mail part quand tu cliques, depuis ta messagerie.
+    const status = `${n ? `${plural(n, 'personne')} à prévenir.` : 'Personne à prévenir pour l’instant.'}${m.last ? ` Dernier envoi le ${when(m.last)}.` : ''}`;
+    const send = btn('btn--primary', n ? `Envoyer les mails (${n})` : 'Envoyer les mails', 'send', () => sendNow(send));
     send.disabled = !n;
     mailing.replaceChildren(
       h('div.tad-mailing-h', {}, ic('send'), h('b', { text: 'Mails d’accord' }), h('span', { text: `${m.waiting} sans réponse · ${m.ok} d’accord · ${m.no} refus` })),
@@ -622,15 +623,15 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     );
   }
 
-  async function sendNow(b, force) {
-    if (force && !confirm(`Forcer l’envoi maintenant, avant la fin des deux jours ? ${plural(mailState.targets.length, 'personne')} en copie cachée.`)) return;
+  async function sendNow(b) {
+    if (!confirm(`Envoyer le mail d’accord depuis ta messagerie à ${plural(mailState.targets.length, 'personne')}, en copie cachée ?`)) return;
     b.disabled = true;
     const label = b.querySelector('span');
     try {
       const mail = await mailBridge();
       const me = await mail.me();
       if (!me.address) throw new Error('adresse de ta messagerie introuvable');
-      const sent = await sendConsentMails({ m: mailState, me: me.address, name: me.name, send: (msg) => mail.send(msg), markSent: (keys, f) => tapi('mailing/sent', { keys, force: f }), force, onProgress: (k, total) => (label.textContent = `Envoi… ${k} / ${total}`) });
+      const sent = await sendConsentMails({ m: mailState, me: me.address, name: me.name, send: (msg) => mail.send(msg), markSent: (keys) => tapi('mailing/sent', { keys, force: true }), onProgress: (k, total) => (label.textContent = `Envoi… ${k} / ${total}`) });
       toast(`Mail envoyé à ${plural(sent, 'personne')}, en copie cachée.`, 'check');
     } catch (err) {
       toast(`Envoi impossible : ${err.message}`, 'alert');
