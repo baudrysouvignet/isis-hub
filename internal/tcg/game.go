@@ -43,6 +43,9 @@ func (g *Game) Join(login, pseudo string) (tok string, created bool, err error) 
 		g.st.Keys[key] = id
 		created = true
 	}
+	if p := g.st.Players[id]; p != nil && g.IsAdmin != nil && p.Admin != g.IsAdmin(login) {
+		p.Admin = !p.Admin
+	}
 	tok = randomToken()
 	g.st.Sessions[hashToken(tok)] = session{Player: id, Expires: now.Add(sessionTTL)}
 	g.dirty = true
@@ -354,6 +357,7 @@ func (g *Game) addFeed(f FeedItem) {
 // NewProposal : une carte proposée (images déjà enregistrées). Rend son identifiant.
 type NewProposal struct {
 	Title, Desc, Cat string
+	People           []string // adresses des personnes sur la photo (CleanPeople)
 	Img, Thumb       string
 	Bytes            int64
 }
@@ -454,6 +458,7 @@ func (g *Game) Propose(pid string, in NewProposal) (string, error) {
 		Title: title, Desc: desc, Cat: cat, Img: in.Img, Thumb: in.Thumb, Bytes: in.Bytes,
 		Status: StatusPending, Created: g.now(),
 	}
+	c.Tags = g.newTags(pid, in.People)
 	g.st.Cards[c.ID] = c
 	g.st.Used += in.Bytes
 	g.dirty = true

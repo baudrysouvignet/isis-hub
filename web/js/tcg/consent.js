@@ -1,0 +1,173 @@
+// ISIS · TCG : personnes sur la photo.
+//
+// « Mes apparitions » : les cartes validées où l'on m'a indiqué, avec « D'accord » / « Refuser ».
+// « Mails d'accord » (administrateur) : un seul mail, envoyé depuis SA messagerie (dans cette
+// page, comme tout mail du Hub), tous les destinataires en copie cachée, au plus tous les deux
+// jours ; le serveur marque ensuite ces adresses comme prévenues et efface leur version en clair.
+
+import { h, toast } from '../core/dom.js';
+import { api, adminApi, TcgError } from './api.js';
+import { cardEl, ic, sheet, tbtn, dayLong, hourText, plural } from './ui.js';
+
+const LINK = 'accord'; // #tcg/accord
+
+export const consentLink = () => `${location.origin}${location.pathname}#tcg/${LINK}`;
+
+/** Cartes sans réponse (pastille de l'accueil). */
+export const pendingAppear = (st) => (st?.appear ?? []).filter((a) => !a.answer && !a.retired);
+
+// ------------------------------------------------------------------ « Mes apparitions »
+
+export function renderConsent(ctx) {
+  const st = ctx.st;
+  const list = st?.appear ?? [];
+  const head = h('header.tv-head', {}, h('div', {}, h('p.tk', { text: 'Ton accord' }), h('h1.tv-h1', { tabIndex: -1, text: 'Mes apparitions' })));
+  const intro = h('p.thelp.tcs-intro', {
+    text: 'Quelqu’un t’a indiqué sur la photo de ces cartes. Elles ne restent dans le jeu qu’avec ton accord : un refus retire la carte, sans dire qui a refusé.',
+  });
+  const sec = h('section.tcs', {}, intro);
+  if (!st?.me?.mailLinked) {
+    sec.append(h('p.tcs-empty', { text: 'Ta messagerie n’a pas encore été lue : ouvre tes mails dans le Hub, puis reviens ici.' }));
+  } else if (!list.length) {
+    sec.append(h('p.tcs-empty', { text: 'Aucune carte ne t’indique pour l’instant.' }));
+  }
+  const ul = h('ul.tcs-list');
+  for (const a of list) ul.append(item(ctx, a));
+  if (list.length) sec.append(ul);
+  const frag = document.createDocumentFragment();
+  frag.append(head, sec);
+  return frag;
+}
+
+function item(ctx, a) {
+  const card = a.retired ? h('div.tcs-gone', {}, ic('x'), h('span', { text: 'Carte retirée' })) : cardEl({ id: a.id, title: a.title, desc: a.desc, cat: a.cat, img: a.img, thumb: a.thumb, rarity: a.rarity }, { size: 'md', mystery: !a.printed, by: '' });
+  const state = a.retired
+    ? h('p.tcs-state.is-no', {}, ic('x'), a.printed ? 'Accord retiré : la photo n’est plus montrée, les exemplaires restent marqués « Accord retiré ».' : 'Tu as refusé : la carte n’entrera pas dans le jeu.')
+    : a.answer === 'ok'
+      ? h('p.tcs-state.is-ok', {}, ic('check'), `Tu as donné ton accord${a.at ? ` le ${dayLong(a.at)}` : ''}.`)
+      : h('p.tcs-state', {}, ic('clock'), 'En attente de ta réponse.');
+  const acts = h('div.tcs-acts');
+  if (!a.retired) {
+    if (a.answer !== 'ok') acts.append(tbtn('D’accord', 'check', 'tbtn--primary', () => answer(ctx, a, true)));
+    acts.append(
+      tbtn(a.answer === 'ok' ? 'Retirer mon accord' : 'Refuser', 'x', 'tbtn--ghost', () => {
+        const msg = a.printed
+          ? `Retirer ton accord pour « ${a.title} » ? La photo et le texte disparaissent du jeu : ceux qui l’ont gardent leur exemplaire, marqué « Accord retiré ». C’est définitif.`
+          : `Refuser « ${a.title} » ? La carte n’entrera pas dans le jeu. C’est définitif.`;
+        if (confirm(msg)) answer(ctx, a, false);
+      }),
+    );
+  }
+  return h(
+    `li.tcs-item${a.answer === 'ok' ? '.is-ok' : ''}${a.retired ? '.is-no' : ''}`,
+    {},
+    h('div.tcs-card', {}, card),
+    h('div.tcs-body', {}, h('b.tcs-title', { text: a.retired ? 'Carte retirée' : a.title }), h('span.tcs-meta', { text: `${a.printed ? 'En jeu' : 'Avant le jury'} · proposée par ${a.author}` }), state, acts),
+  );
+}
+
+async function answer(ctx, a, ok) {
+  try {
+    await api.consent(a.id, ok);
+    toast(ok ? 'Merci, ton accord est enregistré.' : 'Carte retirée.', 'check');
+    await ctx.reload();
+  } catch (err) {
+    toast(err instanceof TcgError ? err.message : 'Réponse impossible pour l’instant : réessaie.', 'alert');
+  }
+}
+
+// ------------------------------------------------------------------ envoi des mails (admin)
+
+/** Texte du mail : le même pour tous (copie cachée), sans nom ni carte. */
+export function mailText(senderName) {
+  return [
+    'Bonjour,',
+    '',
+    'Tu apparais sur la photo d’une ou plusieurs cartes du TCG de la promo, dans ISIS Hub.',
+    'Avant qu’elles entrent dans le jeu (ou pour qu’elles y restent), il nous faut ton accord.',
+    '',
+    `Pour accepter ou refuser, connecte-toi à ISIS Hub, onglet TCG → « Mes apparitions » :`,
+    consentLink(),
+    '',
+    'Un refus retire la carte, sans dire qui a refusé. Tu ne recevras pas d’autre mail pour ces cartes.',
+    '',
+    'Bonne journée,',
+    senderName || 'L’équipe ISIS Hub',
+  ].join('\n');
+}
+
+export const MAIL_SUBJECT = 'TCG de la promo : tu apparais sur une carte, ton accord est demandé';
+
+/**
+ * Fenêtre « Mails d'accord » : qui prévenir, quand, et l'envoi depuis la messagerie de
+ * l'administrateur (par lots de 49 copies cachées, chaque lot marqué dès qu'il est parti).
+ */
+export async function openMailing(ctx) {
+  let m;
+  try {
+    m = await adminApi.mailing(ctx.adminSession);
+  } catch (err) {
+    return toast(err instanceof TcgError ? err.message : 'Administration indisponible pour l’instant.', 'alert');
+  }
+  const body = h('div.tml');
+  const s = sheet('mailing', 'Mails d’accord', [h('p.tk', { text: 'Administration' }), h('h2.tdet-h', { text: 'Mails d’accord' }), body]);
+  const draw = () => {
+    const n = m.targets.length;
+    const stats = h('div.tml-stats', {}, stat(n, 'à prévenir'), stat(m.waiting, 'sans réponse'), stat(m.ok, 'd’accord'), stat(m.no, 'refus'));
+    const when = m.open
+      ? h('p.tml-when.is-open', {}, ic('check'), n ? 'Envoi possible maintenant.' : 'Personne à prévenir pour l’instant.')
+      : h('p.tml-when', {}, ic('clock'), `Prochain envoi possible le ${dayLong(m.next)} à ${hourText(m.next)} (un mail tous les deux jours au plus).`);
+    const parts = [stats, when];
+    if (n) {
+      const lots = Math.ceil(n / m.chunk);
+      parts.push(
+        h('p.thelp', {
+          text: `Un mail depuis ta messagerie${lots > 1 ? ` (en ${lots} envois de ${m.chunk} au plus)` : ''}, adressé à toi-même avec ${plural(n, 'personne')} en copie cachée : personne ne voit les autres adresses. Chacune ne recevra ce mail qu’une fois pour ces cartes.`,
+        }),
+        h('details.tml-who', {}, h('summary', { text: `Voir les ${plural(n, 'adresse')}` }), h('ul', {}, ...m.targets.map((t) => h('li', {}, h('span', { text: t.email }), h('small', { text: plural(t.cards, 'carte') }))))),
+        h('details.tml-who', {}, h('summary', { text: 'Voir le mail' }), h('p.tml-subj', { text: MAIL_SUBJECT }), h('pre.tml-text', { text: mailText(ctx.userName()) })),
+      );
+    }
+    const send = tbtn(n ? `Envoyer depuis ma messagerie` : 'Rien à envoyer', 'send', 'tbtn--primary tbtn--lg', () => run(send));
+    send.disabled = !n || !m.open;
+    parts.push(send);
+    body.replaceChildren(...parts);
+  };
+  const run = async (btn) => {
+    const me = ctx.userEmail();
+    if (!me) return toast('Ta messagerie n’est pas ouverte : ouvre tes mails dans le Hub, puis réessaie.', 'alert');
+    btn.disabled = true;
+    const label = btn.querySelector('span');
+    let sent = 0;
+    try {
+      for (let i = 0; i < m.targets.length; i += m.chunk) {
+        const lot = m.targets.slice(i, i + m.chunk);
+        label.textContent = `Envoi… ${sent} / ${m.targets.length}`;
+        await ctx.sendMail({
+          to: [{ address: me, name: ctx.userName() }],
+          bcc: lot.map((t) => ({ address: t.email, name: '' })),
+          subject: MAIL_SUBJECT,
+          text: mailText(ctx.userName()),
+        });
+        // Parti : marqué tout de suite, pour ne jamais renvoyer ce lot (même si la suite échoue).
+        await adminApi.mailingSent(lot.map((t) => t.key), ctx.adminSession);
+        sent += lot.length;
+      }
+      toast(`Mail envoyé à ${plural(sent, 'personne')}, en copie cachée.`, 'check');
+    } catch (err) {
+      toast(`${sent ? `${plural(sent, 'personne')} prévenue${sent > 1 ? 's' : ''}, puis ` : ''}${err?.message || 'envoi impossible'}`, 'alert');
+    }
+    try {
+      m = await adminApi.mailing(ctx.adminSession);
+    } catch {
+      /* garde l'affichage */
+    }
+    ctx.setMailing?.(m);
+    draw();
+  };
+  draw();
+  ctx.setMailing?.(m);
+  return s;
+}
+
+const stat = (n, label) => h('div.tml-stat', {}, h('b', { text: String(n) }), h('span', { text: label }));

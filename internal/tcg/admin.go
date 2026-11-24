@@ -15,6 +15,7 @@ var BlockReasons = map[string]string{
 	"choquant":       "Contenu choquant ou illégal",
 	"illisible":      "Photo illisible",
 	"doublon":        "Doublon",
+	"personne":       "Refusée par une personne sur la photo",
 	"autre":          "Autre",
 }
 
@@ -75,6 +76,9 @@ func (g *Game) ModerateCard(id string, m Moderate) error {
 	case "restore":
 		if c.Status != StatusRemoved {
 			return userErr(http.StatusConflict, "Cette carte n’est pas retirée.")
+		}
+		if c.Reason == "personne" {
+			return userErr(http.StatusConflict, "Une personne sur la photo a retiré son accord : la carte ne peut pas revenir en jeu.")
 		}
 		if c.Purged {
 			return userErr(http.StatusConflict, "Retirée depuis plus de 30 jours : sa photo a été effacée, elle ne peut plus revenir en jeu.")
@@ -183,6 +187,7 @@ type AdminCard struct {
 	Flags    []string       `json:"flags,omitempty"` // points à vérifier, repérés automatiquement
 	Planned  Rarity         `json:"planned,omitempty"`
 	Override bool           `json:"override,omitempty"`
+	Consent  *ConsentView   `json:"consent,omitempty"` // accords des personnes sur la photo
 }
 
 // AdminAuthor : auteur d'une carte (pseudo et historique, jamais l'identifiant universitaire).
@@ -202,6 +207,7 @@ func (g *Game) adminCard(c *Card, img func(string) string) AdminCard {
 	}
 	if c.Status == StatusPending || c.Status == StatusAccepted {
 		a.Flags = Flags(c.Title, c.Desc)
+		a.Consent = g.consentOf(c)
 	}
 	if w := g.wave(c.Wave); w != nil {
 		a.Total = len(w.Cards)

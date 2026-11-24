@@ -33,6 +33,7 @@ type CardView struct {
 	Issued  int    `json:"issued"`
 	FirstBy string `json:"firstBy,omitempty"`
 	Removed bool   `json:"removed,omitempty"`
+	Consent bool   `json:"consentOff,omitempty"` // retirée parce qu'une personne a retiré son accord
 }
 
 // WaveView : calendrier et avancement d'une vague.
@@ -123,6 +124,10 @@ func (g *Game) cardView(c *Card, me string) CardView {
 		// Carte retirée : ceux qui l'ont gardent l'exemplaire, sans l'image ni le texte.
 		v.Removed, v.Img, v.Thumb, v.Desc = true, "", "", ""
 		v.Title = "Carte retirée"
+		if c.Reason == "personne" {
+			// Une personne sur la photo a retiré son accord : l'exemplaire reste, sans photo ni texte.
+			v.Title, v.Desc, v.Consent = "Accord retiré", "Une personne sur la photo a retiré son accord : la photo n’est plus montrée. Tu gardes ton exemplaire.", true
+		}
 	}
 	if v.Author == "" {
 		v.Author = "Ancien joueur"
@@ -216,6 +221,8 @@ type Me struct {
 	ProposalsLeft int       `json:"proposalsLeft"`
 	Muted         bool      `json:"muted,omitempty"`
 	Created       time.Time `json:"created"`
+	MailLinked    bool      `json:"mailLinked"`
+	Admin         bool      `json:"admin,omitempty"`
 }
 
 // View : tout l'état du jeu pour un joueur (un seul appel à l'ouverture du TCG).
@@ -232,6 +239,7 @@ type View struct {
 	Matches   []MatchView      `json:"matches"`
 	Trades    []TradeView      `json:"trades"`
 	Invites   []InviteView     `json:"invites"`
+	Appear    []AppearView     `json:"appear"` // cartes où je suis indiqué (accord à donner)
 }
 
 // Initials : deux lettres pour l'avatar (« Léa M. » → LM).
@@ -271,10 +279,12 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 		Public: Public{Phase: g.phase(), Season: g.st.Season.Name, Runs: g.st.Season.Runs, PerDay: g.perDay(now), Waves: g.waveViews(), Stats: g.stats(), Now: now},
 		Me: Me{
 			ID: p.ID, Pseudo: p.Pseudo, Initials: Initials(p.Pseudo), Muted: p.Muted, Created: p.Created,
+			MailLinked: p.MailKey != "", Admin: p.Admin,
 			ProposalsLeft: g.proposalsLeft(pid, now), NextBooster: nextBooster(now),
 		},
 		Owned: map[string][]int{}, Wish: append([]string{}, p.Wish...), Feed: []FeedView{}, Matches: []MatchView{},
 		Trades: []TradeView{}, Invites: []InviteView{}, Proposals: []ProposalView{}, Cards: []CardView{},
+		Appear: g.appearances(p),
 	}
 	v.Me.BoosterReady = v.Phase == "live" && p.Booster != DayKey(now)
 	if p.Booster == DayKey(now) {

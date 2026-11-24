@@ -105,6 +105,9 @@ type Card struct {
 	Reports   []Report  `json:"reports,omitempty"`
 	ReportsOK time.Time `json:"reportsOk,omitzero"` // signalements examinés jusqu'ici (« Garder »)
 	RemovedAt time.Time `json:"removedAt,omitzero"`
+
+	// Personnes sur la photo et leur accord (consent.go).
+	Tags []Tag `json:"tags,omitempty"`
 }
 
 // Report : signalement d'une carte en jeu.
@@ -155,8 +158,10 @@ type Player struct {
 	LastDraw []Pull           `json:"lastDraw,omitempty"`
 	Ballots  map[int][]Ballot `json:"ballots,omitempty"` // vague → bulletins
 	Trades   []TradeLog       `json:"trades,omitempty"`
-	Muted    bool             `json:"muted,omitempty"` // propositions suspendues par un administrateur
-	Seen     time.Time        `json:"seen,omitzero"`   // dernier passage (jour), pour les statistiques
+	Muted    bool             `json:"muted,omitempty"`   // propositions suspendues par un administrateur
+	Seen     time.Time        `json:"seen,omitzero"`     // dernier passage (jour), pour les statistiques
+	MailKey  string           `json:"mailKey,omitempty"` // HMAC de l'adresse de sa messagerie (accords)
+	Admin    bool             `json:"admin,omitempty"`   // identifiant dans ADMIN_USERS (envoi des mails d'accord)
 }
 
 // Wave : une vague de cartes, avec son calendrier.
@@ -211,6 +216,7 @@ type state struct {
 	NextNum  int                `json:"nextNum"`
 	Boosters map[string]int     `json:"boosters,omitempty"` // jour → boosters ouverts (rythme des raretés)
 	Used     int64              `json:"used"`               // octets d'images gardés
+	Mailing  Mailing            `json:"mailing,omitzero"`   // mails d'accord (consent.go)
 }
 
 func defaultSeason() Season {

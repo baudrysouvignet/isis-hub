@@ -98,8 +98,16 @@ func (a *api) state() View {
 
 // propose envoie une carte comme la page (multipart) ; photo/thumb nil = champ absent.
 func (a *api) propose(title string, photo, thumb []byte, consent bool) (int, map[string]any) {
+	return a.proposeWith(title, photo, thumb, consent, "")
+}
+
+// proposeWith : comme propose, avec les adresses des personnes sur la photo.
+func (a *api) proposeWith(title string, photo, thumb []byte, consent bool, people string) (int, map[string]any) {
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
+	if people != "" {
+		mw.WriteField("people", people)
+	}
 	mw.WriteField("title", title)
 	mw.WriteField("desc", "Deux phrases pour la promo. Tout le monde la reconnaîtra.")
 	mw.WriteField("cat", "moment")

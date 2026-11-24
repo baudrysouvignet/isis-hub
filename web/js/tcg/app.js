@@ -8,13 +8,14 @@
 import { $, h, toast, motionOK } from '../core/dom.js';
 import { prefs } from '../core/store.js';
 import { seen, markSeen } from '../core/seen.js';
-import { api, TcgError } from './api.js';
+import { api, adminApi, TcgError } from './api.js';
 import { cardEl, ic, mark, rchip, RLABEL, CATS, tier, sheet, sheetOpen, tbtn, meter, dayLong, dateShort, hourText, ago, untilText, plural, placeholderArt, pips } from './ui.js';
 import { openBooster, showRecap } from './open.js';
 import { renderCreate, createForm, proposalsList } from './create.js';
 import { renderCollection } from './collection.js';
 import { renderJury } from './jury.js';
 import { renderTrade, startTrade, joinTradeCode, openJoinSheet } from './trade.js';
+import { renderConsent, openMailing, pendingAppear } from './consent.js';
 
 const DOCK = [
   ['home', 'Booster', 'booster'],
@@ -73,6 +74,8 @@ export function createTCG(o) {
   let refreshTimer = null;
   let tickTimer = null;
   let pendingCode = null;
+  let mailTried = false; // adresse de la messagerie envoyée une fois par visite
+  let mailing = null; // mails d'accord (administrateur), dernier état connu
   let joining = null;
   const cards = new Map();
 
@@ -105,7 +108,31 @@ export function createTCG(o) {
       if (err.status === 401) setState(null);
       else throw err;
     }
+    linkMail();
+    if (st?.me?.admin && !mailing) {
+      // Compteurs des mails d'accord, sans rien demander : la session admin peut ne pas être ouverte.
+      adminApi.mailing().then((m) => {
+        mailing = m;
+        if (open && view === 'home' && !ctx.editing && !sheetOpen()) render();
+      }, () => {});
+    }
     return st;
+  }
+
+  // Personnes sur la photo : le jeu retrouve les cartes où l'on m'a indiqué grâce à l'adresse de ma
+  // messagerie (lue par cette page) ; le serveur n'en garde qu'une empreinte.
+  async function linkMail() {
+    if (!st || st.me.mailLinked || mailTried) return;
+    const email = o.userEmail?.();
+    if (!email) return;
+    mailTried = true;
+    try {
+      await api.linkMail(email);
+      setState(await api.state());
+      if (open && !ctx.editing && !sheetOpen()) render();
+    } catch {
+      // adresse hors université ou déjà liée : « Mes apparitions » le dira
+    }
   }
 
   async function refresh({ quiet = true } = {}) {
@@ -382,7 +409,7 @@ export function createTCG(o) {
   // ---------------------------------------------------------------- navigation
   function go(v) {
     if (!open) return enter(v);
-    if (phase() === 'soon' && v !== 'create' && v !== 'jury') v = 'home';
+    if (phase() === 'soon' && v !== 'create' && v !== 'jury' && v !== 'consent') v = 'home';
     view = v;
     prefs.set('tcgView', v === 'trade' ? 'home' : v);
     render();
@@ -396,12 +423,13 @@ export function createTCG(o) {
     const p = phase();
     let content;
     if (!o.isSignedIn()) return setMode(false); // session universitaire finie : retour au Hub
-    else if (p === 'soon') content = st && (view === 'create' || view === 'jury') ? withBack(view === 'jury' ? renderJury(ctx) : renderCreate(ctx)) : renderSoon();
+    else if (p === 'soon') content = st && (view === 'create' || view === 'jury' || view === 'consent') ? withBack(view === 'jury' ? renderJury(ctx) : view === 'consent' ? renderConsent(ctx) : renderCreate(ctx)) : renderSoon();
     else if (!st) content = renderLocked();
     else if (view === 'collection') content = renderCollection(ctx);
     else if (view === 'create') content = renderCreate(ctx);
     else if (view === 'jury') content = renderJury(ctx);
     else if (view === 'trade') content = renderTrade(ctx);
+    else if (view === 'consent') content = renderConsent(ctx);
     else content = renderHome();
     wrap.dataset.v = p === 'soon' ? 'soon' : view;
     wrap.replaceChildren(content);
@@ -474,6 +502,22 @@ export function createTCG(o) {
   }
 
   /** Avant le lancement (pas de dock) : retour à la page d'attente. */
+  // Page d'attente : accès à « Mes apparitions » et, pour l'administrateur, aux mails d'accord.
+  function consentCtas() {
+    const n = pendingAppear(st).length;
+    const b = [];
+    if (st) b.push(tbtn(n ? `Mes apparitions · ${plural(n, 'carte')} à valider` : 'Mes apparitions', 'person', n ? 'tbtn--primary tbtn--lg' : 'tbtn--ghost tbtn--lg', () => go('consent')));
+    if (st?.me?.admin) b.push(tbtn(`Mails d’accord · ${mailingSub()}`, 'send', 'tbtn--ghost tbtn--sm', () => openMailing(ctx)));
+    return b.length ? h('div.tsoon-ctas.tsoon-ctas--more', {}, ...b) : null;
+  }
+
+  function mailingSub() {
+    if (!mailing) return 'qui prévenir, et quand';
+    const n = mailing.targets.length;
+    if (!n) return 'personne à prévenir';
+    return mailing.open ? `${plural(n, 'personne')} à prévenir · envoi possible` : `${plural(n, 'personne')} à prévenir · le ${dateShort(mailing.next)}`;
+  }
+
   function withBack(content) {
     const back = tbtn('Page d’attente', 'back', 'tbtn--ghost tbtn--sm tsoon-back', () => go('home'));
     return h('div', {}, back, content);
@@ -506,6 +550,7 @@ export function createTCG(o) {
         h('p.tsoon-lead', { text: 'Un booster par jour, des cartes rares, des échanges en face à face. Et toutes les cartes viennent de vous : propose les tiennes dès maintenant, les plus attendues formeront la première vague.' }),
         count,
         h('div.tsoon-ctas', {}, ...(juryCta ? [juryCta, propose] : [propose, how])),
+        consentCtas(),
       ),
       h('div.tsoon-visual', {}, h('span.th-halo'), mysteryFan(), lockedPack(rel ? dateShort(rel).replace('.', '') : 'Bientôt')),
     );
@@ -603,6 +648,11 @@ export function createTCG(o) {
     const jury = st.jury;
     const lastBallot = jury?.ballots?.[jury.ballots.length - 1];
     if (jury && lastBallot && !lastBallot.rank?.length) item('jury', 'jury', 'Jury de la semaine', `${plural(lastBallot.cards.length, 'carte')} à classer · jusqu’à ${dayLong(jury.until).split(' ')[0]} ${hourText(jury.until)}`, () => go('jury'));
+    // « Mes apparitions » toujours là : en tête quand une carte attend mon accord.
+    const toAnswer = pendingAppear(st);
+    const appearSub = toAnswer.length ? `${plural(toAnswer.length, 'carte attend', 'cartes attendent')} ton accord` : (st.appear?.length ? `${plural(st.appear.length, 'carte')} où l’on t’a indiqué` : 'Les cartes où l’on t’indique sur la photo');
+    item(toAnswer.length ? 'consent.is-due' : 'consent', 'person', 'Mes apparitions', appearSub, () => go('consent'));
+    if (me.admin) item('mail', 'send', 'Mails d’accord', mailingSub(), () => openMailing(ctx));
     if (me.proposalsLeft > 0 && !me.muted) item('create', 'pen', 'Créer une carte', `${plural(me.proposalsLeft, 'proposition possible', 'propositions possibles')} aujourd’hui`, () => go('create'));
     const m = st.matches?.find((x) => x.has.length);
     if (m) item('trade', 'trade', `${m.pseudo} a une carte que tu cherches`, 'Échange en face à face, avec un QR code', () => go('trade'));
@@ -753,6 +803,12 @@ export function createTCG(o) {
     join,
     openCard,
     userName: () => o.userName(),
+    userEmail: () => o.userEmail?.() ?? '',
+    sendMail: (msg) => o.sendMail(msg),
+    adminSession: () => o.adminSession(),
+    setMailing: (m) => {
+      mailing = m;
+    },
     defaultPseudo: () => defaultPseudo(o.userName()),
     proposalsList,
     wrap,
@@ -761,7 +817,7 @@ export function createTCG(o) {
   // ---------------------------------------------------------------- liens (#tcg, #echange=K7Q2)
   function handleHash() {
     const m = location.hash.match(/^#echange=([A-Za-z0-9]{4})$/);
-    if (!m && location.hash !== '#tcg') return false;
+    if (!m && location.hash !== '#tcg' && location.hash !== '#tcg/accord') return false;
     if (!o.isSignedIn()) {
       // Lien du jeu sans connexion : d'abord la connexion (le lien est gardé pour après). Si
       // l'étudiant choisit de continuer sans se connecter, on n'insiste pas.
@@ -778,9 +834,10 @@ export function createTCG(o) {
       enter('trade');
       return true;
     }
-    if (location.hash === '#tcg') {
+    if (location.hash === '#tcg' || location.hash === '#tcg/accord') {
+      const consent = location.hash === '#tcg/accord';
       history.replaceState(null, '', location.pathname + location.search);
-      enter();
+      enter(consent ? 'consent' : undefined);
       return true;
     }
     return false;
@@ -791,6 +848,8 @@ export function createTCG(o) {
 
   return {
     enter,
+    /** Adresse de la messagerie connue (lue après l'ouverture du jeu) : rattachement au joueur. */
+    mailReady: () => linkMail(),
     leave: () => setMode(false),
     isOpen: () => open,
     /** Vue publique chargée (pour savoir si le TCG est ouvert), 3 s au plus. */

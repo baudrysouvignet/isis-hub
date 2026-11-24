@@ -224,7 +224,10 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     const input = h('input', { type: 'checkbox', id });
     return [input, h('label.tcheck', {}, input, h('span.tcheck-box', {}, ic('check', 'ic ic--xs')), h('span', { text }))];
   };
-  const [c1, l1] = check('tcr-c1', 'Les personnes reconnaissables sur la photo sont d’accord pour apparaître sur une carte.');
+  // Personnes sur la photo : adresses de l'université, prévenues par mail une fois la carte validée.
+  const peopleIn = h('textarea.tinput.tcr-people', { id: 'tcr-people', rows: 2, maxLength: 400, placeholder: 'prenom.nom@etud.univ-jfc.fr, …', autocomplete: 'off', attrs: { spellcheck: 'false', autocapitalize: 'off' } });
+  const peopleHelp = h('p.thelp', { text: `Jusqu’à ${MAX_PEOPLE} adresses de l’université, séparées par des virgules. Une fois ta carte validée, chacun reçoit un mail pour donner son accord dans le TCG ; un refus retire la carte. Ton nom n’est pas dans le mail, et l’adresse est effacée dès le mail parti.` });
+  const [c1, l1] = check('tcr-c1', 'Les personnes reconnaissables sont indiquées ci-dessus ou d’accord pour apparaître sur une carte.');
   const [c2, l2] = check('tcr-c2', 'J’ai pris cette photo ou j’ai le droit de l’utiliser.');
   const err = h('p.terr', { hidden: true, attrs: { role: 'alert' } });
   const showErr = (msg) => {
@@ -257,6 +260,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     h('div.tfield', {}, h('div.tfield-top', {}, h('label.tlabel', { htmlFor: 'tcr-title', text: 'Titre' }), titleCount), titleIn),
     h('div.tfield', {}, h('div.tfield-top', {}, h('label.tlabel', { htmlFor: 'tcr-desc', text: 'Description' }), descCount), descIn, h('p.thelp', { text: '2 ou 3 phrases. Un mème, un moment, un truc : ce que tout le monde reconnaîtra.' })),
     h('div.tfield', {}, h('p.tlabel', { text: 'Catégorie' }), chips),
+    h('div.tfield', {}, h('label.tlabel', { htmlFor: 'tcr-people', text: 'Qui est sur la photo ? (facultatif)' }), peopleIn, peopleHelp),
     l1,
     l2,
     err,
@@ -278,6 +282,8 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     if (!photo) return showErr('Ajoute une photo.');
     if ([...draft.title].length < 2) return showErr('Donne un titre à ta carte.') || titleIn.focus();
     if ([...draft.desc].length < 4) return showErr('Écris deux ou trois phrases.') || descIn.focus();
+    const people = parsePeople(peopleIn.value);
+    if (people.error) return showErr(people.error) || peopleIn.focus();
     if (!c1.checked || !c2.checked) return showErr('Coche les deux engagements sur la photo.');
     submit.disabled = true;
     submitLabel.textContent = 'Envoi…';
@@ -290,6 +296,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
       fd.append('cat', draft.cat);
       fd.append('consentPeople', '1');
       fd.append('consentRights', '1');
+      if (people.list.length) fd.append('people', people.list.join(','));
       const ext = big.type === 'image/webp' ? 'webp' : 'jpg';
       fd.append('photo', big, `photo.${ext}`);
       fd.append('thumb', small, `vignette.${small.type === 'image/webp' ? 'webp' : 'jpg'}`);
@@ -314,6 +321,18 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
   const frag = document.createDocumentFragment();
   frag.append(head, h('section.tcr', {}, h('div.tcr-grid', {}, form, preview), proposalsList(ctx, launch)));
   return frag;
+}
+
+const MAX_PEOPLE = 5;
+const UNIV_MAIL = /^[a-z0-9][a-z0-9._%+-]{0,63}@([a-z0-9-]+\.)*univ-jfc\.fr$/;
+
+/** Adresses saisies (mêmes règles que le serveur) : { list } ou { error }. */
+export function parsePeople(raw) {
+  const list = [...new Set(raw.toLowerCase().split(/[\s,;]+/).filter(Boolean))];
+  const bad = list.find((a) => !UNIV_MAIL.test(a));
+  if (bad) return { error: `« ${bad} » : seules les adresses de l’université (…@univ-jfc.fr) sont acceptées.` };
+  if (list.length > MAX_PEOPLE) return { error: `${MAX_PEOPLE} personnes au plus par carte.` };
+  return { list };
 }
 
 /** « Mes propositions » et leur avancement : validation → jury → impression. */

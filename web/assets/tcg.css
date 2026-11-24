@@ -504,6 +504,7 @@
 .tinput { width: 100%; height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line-2); background: rgba(0, 0, 0, .28); color: var(--text); font: 500 15px/1.4 var(--font); transition: border-color .2s, box-shadow .2s; }
 .tinput::placeholder { color: rgba(169, 195, 199, .55); }
 .tinput:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-ring); }
+.tcr-people { height: auto; min-height: 66px; padding: 10px 14px; resize: vertical; font-size: 14px; }
 .tpseudo { display: flex; align-items: center; margin: 0; font-weight: 650; cursor: default; user-select: text; }
 .tinput--area { height: auto; min-height: 96px; padding: 12px 14px; resize: vertical; }
 .tchips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -958,6 +959,9 @@
 .tnext-ic { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: rgba(76, 195, 211, .14); color: #8FEAF3; }
 .tnext--jury .tnext-ic { background: rgba(169, 139, 255, .16); color: #C9B6FF; }
 .tnext--trade .tnext-ic { background: rgba(255, 138, 101, .14); color: #FFB199; }
+.tnext--consent .tnext-ic { background: rgba(111, 224, 164, .14); color: #8FF0BE; }
+.tnext--consent.is-due { border-color: rgba(111, 224, 164, .45); box-shadow: 0 0 0 3px rgba(111, 224, 164, .12); }
+.tnext--mail .tnext-ic { background: rgba(245, 196, 81, .14); color: #F5D27A; }
 .tnext-t { min-width: 0; }
 .tnext-t b { display: block; font: 700 14.5px/1.25 var(--font); }
 .tnext-t span { color: var(--text-3); font-size: 12.5px; }
@@ -1205,3 +1209,46 @@ html[data-vt="out"]::view-transition-new(root) { z-index: 1; }
 .la-tc--unique { --tc-frame: linear-gradient(150deg, #FFF6CF, #F5C451 24%, #A8761E 50%, #FFE8A3 72%, #C8922A); }
 .la-pack { font-size: 10px; letter-spacing: .08em; white-space: nowrap; }
 .la-tcg .la-pill { bottom: -6px; }
+
+/* Personnes sur la photo : « Mes apparitions » et mails d'accord (2.0.1) */
+.tcs { display: grid; gap: 16px; }
+.tcs-intro { max-width: 62ch; }
+.tcs-empty { padding: 28px 20px; border-radius: 20px; border: 1px dashed var(--line-2); color: var(--text-2); text-align: center; }
+.tcs-list { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.tcs-item { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 18px; align-items: center; padding: 16px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); }
+.tcs-item.is-ok { border-color: rgba(92, 214, 150, .35); }
+.tcs-item.is-no { opacity: .72; }
+.tcs-card { display: grid; place-items: center; }
+.tcs-card .tc { width: 140px; }
+.tcs-gone { display: grid; place-items: center; gap: 6px; width: 120px; aspect-ratio: 5 / 7; border-radius: 14px; border: 1px dashed var(--line-2); color: var(--text-3); font: 600 12px/1.2 var(--font); text-align: center; }
+.tcs-body { display: grid; gap: 6px; min-width: 0; }
+.tcs-title { font: 750 17px/1.25 var(--font); color: var(--text); }
+.tcs-meta { color: var(--text-3); font-size: 13px; }
+.tcs-state { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; color: var(--text-2); font-size: 14px; }
+.tcs-state.is-ok { color: #6FE0A4; }
+.tcs-state.is-no { color: #FF8A80; }
+.tcs-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.tsoon-ctas--more { margin-top: 10px; }
+.tml { display: grid; gap: 14px; }
+.tml-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.tml-stat { display: grid; gap: 2px; padding: 12px; border-radius: 14px; background: rgba(255, 255, 255, .05); border: 1px solid var(--line); text-align: center; }
+.tml-stat b { font: 800 22px/1 var(--font); color: var(--text); }
+.tml-stat span { color: var(--text-3); font-size: 12px; }
+.tml-when { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text-2); font-size: 14px; }
+.tml-when.is-open { color: #6FE0A4; }
+.tml-who summary { cursor: pointer; color: var(--text-2); font: 600 14px/1.4 var(--font); }
+.tml-who ul { display: grid; gap: 4px; max-height: 220px; overflow: auto; margin: 8px 0 0; padding: 0; list-style: none; }
+.tml-who li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+.tml-who li small { color: var(--text-3); white-space: nowrap; }
+.tml-subj { margin: 8px 0 4px; font-weight: 700; }
+.tml-text { margin: 0; padding: 12px; border-radius: 12px; background: rgba(0, 0, 0, .25); color: var(--text-2); font: 13px/1.5 var(--font); white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .tcs-item { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .tcs-acts, .tcs-state { justify-content: center; }
+  .tml-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* Administration : accords des personnes sur la photo */
+.tad-consent { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 99px; font: 700 11.5px/1 var(--font); background: var(--sunken); color: var(--text-2); white-space: nowrap; }
+.tad-consent.is-ok { background: #E3F3EA; color: #1E6B42; }
+.tad-consent.is-wait { background: #FDEFD9; color: #8A5300; }
+.tad-consent.is-no { background: #FCE8E6; color: #B3261E; }

@@ -310,7 +310,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
           h('span.tad-rank', { text: String(i + 1) }),
           h('span.tad-thumb', {}, h('img', { alt: '', src: c.thumb })),
           h('span.tad-it', {}, h('b', { text: c.title }), h('span', { text: `${c.author.pseudo} · jury ${c.jury >= 0 ? '+' : ''}${c.jury.toFixed(2)} (${plural(c.juryN, 'classement')})` })),
-          c.planned ? rchip(c.planned) : h('span.tad-pill.tad-pill--blocked', { text: 'Non retenue' }),
+          h('span', {}, c.planned ? rchip(c.planned) : h('span.tad-pill.tad-pill--blocked', { text: 'Non retenue' }), ' ', consentPill(c)),
           sel,
         ),
       );
@@ -381,7 +381,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       else if (filter === 'validated') tag = h('span.tad-pill.tad-pill--ok', { text: c.status === 'printed' ? `V${c.wave}` : 'Validée' });
       else if (filter === 'blocked') tag = h('span.tad-pill.tad-pill--blocked', { text: 'Bloquée' });
       const sub = filter === 'reports' && c.lastReport ? `${c.author.pseudo} · ${ago(c.lastReport)}` : `${c.author.pseudo} · ${ago(c.created)}`;
-      const b = h(`button.tad-item${c.id === current ? '.is-on' : ''}`, { type: 'button', data: { tad: c.id } }, h('span.tad-thumb', {}, c.thumb ? h('img', { alt: '', src: c.thumb }) : null), h('span.tad-it', {}, h('b', { text: c.title }), h('span', { text: sub })), tag);
+      const b = h(`button.tad-item${c.id === current ? '.is-on' : ''}`, { type: 'button', data: { tad: c.id } }, h('span.tad-thumb', {}, c.thumb ? h('img', { alt: '', src: c.thumb }) : null), h('span.tad-it', {}, h('b', { text: c.title }), h('span', {}, sub, ' ', consentPill(c))), tag);
       b.addEventListener('click', () => {
         current = c.id;
         mode = '';
@@ -428,6 +428,11 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     row('Auteur', h('span.tad-author', {}, h('span.tav.tav--sm', { text: c.author.pseudo.slice(0, 2).toUpperCase() }), c.author.pseudo, c.author.muted ? h('small', { text: ' · propositions suspendues' }) : null));
     row('Historique', `${plural(c.author.validated, 'validée')} · ${plural(c.author.blocked, 'bloquée')}`);
     row('Catégorie', CATS[c.cat] ?? c.cat);
+    if (c.consent) {
+      const k = c.consent;
+      const parts = [`${k.ok} / ${k.total} d’accord`, k.no && plural(k.no, 'refus'), k.waiting && `${k.waiting} sans réponse`, k.toSend && `${k.toSend} à prévenir (mail tous les deux jours, depuis le TCG du Hub)`].filter(Boolean);
+      row('Sur la photo', h('span', {}, consentPill(c), ' ', parts.join(' · '), k.by?.length ? h('small', { text: ` · accord de ${k.by.join(', ')}` }) : null));
+    }
     if (printed) {
       row('Rareté', rchip(c.rarity));
       row('En jeu', `Vague ${c.wave} · n° ${String(c.no).padStart(3, '0')} · ${c.run ? `${c.issued} / ${c.run} tirés` : `${c.issued} tirées`}`);
@@ -455,7 +460,8 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
           if (confirm(`Retirer « ${c.title} » du jeu ? Elle sort du tirage ; ceux qui l’ont gardent leur exemplaire, avec « Carte retirée » à la place de l’image.`)) act(c.id, { action: 'remove' }, 'Carte retirée du jeu.');
         }),
       );
-    if (c.status === 'removed') acts.append(btn('', 'Remettre en jeu', 'loop', () => act(c.id, { action: 'restore' }, 'Carte remise en jeu.')));
+    if (c.status === 'removed' && c.reason === 'personne') acts.append(h('p.tad-help', { text: 'Accord retiré par une personne sur la photo : les exemplaires restent, marqués « Accord retiré », et la carte ne peut pas revenir en jeu.' }));
+    else if (c.status === 'removed') acts.append(btn('', 'Remettre en jeu', 'loop', () => act(c.id, { action: 'restore' }, 'Carte remise en jeu.')));
     if (c.status !== 'removed') acts.append(btn('btn--ghost', 'Corriger le texte', 'pen', () => ((mode = 'edit'), renderDetail())));
     if (c.author.id)
       acts.append(
@@ -567,4 +573,13 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       }
     },
   };
+}
+
+/** Accords des personnes sur la photo : « 2/2 », « 1/2 », « Refus » (rien si personne n'est indiqué). */
+function consentPill(c) {
+  const k = c.consent;
+  if (!k?.total) return null;
+  const cls = k.no ? 'is-no' : k.ok === k.total ? 'is-ok' : 'is-wait';
+  const text = k.no ? 'Refus' : `${k.ok}/${k.total} d’accord`;
+  return h(`span.tad-consent.${cls}`, { attrs: { title: 'Accord des personnes indiquées sur la photo' } }, ic('person', 'ic ic--xs'), text);
 }

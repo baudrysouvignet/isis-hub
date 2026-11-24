@@ -256,6 +256,21 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if s.readJSON(w, r, 4<<10, &in) {
 			s.result(w, s.Game.Vote(pid, in.Wave, in.Ballot, in.Rank))
 		}
+	case p == "mail":
+		var in struct {
+			Email string `json:"email"`
+		}
+		if s.readJSON(w, r, 1<<10, &in) {
+			s.result(w, s.Game.LinkMail(pid, in.Email))
+		}
+	case p == "consent":
+		var in struct {
+			Card string `json:"card"`
+			OK   bool   `json:"ok"`
+		}
+		if s.readJSON(w, r, 1<<10, &in) {
+			s.result(w, s.Game.Consent(pid, in.Card, in.OK))
+		}
 	case p == "jury/more":
 		if s.guard(w, r) {
 			s.result(w, s.Game.MoreBallot(pid))
@@ -381,6 +396,11 @@ func (s *Service) handlePropose(w http.ResponseWriter, r *http.Request, pid stri
 		failErr(w, err)
 		return
 	}
+	people, err := CleanPeople(r.FormValue("people"))
+	if err != nil {
+		failErr(w, err)
+		return
+	}
 	read := func(field string, max int) ([]byte, error) {
 		f, _, err := r.FormFile(field)
 		if err != nil {
@@ -423,7 +443,7 @@ func (s *Service) handlePropose(w http.ResponseWriter, r *http.Request, pid stri
 			return
 		}
 	}
-	id, err := s.Game.Propose(pid, NewProposal{Title: title, Desc: desc, Cat: cat, Img: img.Name, Thumb: thumb.Name, Bytes: int64(len(img.Data) + len(thumb.Data))})
+	id, err := s.Game.Propose(pid, NewProposal{Title: title, Desc: desc, Cat: cat, People: people, Img: img.Name, Thumb: thumb.Name, Bytes: int64(len(img.Data) + len(thumb.Data))})
 	if err != nil {
 		failErr(w, err)
 		return
@@ -513,6 +533,21 @@ func (s *Service) serveAdmin(w http.ResponseWriter, r *http.Request, action stri
 	switch {
 	case action == "overview" && r.Method == http.MethodGet:
 		reply(w, http.StatusOK, s.Game.AdminOverview())
+	case action == "mailing" && r.Method == http.MethodGet:
+		w.Header().Set("Cache-Control", "no-store")
+		reply(w, http.StatusOK, s.Game.MailingState())
+	case action == "mailing/sent":
+		var in struct {
+			Keys []string `json:"keys"`
+		}
+		if readJSON(8<<10, &in) {
+			n, err := s.Game.MailingSent(in.Keys)
+			if err != nil {
+				failErr(w, err)
+				return
+			}
+			reply(w, http.StatusOK, map[string]int{"marked": n})
+		}
 	case action == "cards" && r.Method == http.MethodGet:
 		reply(w, http.StatusOK, s.Game.AdminCards(r.URL.Query().Get("filter"), ImgURL))
 	case strings.HasPrefix(action, "card/"):

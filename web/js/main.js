@@ -374,13 +374,19 @@ function setupDashboard() {
       openLogin();
     },
     getTicket: adminTicket,
+    // Personnes sur la photo : adresse de la messagerie (pour retrouver mes apparitions), envoi des
+    // mails d'accord depuis la messagerie de l'administrateur, et sa session d'administration.
+    userEmail: () => state.user?.email || '',
+    sendMail: (msg) => mail.send(msg),
+    adminSession: openAdminSession,
     beforeOpen: () => {
       closeMenus();
       mails.close();
       notes.close();
       if (moodleView?.isOpen()) moodleView.close();
       if (schedule.isExpanded()) schedule.collapse();
-      if (state.signedIn) loadUser().catch(() => {}); // prénom pour le nom proposé dans le jeu
+      // Prénom (nom dans le jeu) et adresse (cartes où l'on m'a indiqué), lus dans la messagerie.
+      if (state.signedIn) loadUser().then(() => tcg?.mailReady(), () => {});
     },
   });
   setupMenus();
@@ -622,18 +628,24 @@ window.addEventListener('unhandledrejection', (e) => {
 let wantsAdmin = location.hash === '#admin';
 if (wantsAdmin) history.replaceState(null, '', location.pathname + location.search);
 
+/** Session d'administration (cookie) à partir d'un ticket CAS ; refusée hors ADMIN_USERS. */
+async function openAdminSession() {
+  const ticket = await adminTicket();
+  const res = await fetch('api/admin/cas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Hub-Admin': '1' },
+    body: JSON.stringify({ ticket }),
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new Error('Session d’administration refusée.');
+}
+
 async function openAdmin() {
   wantsAdmin = false;
   try {
-    const ticket = await adminTicket();
-    const res = await fetch('api/admin/cas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Hub-Admin': '1' },
-      body: JSON.stringify({ ticket }),
-      credentials: 'same-origin',
-      cache: 'no-store',
-    });
-    if (res.ok) return location.assign('admin');
+    await openAdminSession();
+    return location.assign('admin');
   } catch {
     // ticket indisponible ou refusé : on reste sur l'accueil, sans message
   }

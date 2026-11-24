@@ -10,6 +10,19 @@
 
 export const CHANGELOG = [
   {
+    version: '2.0.1',
+    date: '2026-11-24',
+    title: 'TCG : l’accord des personnes sur la photo',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
+    short: ['TCG : indique qui est sur ta photo, chacun donne son accord dans « Mes apparitions ».'],
+    details: [
+      'Créer une carte : champ « Qui est sur la photo ? » (5 adresses de l’université au plus).',
+      'Une fois la carte validée, ces personnes reçoivent un mail de l’équipe ISIS Hub (un seul, en copie cachée, au plus tous les deux jours) et donnent ou refusent leur accord dans le TCG, « Mes apparitions ». Un refus retire la carte, sans dire qui a refusé.',
+      'Le serveur ne garde qu’une empreinte de ces adresses, et leur version chiffrée seulement jusqu’au départ du mail.',
+      'Correctif : l’icône des fichiers Moodle (PDF…) et les destinataires d’un mail retrouvent leur affichage.',
+    ],
+  },
+  {
     version: '2.0.0',
     date: '2026-11-24',
     title: 'Le TCG de la promo',

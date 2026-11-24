@@ -147,7 +147,7 @@ export function cardEl(card, o = {}) {
 
   const img = h('img', { alt: '', decoding: 'async', draggable: false });
   const big = o.size === 'lg' || o.size === 'xl';
-  img.src = o.artSrc || (card.removed ? placeholderArt(card.id, 'Carte retirée') : (big ? card.img || card.thumb : card.thumb || card.img) || placeholderArt(card.id || card.title));
+  img.src = o.artSrc || (card.removed ? placeholderArt(card.id, card.consentOff ? 'Accord retiré' : 'Carte retirée') : (big ? card.img || card.thumb : card.thumb || card.img) || placeholderArt(card.id || card.title));
   const art = h('div.tc-art', {}, img, card.cat ? h('span.tc-cat', { text: CATS[card.cat] ?? card.cat }) : null, h('span.tc-shine'));
 
   const by = o.by ?? (card.author ? `Proposée par ${card.author}` : '');

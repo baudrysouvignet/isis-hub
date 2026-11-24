@@ -69,6 +69,9 @@ func CASValidator(casBase, service string) func(ctx context.Context, ticket stri
 	}
 }
 
+// IsAdminUser : identifiant listé dans ADMIN_USERS (le TCG s'en sert pour l'envoi des mails d'accord).
+func (s *Service) IsAdminUser(user string) bool { return s.isAdminUser(user) }
+
 func (s *Service) isAdminUser(user string) bool {
 	for _, u := range s.cfg.AdminUsers {
 		if u != "" && strings.EqualFold(strings.TrimSpace(u), user) {

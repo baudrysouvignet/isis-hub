@@ -438,8 +438,8 @@ const MSG_ID = /^<?([^<>\s]{1,250})>?$/;
  * pièces déposées sur le serveur, message créé dans la boîte d'envoi, puis expédition demandée.
  * `files` : [{ name, type, bytes: Uint8Array }]. Rend quand le serveur a confirmé l'expédition.
  */
-export async function send({ to, cc = [], subject, text, files = [], inReplyTo = null, references = [] }) {
-  const all = [...to, ...cc];
+export async function send({ to, cc = [], bcc = [], subject, text, files = [], inReplyTo = null, references = [] }) {
+  const all = [...to, ...cc, ...bcc];
   if (!to.length) throw new Error('Ajoute au moins un destinataire.');
   if (all.length > 50) throw new Error('50 destinataires au maximum.');
   const bad = all.find((r) => !EMAIL_RE.test(r.address));
@@ -500,7 +500,7 @@ export async function send({ to, cc = [], subject, text, files = [], inReplyTo =
       subject: oneLine(subject).slice(0, 500),
       date: Date.now(),
       messageId: `<${crypto.randomUUID()}@${domain}>`,
-      recipients: [recipient('Originator')(from), ...to.map(recipient('Primary')), ...cc.map(recipient('CarbonCopy'))],
+      recipients: [recipient('Originator')(from), ...to.map(recipient('Primary')), ...cc.map(recipient('CarbonCopy')), ...bcc.map(recipient('BlindCarbonCopy'))],
       structure,
       headers,
     },

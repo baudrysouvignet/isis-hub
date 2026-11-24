@@ -199,6 +199,7 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("TCG : %w", err)
 	}
+	game.IsAdmin = api.IsAdminUser
 	recovered := ""
 	if game.Recovered != "" {
 		recovered = " · TCG repris de la sauvegarde " + game.Recovered

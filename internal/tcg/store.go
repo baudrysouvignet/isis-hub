@@ -73,6 +73,8 @@ type Game struct {
 	rnd    func(n int) int // hasard (remplaçable dans les tests)
 	trades *trades
 	Blobs  Blobs
+	// IsAdmin : identifiant universitaire listé dans ADMIN_USERS (envoi des mails d'accord).
+	IsAdmin func(login string) bool
 	// Recovered : sauvegarde reprise au démarrage (tcg.json absent ou abîmé), "" sinon.
 	Recovered  string
 	lastBackup string
