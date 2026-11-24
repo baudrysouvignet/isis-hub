@@ -446,7 +446,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     if (c.reportN || (c.status === 'removed' && c.reports)) {
       info.append(h('ul.tad-reports', {}, ...Object.entries(c.reports ?? {}).map(([k, n]) => h('li', {}, h('b', { text: `×${n}` }), REPORTS[k] ?? k))));
     }
-    if (c.status === 'blocked') info.append(h('p.tad-state.tad-state--blocked', {}, ic('x'), `Bloquée · ${REASONS[c.reason]?.[0] ?? c.reason}${c.message ? ` : « ${c.message} »` : ''}`));
+    if (c.status === 'blocked') info.append(h('p.tad-state.tad-state--blocked', {}, ic('x'), `Bloquée · ${c.reason === 'personne' ? 'refusée par une personne sur la photo' : (REASONS[c.reason]?.[0] ?? c.reason)}${c.message ? ` : « ${c.message} »` : ''}`));
     if (c.status === 'accepted') info.append(h('p.tad-state.tad-state--validated', {}, ic('check'), 'Validée · elle passera au jury'));
     if (c.status === 'consent') info.append(h('p.tad-state.tad-state--soon', {}, ic('person'), c.consent?.no ? 'Validée · une personne a refusé : à toi de décider' : 'Validée · en attente de l’accord des personnes sur la photo'));
     if (c.consent?.people?.length) info.append(peopleList(c));
@@ -464,6 +464,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     if (c.status === 'accepted' || c.status === 'consent') acts.append(btn('tad-no', 'Bloquer…', 'x', () => ((mode = 'block'), renderDetail())));
     if (c.status === 'blocked' && !c.img) acts.append(h('p.tad-help', { text: 'Photo effacée (bloquée depuis plus de 7 jours).' }));
     if (c.status === 'removed' && !c.img) acts.append(h('p.tad-help', { text: 'Photo effacée (retirée depuis plus de 30 jours) : elle ne peut plus revenir en jeu.' }));
+    else if (c.status === 'blocked' && c.reason === 'personne') acts.append(h('p.tad-help', { text: 'Bloquée automatiquement : une personne sur la photo a refusé. Elle ne peut pas être validée ; sa photo est effacée au bout de 7 jours.' }));
     else if (c.status === 'blocked') acts.append(btn('btn--primary', 'Débloquer et valider', 'check', validate));
     if (c.status === 'printed' && c.reportN) acts.append(btn('btn--primary', 'Garder la carte', 'check', () => act(c.id, { action: 'keep' }, 'Carte gardée : signalements classés.')));
     if (c.status === 'printed')
@@ -659,7 +660,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       renderList();
       renderDetail();
       list.querySelector('.is-on')?.scrollIntoView({ block: 'nearest' });
-    } else if ((e.key === 'v' || e.key === 'V') && (c.status === 'pending' || c.status === 'blocked')) {
+    } else if ((e.key === 'v' || e.key === 'V') && (c.status === 'pending' || (c.status === 'blocked' && c.reason !== 'personne'))) {
       e.preventDefault();
       mode = 'validate';
       renderDetail();

@@ -370,7 +370,7 @@ export function proposalsList(ctx, launch) {
         text = `Bloquée · ${(p.reason || 'motif').toLowerCase()}${p.message ? ` : « ${p.message} »` : ''}`;
         break;
       default:
-        text = p.reason === 'Accord retiré par une personne sur la photo' ? 'Retirée du jeu : une personne sur la photo a retiré son accord' : 'Retirée du jeu après signalements';
+        text = p.reason === 'Refusée par une personne sur la photo' ? 'Retirée du jeu : une personne sur la photo a retiré son accord' : 'Retirée du jeu après signalements';
     }
     const it = h('div.tcr-it', {}, h('b', { text: p.title }), h('span', { text }));
     if (['pending', 'consent', 'accepted', 'jury', 'blocked'].includes(key)) {

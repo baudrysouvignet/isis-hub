@@ -8,7 +8,7 @@ package tcg
 // clique sur « Envoyer les mails » (rien d'automatique) : un seul mail, tous les destinataires en
 // copie cachée. Chaque adresse ne le reçoit qu'une fois par carte, et jamais deux fois en moins de
 // 24 heures : une personne déjà prévenue (pour une autre carte) attend, même au clic. Chacun répond dans le TCG
-// (« Mes apparitions ») ; un refus garde la carte en attente, à la décision de l'administrateur.
+// (« Mes apparitions ») ; un refus bloque la carte aussitôt (retirée du jeu si elle y était déjà).
 //
 // Le serveur ne garde que l'empreinte de l'adresse (HMAC) et, jusqu'au départ du mail seulement,
 // l'adresse chiffrée (AES-GCM, clé tirée de VAULT_PEPPER). Le serveur n'envoie aucun mail.
@@ -277,10 +277,15 @@ func (g *Game) Consent(pid, id string, ok bool) error {
 	}
 	t.Answer = "no"
 	switch c.Status {
-	case StatusAccepted:
-		// Pas encore imprimée : elle sort du jury et reste en attente, à la décision de l'administration.
-		c.Status = StatusConsent
+	case StatusConsent, StatusAccepted:
+		// Pas encore imprimée : bloquée tout de suite, sans action de l'administration (photo effacée
+		// au bout de 7 jours). L'auteur voit le motif, jamais qui a refusé ; plus aucun mail pour elle.
+		c.Status, c.Decided, c.Reason = StatusBlocked, now, "personne"
+		c.Message = "Une personne présente sur la photo n’a pas donné son accord : la carte est retirée."
 		g.forgetBallots(c.ID)
+		for i := range c.Tags {
+			c.Tags[i].Enc = ""
+		}
 	case StatusPrinted:
 		// En jeu : ceux qui l'ont gardent leur exemplaire, devenu « Accord retiré » (ni photo ni texte).
 		c.Status, c.RemovedAt, c.ReportsOK, c.Reason = StatusRemoved, now, now, "personne"

@@ -15,7 +15,7 @@ var BlockReasons = map[string]string{
 	"choquant":       "Contenu choquant ou illégal",
 	"illisible":      "Photo illisible",
 	"doublon":        "Doublon",
-	"personne":       "Accord retiré par une personne sur la photo",
+	"personne":       "Refusée par une personne sur la photo",
 	"autre":          "Autre",
 }
 
@@ -49,6 +49,9 @@ func (g *Game) ModerateCard(id string, m Moderate) error {
 		}
 		if c.Purged {
 			return userErr(http.StatusConflict, "La photo de cette carte a déjà été effacée.")
+		}
+		if c.Reason == "personne" {
+			return userErr(http.StatusConflict, "Une personne sur la photo a refusé : la carte ne peut pas être validée.")
 		}
 		people, err := CleanPeople(m.People)
 		if err != nil {
