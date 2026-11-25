@@ -168,9 +168,12 @@ type ProposalView struct {
 }
 
 // BallotView : un bulletin du jury.
+// Une série classée ne renvoie plus ni ses cartes ni l'ordre choisi : le classement reste secret,
+// même pour le juré, et ne se refait pas.
 type BallotView struct {
+	N     int        `json:"n"` // numéro du bulletin (celui que /api/tcg/jury attend)
 	Cards []CardView `json:"cards"`
-	Rank  []string   `json:"rank,omitempty"`
+	Done  bool       `json:"done,omitempty"` // classée
 	At    time.Time  `json:"at,omitzero"`
 }
 
@@ -248,7 +251,8 @@ type View struct {
 	Matches   []MatchView      `json:"matches"`
 	Trades    []TradeView      `json:"trades"`
 	Invites   []InviteView     `json:"invites"`
-	Appear    []AppearView     `json:"appear"` // cartes où je suis indiqué (accord à donner)
+	Appear    []AppearView     `json:"appear"`  // cartes où je suis indiqué (accord à donner)
+	Leaders   Leaderboard      `json:"leaders"` // classement des créateurs : podium et ma place
 }
 
 // Initials : deux lettres pour l'avatar (« Léa M. » → LM).
@@ -297,7 +301,8 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 		},
 		Owned: map[string][]int{}, Wish: append([]string{}, p.Wish...), Feed: []FeedView{}, Matches: []MatchView{},
 		Trades: []TradeView{}, Invites: []InviteView{}, Proposals: []ProposalView{}, Cards: []CardView{},
-		Appear: g.appearances(p),
+		Appear:  g.appearances(p),
+		Leaders: g.leaderboard(pid),
 	}
 	v.Me.BoosterReady = v.Phase == "live" && !now.Before(v.Me.NextBooster)
 	if !v.Me.BoosterReady {
@@ -365,8 +370,12 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 				}
 			}
 		}
-		for _, b := range p.Ballots[jw.N] {
-			bv := BallotView{Rank: b.Rank, At: b.At}
+		for i, b := range p.Ballots[jw.N] {
+			if len(b.Rank) > 0 {
+				jv.Ballots = append(jv.Ballots, BallotView{N: i, Cards: []CardView{}, Done: true, At: b.At})
+				continue
+			}
+			bv := BallotView{N: i}
 			for _, id := range b.Cards {
 				if c := g.st.Cards[id]; c != nil && c.Status == StatusAccepted {
 					bv.Cards = append(bv.Cards, g.candidateView(c))

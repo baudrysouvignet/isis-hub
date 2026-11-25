@@ -185,6 +185,15 @@ type Wave struct {
 	Opened         int               `json:"opened,omitempty"`    // boosters ouverts pendant la vague (de sa sortie à la suivante)
 }
 
+// Sent : propositions envoyées par un compte dans la journée, retraits compris. Rangé sous
+// l'empreinte de l'identifiant (comme State.Keys), pour tenir même après « Quitter le jeu » ; oublié
+// le lendemain. Le quota est ainsi par compte, quel que soit l'appareil, et ne se regagne ni en
+// retirant une proposition, ni en quittant puis en rejoignant le jeu.
+type Sent struct {
+	Day string `json:"day"` // jour (Paris)
+	N   int    `json:"n"`
+}
+
 // Activity : chiffres d'une journée de jeu (de 6 h à 6 h, comme les boosters), pour les
 // statistiques de l'administration. Des compteurs seulement : rien ne dit qui.
 type Activity struct {
@@ -232,6 +241,7 @@ type state struct {
 	NextNum  int                  `json:"nextNum"`
 	Boosters map[string]int       `json:"boosters,omitempty"` // jour → boosters ouverts (rythme des raretés, statistiques)
 	Activity map[string]*Activity `json:"activity,omitempty"` // jour → compteurs (statistiques)
+	Sent     map[string]Sent      `json:"sent,omitempty"`     // empreinte de l'identifiant → propositions envoyées aujourd'hui
 	Used     int64                `json:"used"`               // octets d'images gardés
 	Mailing  Mailing              `json:"mailing,omitzero"`   // mails d'accord (consent.go)
 }

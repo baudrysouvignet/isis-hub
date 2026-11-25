@@ -238,11 +238,15 @@ connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
 2. **Propositions** : photo recadrée et compressée **dans la page** (960 × 720 et vignette 320 × 240,
    WebP sinon JPEG, métadonnées retirées), titre de 28 caractères, deux phrases, catégorie, deux
    engagements sur la photo. Le serveur revérifie tout (nature et dimensions de l'image, EXIF retiré).
+   Quota du jour **par compte** (tous appareils) : le serveur compte les envois de la journée sous
+   l'empreinte de l'identifiant ; ni un retrait ni « Quitter le TCG » ne rendent de proposition le
+   même jour, et ce compteur est oublié le lendemain.
 3. **Modération** (onglet *Cartes TCG*) : on valide par défaut (touche V), on bloque (touche B) avec
    un motif et un message bienveillant visible par l'auteur ; points à vérifier repérés
    automatiquement ; correction du texte ; suspension des propositions d'un joueur.
-4. **Jury** : pendant ses dates, chacun classe 5 cartes validées (auteurs masqués, jamais les
-   siennes, jusqu'à 3 bulletins). **Aperçu de l'impression** : cartes classées par le jury, rareté
+4. **Jury** : pendant ses dates, une série de « Tu préfères ? » par jour (5 cartes validées, 7 duels
+   au plus, auteurs masqués, jamais les siennes ; 7 séries au plus). Une série envoyée est close :
+   le serveur ne renvoie plus ses cartes ni l'ordre choisi, et refuse de la reclasser. **Aperçu de l'impression** : cartes classées par le jury, rareté
    prévue (les plus attendues deviennent les plus rares), rareté forçable carte par carte.
 5. **Sortie** : à la date prévue la vague s'imprime seule (ou « Imprimer maintenant ») ; sans carte
    validée, la sortie est repoussée d'un jour. Avec « Une vague chaque semaine », la vague suivante
@@ -251,6 +255,11 @@ connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
    Épique 10, Légendaire 3, Unique 1 (réglables) ; ils sont répartis sur 14 jours après la sortie au
    lieu de partir le premier jour. Collection, « Je cherche », signalements, échanges en face à face
    (QR code ou code à 4 caractères, table en direct, échange atomique côté serveur).
+7. **Meilleurs créateurs** : podium des 3 premiers et place de chacun (accueil du jeu, page
+   d'attente). Score calculé par le serveur (`internal/tcg/leaderboard.go`) et jamais envoyé : carte
+   en jeu selon sa rareté (commune 2 … unique 25), carte validée 1, bloquée −1, retirée après
+   signalements −3 ; refus d'une personne sur la photo et propositions en attente : 0. La page dit
+   ce qui compte et à quel point (jauges), sans chiffre, pour ne rien dévoiler de la rareté.
 
 **Ce que le serveur garde** (`tcg.json` du volume `/data`, droits 600, copie quotidienne dans
 `tcg-backups/`, 14 jours) : pseudo, collection, propositions, votes, signalements et échanges de

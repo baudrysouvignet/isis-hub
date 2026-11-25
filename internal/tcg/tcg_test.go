@@ -171,11 +171,14 @@ func TestJuryPrintAndBoosters(t *testing.T) {
 		if err := g.Vote(pid, v.Jury.Wave, 0, rank); err != nil {
 			t.Fatal(err)
 		}
-		if err := g.Vote(pid, v.Jury.Wave, 0, rank); err != nil { // modifiable
-			t.Fatal(err)
+		if err := g.Vote(pid, v.Jury.Wave, 0, rank); err == nil { // une fois pour toutes
+			t.Fatal("série classée deux fois")
+		}
+		if v, _ := g.PlayerView(pid); !v.Jury.Ballots[0].Done || len(v.Jury.Ballots[0].Cards) != 0 {
+			t.Fatal("série classée : cartes ou classement encore visibles")
 		}
 	}
-	// Statistiques : chaque juré compté une fois, une série refaite ne compte pas deux fois.
+	// Statistiques : chaque juré compté une fois, chaque série une fois.
 	if s := g.AdminStats(); s.Jurors != 12 || s.Series != 12 || s.Waves[0].Jurors != 12 || s.Waves[0].Series != 12 || s.Days[len(s.Days)-1].Series != 12 {
 		t.Fatalf("statistiques du jury : %+v", s)
 	}

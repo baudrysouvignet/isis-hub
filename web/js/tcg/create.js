@@ -462,7 +462,7 @@ export function proposalsList(ctx, launch) {
     if (['pending', 'blocked'].includes(key)) {
       const rm = h('button.tcr-rm', { type: 'button', text: 'Retirer' });
       rm.addEventListener('click', async () => {
-        if (!confirm(`Retirer « ${p.title} » ? Elle ne sera pas imprimée.`)) return;
+        if (!confirm(`Retirer « ${p.title} » ? Elle ne sera pas imprimée, et ne te rend pas de proposition aujourd’hui.`)) return;
         try {
           await api.withdraw(p.id);
           await ctx.reload();

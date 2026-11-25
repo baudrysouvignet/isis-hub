@@ -10,6 +10,36 @@
 
 export const CHANGELOG = [
   {
+    version: '2.2.0',
+    date: '2026-11-25',
+    title: 'Le podium des créateurs, et un jury qui ne se rejoue pas',
+    launch: {
+      art: 'podium',
+      requires: 'tcg', // écran montré seulement quand le TCG est ouvert aux étudiants
+      title: 'Le podium des créateurs',
+      sub: 'Les meilleurs créateurs de cartes de la promo, sur un podium. Et ta place juste en dessous.',
+      steps: [
+        ['Le podium', 'Les 3 meilleurs créateurs, sur l’accueil du jeu. Hors du podium, ta place s’affiche en dessous.'],
+        ['La qualité avant le nombre', 'Une carte que la promo adore compte bien plus que beaucoup de cartes communes. « Ce qui fait gagner ou perdre des points » explique tout.'],
+        ['Une série de jury par jour', 'Une fois envoyée, ta série est close : ni revue, ni refaite. La suivante arrive le lendemain.'],
+      ],
+      privacy: 'Le classement est calculé par le serveur : seules les places s’affichent, jamais les scores ni la rareté des cartes.',
+      go: { label: 'Voir le classement', to: 'tcg' },
+    },
+    short: [
+      'TCG : le podium des meilleurs créateurs, et ta place juste en dessous.',
+      'Jury : une série envoyée est close (ni revue, ni refaite) ; la suivante arrive le lendemain.',
+      'Propositions : le quota du jour vaut pour ton compte, sur tous tes appareils.',
+    ],
+    details: [
+      'Meilleurs créateurs : les 3 premiers sur un podium (accueil du jeu, et page d’attente avant le lancement), puis ta place si tu n’y es pas.',
+      'Ce qui compte : chaque carte en jeu, d’autant plus qu’elle est rare (c’est le jury de la promo qui décide de la rareté) ; un peu, chaque carte validée. Ce qui fait perdre : une carte bloquée par la modération, et davantage une carte retirée après signalements. Les propositions en attente et les cartes refusées par une personne sur la photo ne comptent pas.',
+      'Les scores sont calculés par le serveur et ne sont jamais affichés : seules les places le sont, pour ne rien dévoiler de la rareté de tes cartes. Les joueurs dont les propositions sont suspendues ne sont pas classés.',
+      'Jury « Tu préfères ? » : une fois ta série envoyée, ses cartes et ton classement ne se revoient plus, et elle ne se refait pas. La suivante ouvre le lendemain, dès minuit (un jour de jury manqué se rattrape).',
+      'Propositions : le nombre par jour est compté par compte, tous appareils confondus. Retirer une proposition ou quitter le jeu puis revenir ne rend plus de proposition le même jour ; tout revient le lendemain.',
+    ],
+  },
+  {
     version: '2.1.1',
     date: '2026-11-25',
     title: 'Les cartes se cachent des captures d’écran',

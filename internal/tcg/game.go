@@ -399,6 +399,19 @@ func (g *Game) perDay(now time.Time) int {
 	return g.st.Season.PerDay
 }
 
+// keyOf : empreinte de l'identifiant du joueur pid ("" si inconnue).
+func (g *Game) keyOf(pid string) string {
+	for k, id := range g.st.Keys {
+		if id == pid {
+			return k
+		}
+	}
+	return ""
+}
+
+// proposalsLeft : propositions encore possibles aujourd'hui, PAR COMPTE (tous appareils). On compte
+// les envois du jour (State.Sent, retraits compris et même après « Quitter le jeu »), et au moins
+// les cartes encore présentes créées aujourd'hui (fichiers d'avant ce compteur).
 func (g *Game) proposalsLeft(pid string, now time.Time) int {
 	today := calendarDay(now)
 	n := 0
@@ -406,6 +419,9 @@ func (g *Game) proposalsLeft(pid string, now time.Time) int {
 		if c.Author == pid && calendarDay(c.Created) == today {
 			n++
 		}
+	}
+	if s, ok := g.st.Sent[g.keyOf(pid)]; ok && s.Day == today && s.N > n {
+		n = s.N
 	}
 	if left := g.perDay(now) - n; left > 0 {
 		return left
@@ -483,6 +499,15 @@ func (g *Game) Propose(pid string, in NewProposal) (string, error) {
 	g.st.Cards[c.ID] = c
 	g.st.Used += in.Bytes
 	g.activity(c.Created).Proposals++
+	if k := g.keyOf(pid); k != "" { // envois du jour, par compte (proposalsLeft)
+		today := calendarDay(c.Created)
+		s := g.st.Sent[k]
+		if s.Day != today {
+			s = Sent{Day: today}
+		}
+		s.N++
+		g.st.Sent[k] = s
+	}
 	g.dirty = true
 	return c.ID, nil
 }
@@ -631,7 +656,7 @@ func (g *Game) newBallot(p *Player, w *Wave) (Ballot, bool) {
 	return Ballot{Cards: ids}, true
 }
 
-// Vote : classement d'un bulletin, modifiable jusqu'à la fin du jury.
+// Vote : classement d'un bulletin, une fois pour toutes (ni revu, ni refait).
 func (g *Game) Vote(pid string, wave, ballot int, rank []string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -651,24 +676,17 @@ func (g *Game) Vote(pid string, wave, ballot int, rank []string) error {
 	if len(rank) != len(b.Cards) || !samePerm(rank, b.Cards) {
 		return userErr(http.StatusBadRequest, "Classement incomplet.")
 	}
-	// Ancien classement retiré, nouveau compté : points de (n-1) à -(n-1), par pas de 2.
 	if len(b.Rank) > 0 {
-		for i, id := range b.Rank {
-			if c := g.st.Cards[id]; c != nil {
-				c.JuryPts -= len(b.Rank) - 1 - 2*i
-				c.JuryVotes--
-			}
-		}
+		return userErr(http.StatusConflict, "Série déjà classée : reviens demain pour la suivante.")
 	}
+	// Points de (n-1) à -(n-1), par pas de 2.
 	for i, id := range rank {
 		if c := g.st.Cards[id]; c != nil {
 			c.JuryPts += len(rank) - 1 - 2*i
 			c.JuryVotes++
 		}
 	}
-	if len(b.Rank) == 0 {
-		g.activity(g.now()).Series++
-	}
+	g.activity(g.now()).Series++
 	b.Rank = append([]string(nil), rank...)
 	b.At = g.now()
 	g.dirty = true

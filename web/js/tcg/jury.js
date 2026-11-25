@@ -2,7 +2,8 @@
 // masqués, jamais les siennes) : on touche celle qu'on veut le plus voir dans le jeu. 5 à 7 duels
 // par série suffisent à classer les 5 cartes du bulletin (duels.js) : le serveur reçoit le même
 // classement complet qu'avant. Une série par jour de jury ; une série commencée reprend où on
-// l'a laissée (choix gardés sur l'appareil), et se refait jusqu'à la fin du jury.
+// l'a laissée (choix gardés sur l'appareil). Une fois envoyée, elle est close : ni ses cartes ni
+// l'ordre choisi ne se revoient (le serveur ne les renvoie plus), et elle ne se refait pas.
 
 import { h, toast, motionOK } from '../core/dom.js';
 import { api } from './api.js';
@@ -35,8 +36,6 @@ function saveAnswers(key, list) {
     // idem
   }
 }
-
-let redo = false; // « Refaire cette série » : les duels reprennent sur un bulletin déjà classé
 
 export function renderJury(ctx) {
   const st = ctx.st;
@@ -74,12 +73,12 @@ export function renderJury(ctx) {
     h(
       'header.tv-head.tju-head',
       {},
-      h('div', {}, h('p.tk', { text: `Jury · jusqu’au ${until}` }), h('h1.tv-h1', { tabIndex: -1, text: ballot.rank?.length && !redo ? 'Série terminée' : 'Tu préfères ?' })),
+      h('div', {}, h('p.tk', { text: `Jury · jusqu’au ${until}` }), h('h1.tv-h1', { tabIndex: -1, text: ballot.done ? (jury.more ? 'Série terminée' : 'Reviens demain') : 'Tu préfères ?' })),
       meter(jury.jurors, jury.players, `${jury.jurors} / ${jury.players} jurés`, 'tju-meter'),
     ),
   );
-  if (ballot.rank?.length && !redo) {
-    root.append(done(ctx, jury, ballot, bi, series));
+  if (ballot.done) {
+    root.append(done(ctx, jury, bi));
     return root;
   }
   root.append(duels(ctx, jury, ballot, bi, series));
@@ -198,9 +197,8 @@ function duels(ctx, jury, ballot, bi, series, { practice = false } = {}) {
     undo.disabled = true;
     arena.replaceChildren(h('div.tdu-sending', {}, h('span.spinner'), h('span', { text: 'Ton classement est enregistré…' })));
     try {
-      await api.vote(jury.wave, bi, order);
+      await api.vote(jury.wave, ballot.n ?? bi, order);
       saveAnswers(key, null);
-      redo = false;
       toast('Série terminée : merci, juré·e !', 'check');
       await ctx.reload();
     } catch (e) {
@@ -238,15 +236,6 @@ function duels(ctx, jury, ballot, bi, series, { practice = false } = {}) {
 
   step(1);
   if (practice) wrap.querySelector('.tdu-anon').textContent = 'Essai réservé à l’administration : rien n’est enregistré.';
-  if (redo && !practice) {
-    const cancel = h('button.tdu-cancel', { type: 'button', text: 'Garder mon classement' });
-    cancel.addEventListener('click', () => {
-      redo = false;
-      saveAnswers(key, null);
-      ctx.render();
-    });
-    wrap.querySelector('.tdu-foot').append(cancel);
-  }
   return wrap;
 }
 
@@ -255,7 +244,7 @@ function tbtnTry(ctx) {
   return b;
 }
 
-/** Classement d'une série : vignettes numérotées, de la préférée à la moins voulue. */
+/** Classement d'un essai (administration) : vignettes numérotées, de la préférée à la moins voulue. */
 function podium(cards) {
   return h(
     'ol.tju-podium',
@@ -291,11 +280,11 @@ function bigCard(c) {
   return s;
 }
 
-/** Série classée : son classement, la série suivante (ou quand elle ouvre), la refaire. */
-function done(ctx, jury, ballot, bi, series) {
-  const byId = new Map(ballot.cards.map((c) => [c.id, c]));
-  const rank = ballot.rank.filter((id) => byId.has(id));
-  const pod = podium(rank.map((id) => byId.get(id)));
+/**
+ * Série envoyée : close. Ni ses cartes ni l'ordre choisi (le serveur ne les renvoie plus), pas de
+ * « refaire » ; la série suivante si elle est déjà ouverte (jour manqué), sinon « reviens demain ».
+ */
+function done(ctx, jury, bi) {
   const acts = h('div.rc-acts');
   if (jury.more) {
     acts.append(
@@ -312,23 +301,24 @@ function done(ctx, jury, ballot, bi, series) {
       }),
     );
   }
-  acts.append(
-    tbtn('Refaire cette série', 'loop', 'tbtn--ghost', () => {
-      redo = true;
-      ctx.render();
-    }),
-  );
-  let next = '';
-  if (jury.next) next = `Série suivante demain, dès minuit : 5 autres cartes, 7 duels au plus.`;
-  else if (!jury.more && jury.max && bi + 1 >= jury.max) next = 'Tu as joué toutes les séries de ce jury. Merci !';
+  const last = !jury.more && !jury.next && jury.max && bi + 1 >= jury.max;
+  const at = jury.next ? new Date(jury.next) : null;
+  const when = at && `${at.toDateString() === new Date(Date.now() + 864e5).toDateString() ? 'demain' : `le ${dayLong(at)}`}, dès ${at.getHours() || at.getMinutes() ? hourText(at) : 'minuit'}`;
+  const next = jury.more
+    ? 'Une autre série t’attend : un jour de jury manqué se rattrape.'
+    : at
+      ? `Prochaine série ${when} : 5 autres cartes, 7 duels au plus.`
+      : last
+        ? 'Tu as joué toutes les séries de ce jury. Merci !'
+        : 'Le jury se termine : merci pour tes votes !';
   return h(
-    'div.tju-done',
+    'div.tju-done.tju-sealed',
     {},
-    h('span.tju-check', {}, ic('check', 'ic')),
-    h('p.tk', { text: series }),
+    h('span.tju-check', {}, ic('lock', 'ic')),
+    h('p.tk', { text: `Série ${bi + 1}${jury.max ? ` sur ${jury.max}` : ''} · envoyée` }),
+    h('p.tju-lead', { text: 'Ton classement est enregistré, et il reste secret, même pour toi : les cartes de cette série et ton ordre ne se revoient plus.' }),
     h('p', { text: `Résultat à la sortie de la vague ${jury.wave} : les cartes que la promo préfère deviennent les plus rares.` }),
-    pod,
-    next ? h('p.tju-next', {}, ic('clock', 'ic ic--xs'), next) : null,
-    acts,
+    h('p.tju-next', {}, ic('clock', 'ic ic--xs'), next),
+    acts.childElementCount ? acts : null,
   );
 }

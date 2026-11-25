@@ -232,6 +232,9 @@ func (g *Game) normalize() {
 	if st.Activity == nil {
 		st.Activity = map[string]*Activity{}
 	}
+	if st.Sent == nil {
+		st.Sent = map[string]Sent{}
+	}
 	for _, p := range st.Players {
 		if p.Owned == nil {
 			p.Owned = map[string][]int{}
@@ -294,6 +297,12 @@ func (g *Game) Run(stop <-chan struct{}) {
 func (g *Game) Tick() {
 	g.mu.Lock()
 	now := g.now()
+	for k, s := range g.st.Sent { // quotas de la veille : oubliés
+		if s.Day != calendarDay(now) {
+			delete(g.st.Sent, k)
+			g.dirty = true
+		}
+	}
 	for _, w := range g.st.Waves {
 		if !w.Printed && !w.ReleaseAt.IsZero() && !now.Before(w.ReleaseAt) {
 			g.printWave(w, now)

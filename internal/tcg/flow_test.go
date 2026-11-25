@@ -297,7 +297,11 @@ func TestFullLaunchFlow(t *testing.T) {
 		}
 		p.must("POST", "/api/tcg/jury", map[string]any{"wave": st.Jury.Wave, "ballot": 0, "rank": rank}, 200)
 		p.must("POST", "/api/tcg/jury", map[string]any{"wave": st.Jury.Wave, "ballot": 0, "rank": rank[:2]}, 400) // incomplet
-		p.must("POST", "/api/tcg/jury/more", nil, 409)                                                            // série suivante demain
+		p.must("POST", "/api/tcg/jury", map[string]any{"wave": st.Jury.Wave, "ballot": 0, "rank": rank}, 409)     // pas refaite
+		if b := p.state().Jury.Ballots[0]; !b.Done || len(b.Cards) != 0 {
+			t.Fatalf("%s : série classée encore visible", name)
+		}
+		p.must("POST", "/api/tcg/jury/more", nil, 409) // série suivante demain
 		if st := p.state(); st.Jury.More || st.Jury.Next.IsZero() || st.Jury.Max != maxBallots {
 			t.Fatalf("série suivante : %+v", st.Jury)
 		}

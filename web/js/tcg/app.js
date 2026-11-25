@@ -17,6 +17,7 @@ import { renderCollection } from './collection.js';
 import { renderJury } from './jury.js';
 import { renderTrade, startTrade, joinTradeCode, openJoinSheet } from './trade.js';
 import { renderConsent, openMailing, pendingAppear } from './consent.js';
+import { leaderboard } from './leaders.js';
 
 const DOCK = [
   ['home', 'Booster', 'booster'],
@@ -268,7 +269,7 @@ export function createTCG(o) {
     sw.hidden = p === 'off';
     soonChip.hidden = p !== 'soon';
     const lastBallot = st?.jury?.ballots?.[st.jury.ballots.length - 1];
-    const juryPending = Boolean(lastBallot && !lastBallot.rank?.length);
+    const juryPending = Boolean(lastBallot && !lastBallot.done);
     dot.hidden = !((p === 'live' && (!st || st.me.boosterReady)) || juryPending);
     dot.setAttribute('aria-label', juryPending && p !== 'live' ? 'Duels du jury à jouer' : 'Booster disponible');
     app.classList.toggle('tcg-soon', p === 'soon' || (p === 'live' && !st));
@@ -284,7 +285,7 @@ export function createTCG(o) {
     };
     badge('home', s?.me.boosterReady ? 1 : 0);
     const last = s?.jury?.ballots?.[s.jury.ballots.length - 1];
-    badge('jury', last && !last.rank?.length ? 1 : 0);
+    badge('jury', last && !last.done ? 1 : 0);
     badge('trade', s?.invites?.length ?? 0);
     badge('collection', 0);
     badge('create', 0);
@@ -606,7 +607,9 @@ export function createTCG(o) {
       ),
     );
     const note = h('p.tsoon-note', {}, ic('info'), 'Avant le lancement, le jeu n’enregistre que tes propositions et ton pseudo. Les photos où quelqu’un est reconnaissable demandent son accord.');
-    return h('section.tsoon', {}, hero, stats, ol, form, tiers, note);
+    // Classement des créateurs (joueurs inscrits) : avant le lancement, les cartes validées comptent.
+    const lb = st ? leaderboard(st.leaders, { onCreate: () => $('#tsoon-form', wrap)?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' }) }) : null;
+    return h('section.tsoon', {}, hero, stats, lb, ol, form, tiers, note);
   }
 
   // ---------------------------------------------------------------- jeu lancé, sans session
@@ -656,7 +659,7 @@ export function createTCG(o) {
     for (const inv of st.invites) item('trade', 'trade', `${inv.from} t’invite à échanger`, `Code ${inv.code} · expire dans ${untilText(inv.expires)}`, () => joinTradeCode(ctx, inv.code));
     const jury = st.jury;
     const lastBallot = jury?.ballots?.[jury.ballots.length - 1];
-    if (jury && lastBallot && !lastBallot.rank?.length) item('jury', 'jury', 'Jury de la semaine', `Vote pour tes cartes préférées · une série t’attend, jusqu’à ${dayLong(jury.until).split(' ')[0]} ${hourText(jury.until)}`, () => go('jury'));
+    if (jury && lastBallot && !lastBallot.done) item('jury', 'jury', 'Jury de la semaine', `Vote pour tes cartes préférées · une série t’attend, jusqu’à ${dayLong(jury.until).split(' ')[0]} ${hourText(jury.until)}`, () => go('jury'));
     // « Mes apparitions » toujours là : en tête quand une carte attend mon accord.
     const toAnswer = pendingAppear(st);
     const appearSub = toAnswer.length ? `${plural(toAnswer.length, 'carte attend', 'cartes attendent')} ton accord` : (st.appear?.length ? `${plural(st.appear.length, 'carte')} où l’on t’a indiqué` : 'Les cartes où l’on t’indique sur la photo');
@@ -671,6 +674,7 @@ export function createTCG(o) {
     }
     const below = [];
     if (todo.length) below.push(h('section.th-todo', {}, h('h2.th-h2', { text: 'À faire' }), h('div.tnext-list', {}, ...todo)));
+    below.push(leaderboard(st.leaders, { onCreate: me.proposalsLeft > 0 && !me.muted ? () => go('create') : null }));
 
     // Dans la promo : défi de la dernière vague et événements.
     const latest = [...st.waves].reverse().find((w) => w.printed);
