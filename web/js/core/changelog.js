@@ -10,6 +10,18 @@
 
 export const CHANGELOG = [
   {
+    version: '2.2.1',
+    date: '2026-11-25',
+    title: 'TCG : une carte envoyée ne se revoit plus',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
+    short: ['TCG : une carte envoyée ne s’affiche plus ; seules les cartes bloquées reviennent, avec le motif.'],
+    details: [
+      'Créer une carte : une fois envoyée, ta carte ne s’affiche plus (ni en attente, ni validée, ni au jury, ni imprimée) : son sort reste une surprise jusqu’au jeu. Sa rareté se découvre en la tirant, dans ta collection.',
+      'Si la modération bloque une de tes cartes, elle réapparaît dans « Cartes bloquées » avec le motif et le message de l’équipe, pour que tu puisses la corriger ou la retirer.',
+      'Meilleurs créateurs : une carte bloquée par la modération compte toujours, même si tu la retires ensuite (le jeu garde seulement leur nombre). Une carte refusée par une personne sur la photo ne compte toujours pas.',
+    ],
+  },
+  {
     version: '2.2.0',
     date: '2026-11-25',
     title: 'Le podium des créateurs, et un jury qui ne se rejoue pas',

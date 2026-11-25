@@ -15,12 +15,6 @@ func ImgURL(name string) string {
 	return "api/tcg/img/" + name
 }
 
-// ConsentCount : « 1 / 2 d'accord », pour l'auteur (sans savoir qui).
-type ConsentCount struct {
-	OK    int `json:"ok"`
-	Total int `json:"total"`
-}
-
 // CardView : une carte imprimée, telle que la voit un joueur.
 type CardView struct {
 	ID      string `json:"id"`
@@ -147,24 +141,18 @@ func (g *Game) candidateView(c *Card) CardView {
 }
 
 // ProposalView : une proposition du joueur, avec son statut.
+// ProposalView : une proposition BLOQUÉE de l'auteur (les autres ne lui sont plus montrées). Sans
+// photo : celle d'une carte bloquée n'est plus servie aux joueurs (ImageShown).
 type ProposalView struct {
-	ID      string        `json:"id"`
-	Num     int           `json:"num"`
-	Title   string        `json:"title"`
-	Desc    string        `json:"desc"`
-	Cat     string        `json:"cat"`
-	Img     string        `json:"img,omitempty"`
-	Thumb   string        `json:"thumb,omitempty"`
-	Status  string        `json:"status"`
-	Reason  string        `json:"reason,omitempty"`
-	Message string        `json:"message,omitempty"`
-	Created time.Time     `json:"created"`
-	Wave    int           `json:"wave,omitempty"`
-	Rarity  Rarity        `json:"rarity,omitempty"`
-	Issued  int           `json:"issued,omitempty"`
-	AtJury  bool          `json:"atJury,omitempty"`
-	Consent *ConsentCount `json:"consent,omitempty"` // accords des personnes sur la photo (carte en attente)
-	JuryEnd time.Time     `json:"juryEnd,omitzero"`
+	ID      string    `json:"id"`
+	Num     int       `json:"num"`
+	Title   string    `json:"title"`
+	Desc    string    `json:"desc"`
+	Cat     string    `json:"cat"`
+	Status  string    `json:"status"`
+	Reason  string    `json:"reason,omitempty"`
+	Message string    `json:"message,omitempty"`
+	Created time.Time `json:"created"`
 }
 
 // BallotView : un bulletin du jury.
@@ -329,30 +317,15 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 			v.Owned[id] = serials
 		}
 	}
-	// Mes propositions, la plus récente d'abord.
+	// Mes propositions : une carte envoyée ne se revoit plus (en attente, validée, au jury,
+	// imprimée : son sort reste une surprise). Seules reviennent les cartes BLOQUÉES par la
+	// modération, avec le motif et le message, pour que l'auteur puisse la corriger ou la retirer.
 	jw := g.juryWave(now)
 	for _, c := range g.st.Cards {
-		if c.Author != pid {
+		if c.Author != pid || c.Status != StatusBlocked {
 			continue
 		}
-		pv := ProposalView{ID: c.ID, Num: c.Num, Title: c.Title, Desc: c.Desc, Cat: c.Cat, Img: ImgURL(c.Img), Thumb: ImgURL(c.Thumb), Status: c.Status, Reason: BlockReasons[c.Reason], Message: c.Message, Created: c.Created, Wave: c.Wave, Issued: c.Issued}
-		// Rareté : surprise, même pour l'auteur, jusqu'à ce qu'il tire sa carte.
-		if (c.Status == StatusPrinted || c.Status == StatusRemoved) && len(p.Owned[c.ID]) > 0 {
-			pv.Rarity = c.Rarity
-		}
-		if c.Status == StatusAccepted && jw != nil {
-			pv.AtJury, pv.JuryEnd = true, jw.JuryUntil
-		}
-		if len(c.Tags) > 0 && c.Status == StatusConsent {
-			cc := &ConsentCount{Total: len(c.Tags)}
-			for _, t := range c.Tags {
-				if t.Answer == "ok" {
-					cc.OK++
-				}
-			}
-			pv.Consent = cc
-		}
-		v.Proposals = append(v.Proposals, pv)
+		v.Proposals = append(v.Proposals, ProposalView{ID: c.ID, Num: c.Num, Title: c.Title, Desc: c.Desc, Cat: c.Cat, Status: c.Status, Reason: BlockReasons[c.Reason], Message: c.Message, Created: c.Created})
 	}
 	sort.Slice(v.Proposals, func(i, j int) bool { return v.Proposals[i].Created.After(v.Proposals[j].Created) })
 	if len(v.Proposals) > 40 {

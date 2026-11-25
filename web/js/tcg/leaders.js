@@ -66,7 +66,7 @@ export function leaderboard(lb, { onCreate } = {}) {
 const RULES = [
   ['plus', 'Carte en jeu', 'Selon ce que la promo en a pensé au jury : plus elle est rare, plus elle rapporte. Une seule carte très attendue vaut bien plus que beaucoup de cartes communes.', 2, 5],
   ['plus', 'Carte validée', 'Acceptée par la modération, en attente du jury ou de l’impression.', 1],
-  ['minus', 'Carte bloquée', 'Refusée par la modération (insulte, dénigrement, photo floue, doublon…).', 1],
+  ['minus', 'Carte bloquée', 'Refusée par la modération (insulte, dénigrement, photo floue, doublon…), même si tu la retires ensuite.', 1],
   ['minus', 'Carte retirée du jeu', 'Après des signalements de joueurs.', 2],
   ['zero', 'Ne comptent pas', 'Les propositions en attente, et les cartes qu’une personne sur la photo a refusées.', 0],
 ];

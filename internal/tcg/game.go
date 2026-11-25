@@ -545,6 +545,13 @@ func (g *Game) Withdraw(pid, id string) error {
 		g.mu.Unlock()
 		return userErr(http.StatusConflict, "Ta carte est validée : elle est dans le jeu et ne peut plus être retirée.")
 	}
+	// Bloquée par la modération puis retirée : la carte part, sa pénalité reste au classement
+	// (on garde seulement le nombre). Un refus d'une personne sur la photo ne pénalise pas.
+	if c.Status == StatusBlocked && c.Reason != "personne" {
+		if p := g.st.Players[pid]; p != nil {
+			p.Withdrawn++
+		}
+	}
 	imgs := []string{c.Img, c.Thumb}
 	g.st.Used -= c.Bytes
 	delete(g.st.Cards, id)

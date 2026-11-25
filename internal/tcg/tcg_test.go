@@ -610,10 +610,14 @@ func TestHTTPFlow(t *testing.T) {
 	}
 	var st View
 	json.Unmarshal(do("GET", "/api/tcg/state", "", cookie, nil).Body.Bytes(), &st)
-	if len(st.Proposals) != 1 || st.Proposals[0].Status != StatusPending || st.Proposals[0].Img == "" {
+	if len(st.Proposals) != 0 { // envoyée : ne se revoit plus
 		t.Fatalf("propositions : %+v", st.Proposals)
 	}
-	if w := do("GET", "/"+st.Proposals[0].Img, "", "", nil); w.Code != 200 || w.Header().Get("Content-Type") != "image/jpeg" {
+	var sent, sentID string
+	for _, c := range svc.Game.st.Cards {
+		sent, sentID = ImgURL(c.Img), c.ID
+	}
+	if w := do("GET", "/"+sent, "", "", nil); w.Code != 200 || w.Header().Get("Content-Type") != "image/jpeg" {
 		t.Fatalf("image : %d", w.Code)
 	}
 	// Administration : refusée sans session admin, acceptée avec.
@@ -624,7 +628,7 @@ func TestHTTPFlow(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "Le néon qui clignote") {
 		t.Fatalf("file admin : %d %s", w.Code, w.Body)
 	}
-	if w := do("POST", "/api/tcg/admin/card/"+st.Proposals[0].ID, `{"action":"validate"}`, "hub_admin=ok", map[string]string{"X-Hub-Admin": "1"}); w.Code != 200 {
+	if w := do("POST", "/api/tcg/admin/card/"+sentID, `{"action":"validate"}`, "hub_admin=ok", map[string]string{"X-Hub-Admin": "1"}); w.Code != 200 {
 		t.Fatalf("validation : %d %s", w.Code, w.Body)
 	}
 	if w := do("POST", "/api/tcg/booster", "", cookie, nil); w.Code != 409 {

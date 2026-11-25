@@ -1705,3 +1705,9 @@ html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
 }
 .la-pod .la-pill { position: absolute; left: 0; right: 0; bottom: -6px; width: max-content; margin: 0 auto; }
 @media (prefers-reduced-motion: reduce) { .la-pod-s i { animation: none; } }
+
+/* Créer : les cartes envoyées ne se revoient plus ; seules les bloquées reviennent (motif, retrait). */
+.tcr-sent { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 14px 16px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); color: var(--text-2); font-size: 13.5px; line-height: 1.45; }
+.tcr-sent .ic { flex: none; margin-top: 2px; color: var(--text-3); }
+.tcr-thumb--blocked { display: grid; place-items: center; background: rgba(255, 122, 89, .1); color: #FF9A7E; }
+.tcr-msg { display: block; margin-top: 4px; color: var(--text-2); font-size: 12.5px; font-style: italic; quotes: "« " " »"; }

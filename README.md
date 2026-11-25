@@ -238,6 +238,8 @@ connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
 2. **Propositions** : photo recadrée et compressée **dans la page** (960 × 720 et vignette 320 × 240,
    WebP sinon JPEG, métadonnées retirées), titre de 28 caractères, deux phrases, catégorie, deux
    engagements sur la photo. Le serveur revérifie tout (nature et dimensions de l'image, EXIF retiré).
+   Une fois envoyée, la carte ne se revoit plus (le serveur ne renvoie à l'auteur que ses cartes
+   **bloquées**, avec le motif et le message, pour la corriger ou la retirer).
    Quota du jour **par compte** (tous appareils) : le serveur compte les envois de la journée sous
    l'empreinte de l'identifiant ; ni un retrait ni « Quitter le TCG » ne rendent de proposition le
    même jour, et ce compteur est oublié le lendemain.
@@ -258,7 +260,8 @@ connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
 7. **Meilleurs créateurs** : podium des 3 premiers et place de chacun (accueil du jeu, page
    d'attente). Score calculé par le serveur (`internal/tcg/leaderboard.go`) et jamais envoyé : carte
    en jeu selon sa rareté (commune 2 … unique 25), carte validée 1, bloquée −1, retirée après
-   signalements −3 ; refus d'une personne sur la photo et propositions en attente : 0. La page dit
+   signalements −3 ; refus d'une personne sur la photo et propositions en attente : 0. Une carte
+   bloquée puis retirée par son auteur garde sa pénalité (`Player.Withdrawn` : un nombre). La page dit
    ce qui compte et à quel point (jauges), sans chiffre, pour ne rien dévoiler de la rareté.
 
 **Ce que le serveur garde** (`tcg.json` du volume `/data`, droits 600, copie quotidienne dans

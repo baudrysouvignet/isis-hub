@@ -125,6 +125,34 @@ func TestLeaderboard(t *testing.T) {
 	if cardPoints(&Card{Status: StatusRemoved, Reason: "personne"}) != 0 || cardPoints(&Card{Status: StatusRemoved, Reason: "moque"}) >= 0 {
 		t.Fatal("points des cartes retirées")
 	}
+	// Une carte bloquée puis retirée garde sa pénalité ; un refus sur la photo n'en a pas.
+	score := func(pid string) float64 {
+		for _, cr := range g.ranking() {
+			if cr.id == pid {
+				return cr.score
+			}
+		}
+		return 0
+	}
+	before := score(d)
+	for id, card := range g.st.Cards {
+		if card.Author == d && card.Status == StatusBlocked {
+			if err := g.Withdraw(d, id); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+	}
+	if score(d) != before || g.st.Players[d].Withdrawn != 1 {
+		t.Fatalf("pénalité perdue en retirant une carte bloquée : %v → %v", before, score(d))
+	}
+	g.st.NextNum++
+	refused := fmt.Sprintf("x%d", g.st.NextNum)
+	g.st.Cards[refused] = &Card{ID: refused, Author: d, Status: StatusBlocked, Reason: "personne"}
+	if err := g.Withdraw(d, refused); err != nil || g.st.Players[d].Withdrawn != 1 {
+		t.Fatalf("refus d'une personne compté comme pénalité : %v, %d", err, g.st.Players[d].Withdrawn)
+	}
+
 	g.st.Players[c].Muted = true
 	if v, _ := g.PlayerView(c); v.Leaders.Rank != 0 || v.Leaders.Podium[0].Pseudo == "Chloé C." {
 		t.Fatal("joueur suspendu encore classé")

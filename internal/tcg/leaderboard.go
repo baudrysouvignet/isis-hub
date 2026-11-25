@@ -13,7 +13,8 @@ import (
 // si bien qu'une poignée de cartes légendaires pèse plus que beaucoup de cartes communes. Avant
 // l'impression, une carte validée compte un peu, sans le score du jury : rien ne laisse deviner
 // la rareté qu'elle aura. Les cartes bloquées par la modération, ou retirées après signalements,
-// font perdre des points ; celles qu'une personne sur la photo a refusées ne comptent pas.
+// font perdre des points, même quand l'auteur retire ensuite sa carte bloquée (Player.Withdrawn) ;
+// celles qu'une personne sur la photo a refusées ne comptent pas.
 var rarityPoints = map[Rarity]float64{Commune: 2, Rare: 5, Epique: 9, Legendaire: 15, Unique: 25}
 
 const (
@@ -92,6 +93,7 @@ func (g *Game) ranking() []creator {
 	}
 	out := make([]creator, 0, len(by))
 	for _, cr := range by {
+		cr.score += blockedPoints * float64(g.st.Players[cr.id].Withdrawn) // bloquées puis retirées
 		if cr.valid > 0 && cr.score > 0 {
 			out = append(out, *cr)
 		}

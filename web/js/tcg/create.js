@@ -6,7 +6,7 @@
 
 import { h, toast, motionOK } from '../core/dom.js';
 import { api, TcgError } from './api.js';
-import { cardEl, ic, quota, tbtn, CATS, dayLong, dateShort, rchip, plural } from './ui.js';
+import { cardEl, ic, quota, tbtn, CATS, dayLong, plural } from './ui.js';
 import { peoplePicker } from './people.js';
 import { cropRect, fitZoom, MAX_ZOOM } from './crop.js';
 
@@ -389,7 +389,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
       fd.append('photo', big, `photo.${ext}`);
       fd.append('thumb', small, `vignette.${small.type === 'image/webp' ? 'webp' : 'jpg'}`);
       await api.propose(fd);
-      toast('Carte envoyée en relecture : un admin la valide sous 48 h.', 'check');
+      toast('Carte envoyée : elle ne s’affiche plus ici. Si elle est bloquée, elle réapparaîtra avec le motif.', 'check');
       if (blobURL) URL.revokeObjectURL(blobURL);
       ctx.draftForm = null; // envoyée : le prochain affichage repart d'un formulaire vide
       await ctx.reload();
@@ -408,73 +408,47 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     h('div', {}, h('p.tk', { text: 'Atelier' }), h(`${heading}.tv-h1`, { tabIndex: -1, text: launch ? 'Propose ta carte' : 'Crée ta carte' }), h('p.tcr-lead', { text: 'Une photo, un titre, deux phrases. La promo joue à « Tu préfères ? » : les cartes préférées deviennent les plus rares.' })),
     h('div.tcr-quota', {}, quota(left, perDay), h('span', { text: muted ? 'Propositions suspendues' : left > 0 ? `${plural(left, 'proposition')} aujourd’hui` : 'Reviens demain' })),
   );
-  host.append(head, h('section.tcr', {}, h('div.tcr-grid', {}, form, preview), proposalsList(ctx, launch)));
+  host.append(head, h('section.tcr', {}, h('div.tcr-grid', {}, form, preview), proposalsList(ctx)));
   return host;
 }
 
-/** « Mes propositions » et leur avancement : validation → jury → impression. */
-export function proposalsList(ctx, launch) {
+/**
+ * Cartes envoyées : elles ne se revoient plus (leur sort reste une surprise). Seules les cartes
+ * BLOQUÉES par la modération reviennent ici, avec le motif et le message, pour la corriger ou la
+ * retirer. Le serveur n'envoie d'ailleurs que celles-là.
+ */
+export function proposalsList(ctx) {
   const st = ctx.st;
-  const sec = h('section.tcr-mine', {}, h('h2.tco-sec-h', {}, h('span', { text: 'Mes propositions' }), h('small', { text: launch ? 'validation → jury de lancement → Vague 1' : 'validation → jury → impression' })));
-  const list = h('ul.tcr-list');
-  const items = st?.proposals ?? [];
-  if (!items.length) {
-    sec.append(h('p.thelp', { text: st ? 'Tes cartes proposées apparaîtront ici, avec leur avancement.' : 'Rejoins le jeu en envoyant ta première carte : tu suivras ici sa validation.' }));
+  const blocked = (st?.proposals ?? []).filter((p) => p.status === 'blocked');
+  const sec = h('section.tcr-mine', {}, h('h2.tco-sec-h', {}, h('span', { text: blocked.length ? 'Cartes bloquées' : 'Mes cartes envoyées' }), blocked.length ? h('small', { text: 'à corriger ou à retirer' }) : null));
+  if (!blocked.length) {
+    sec.append(
+      h(
+        'p.tcr-sent',
+        {},
+        ic('lock', 'ic ic--sm'),
+        h('span', { text: st ? 'Une fois envoyée, ta carte ne s’affiche plus ici : son sort reste une surprise jusqu’au jeu. Si la modération en bloque une, elle réapparaît ici avec le motif, pour que tu puisses la corriger ou la retirer.' : 'Rejoins le jeu en envoyant ta première carte.' }),
+      ),
+    );
     return sec;
   }
-  const status = {
-    pending: ['review', 'clock', 'À valider'],
-    accepted: ['accepted', 'check', 'Validée'],
-    consent: ['review', 'person', 'Accord'],
-    jury: ['jury', 'jury', 'Au jury'],
-    printed: ['printed', 'check', 'Imprimée'],
-    blocked: ['refused', 'x', 'Bloquée'],
-    removed: ['refused', 'x', 'Retirée'],
-  };
-  for (const p of items) {
-    const key = p.status === 'accepted' && p.atJury ? 'jury' : p.status;
-    const [cls, icon, label] = status[key] ?? status.pending;
-    let text;
-    switch (key) {
-      case 'pending':
-        text = 'En attente de validation · un admin vérifie sous 48 h';
-        break;
-      case 'consent':
-        text = `Acceptée · en attente de l’accord des personnes sur la photo${p.consent ? ` (${p.consent.ok} / ${p.consent.total})` : ''}`;
-        break;
-      case 'jury':
-        text = `Au jury cette semaine · jusqu’au ${dateShort(p.juryEnd)}`;
-        break;
-      case 'accepted':
-        text = launch ? 'Validée · elle passera au jury de lancement' : 'Validée · elle passera au prochain jury';
-        break;
-      case 'printed':
-        text = `Imprimée · Vague ${p.wave} · tirée ${plural(p.issued || 0, 'fois', 'fois')}${p.rarity ? '' : ' · rareté secrète : tire-la pour la découvrir'}`;
-        break;
-      case 'blocked':
-        text = `Bloquée · ${(p.reason || 'motif').toLowerCase()}${p.message ? ` : « ${p.message} »` : ''}`;
-        break;
-      default:
-        text = p.reason === 'Refusée par une personne sur la photo' ? 'Retirée du jeu : une personne sur la photo a retiré son accord' : 'Retirée du jeu après signalements';
-    }
-    const it = h('div.tcr-it', {}, h('b', { text: p.title }), h('span', { text }));
-    // Une carte validée est dans le jeu : seul ce qui attend la validation (ou a été bloqué) se retire.
-    if (['pending', 'blocked'].includes(key)) {
-      const rm = h('button.tcr-rm', { type: 'button', text: 'Retirer' });
-      rm.addEventListener('click', async () => {
-        if (!confirm(`Retirer « ${p.title} » ? Elle ne sera pas imprimée, et ne te rend pas de proposition aujourd’hui.`)) return;
-        try {
-          await api.withdraw(p.id);
-          await ctx.reload();
-          toast('Proposition retirée.', 'check');
-        } catch (e) {
-          toast(e.message, 'alert');
-        }
-      });
-      it.append(rm);
-    }
-    const pill = h(`span.tstatus.tstatus--${cls}`, {}, ic(icon, 'ic ic--xs'), label);
-    list.append(h(`li.tcr-item.is-${cls}`, {}, h(`span.tcr-thumb${key === 'blocked' ? '.is-blur' : ''}`, {}, p.thumb ? h('img', { alt: '', src: p.thumb }) : null), it, key === 'printed' && p.rarity ? h('span', {}, rchip(p.rarity)) : pill));
+  const list = h('ul.tcr-list');
+  for (const p of blocked) {
+    const why = p.reason === 'Refusée par une personne sur la photo' ? 'Une personne sur la photo a refusé' : `Bloquée · ${(p.reason || 'motif').toLowerCase()}`;
+    const it = h('div.tcr-it', {}, h('b', { text: p.title }), h('span', { text: why }), p.message ? h('q.tcr-msg', { text: p.message }) : null);
+    const rm = h('button.tcr-rm', { type: 'button', text: 'Retirer' });
+    rm.addEventListener('click', async () => {
+      if (!confirm(`Retirer « ${p.title} » ? Elle disparaît, et ne te rend pas de proposition aujourd’hui.`)) return;
+      try {
+        await api.withdraw(p.id);
+        await ctx.reload();
+        toast('Carte retirée.', 'check');
+      } catch (e) {
+        toast(e.message, 'alert');
+      }
+    });
+    it.append(rm);
+    list.append(h('li.tcr-item.is-refused', {}, h('span.tcr-thumb.tcr-thumb--blocked', {}, ic('x', 'ic')), it, h('span.tstatus.tstatus--refused', {}, ic('x', 'ic ic--xs'), 'Bloquée')));
   }
   sec.append(list);
   return sec;

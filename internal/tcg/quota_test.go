@@ -38,7 +38,7 @@ func TestProposalQuotaPerAccount(t *testing.T) {
 	}
 
 	// Retirer une proposition ne rend pas de place.
-	id := phone.state().Proposals[0].ID
+	id := phone.mine()[0].ID
 	phone.must("POST", "/api/tcg/proposal/"+id+"/withdraw", map[string]any{}, 200)
 	if code := propose(phone, "Après un retrait"); code != 429 {
 		t.Fatalf("proposition après un retrait : %d", code)

@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -79,6 +80,24 @@ func (a *api) must(method, path string, body any, want int) map[string]any {
 	if code != want {
 		a.t.Fatalf("%s %s : %d (attendu %d) %v", method, path, code, want, out)
 	}
+	return out
+}
+
+// mine : cartes proposées par le joueur de ce client, la plus récente d'abord, lues côté serveur
+// (le joueur, lui, ne voit plus que ses cartes bloquées).
+func (a *api) mine() []Card {
+	a.t.Helper()
+	pid := a.state().Me.ID
+	g := a.svc.Game
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	var out []Card
+	for _, c := range g.st.Cards {
+		if c.Author == pid {
+			out = append(out, *c)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Num > out[j].Num })
 	return out
 }
 
@@ -227,11 +246,12 @@ func TestFullLaunchFlow(t *testing.T) {
 	if code, _ := ines.propose("Une de trop", photo, thumb, true); code != 429 {
 		t.Fatalf("4e proposition du jour : %d", code)
 	}
-	if st := ines.state(); len(st.Proposals) != 3 || st.Proposals[0].Status != StatusPending || st.Me.ProposalsLeft != 0 {
+	// Envoyées, elles ne se revoient plus (seules les cartes bloquées reviennent).
+	if st := ines.state(); len(st.Proposals) != 0 || st.Me.ProposalsLeft != 0 || len(ines.mine()) != 3 {
 		t.Fatalf("mes propositions : %+v", st.Proposals)
 	}
 	// La photo est servie par le serveur, sans ses métadonnées.
-	img := ines.state().Proposals[0].Img
+	img := ImgURL(ines.mine()[0].Img)
 	r := httptest.NewRequest("GET", "https://hub.test/"+img, nil)
 	w := httptest.NewRecorder()
 	svc.ServeHTTP(w, r)

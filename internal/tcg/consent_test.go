@@ -44,21 +44,24 @@ func TestConsentFlow(t *testing.T) {
 		if code, out := p.proposeWith(title, img, th, true, ""); code != 201 {
 			t.Fatalf("proposition : %d %v", code, out)
 		}
-		return p.state().Proposals[0].ID
+		return p.mine()[0].ID
 	}
 	card := propose(ines, "Au foyer", 1)
 	alone := propose(hugo, "Le néon", 2)
 
 	// Sans personne indiquée : validée tout de suite. Adresses hors université refusées.
 	admin.must("POST", "/api/tcg/admin/card/"+alone, map[string]any{"action": "validate"}, 200)
-	if p := hugo.state().Proposals[0]; p.Status != StatusAccepted {
+	if p := hugo.mine()[0]; p.Status != StatusAccepted {
 		t.Fatalf("validation sans personne : %s", p.Status)
 	}
 	admin.must("POST", "/api/tcg/admin/card/"+card, map[string]any{"action": "validate", "people": "x@gmail.com"}, 400)
 	// Léa, Hugo et l'autrice elle-même (d'accord d'office), avec un doublon ignoré.
 	admin.must("POST", "/api/tcg/admin/card/"+card, map[string]any{"action": "validate", "people": "lea.martin@etud.univ-jfc.fr, hugo.b@etud.univ-jfc.fr; LEA.MARTIN@etud.univ-jfc.fr ines.x@etud.univ-jfc.fr"}, 200)
-	if p := ines.state().Proposals[0]; p.Status != StatusConsent || p.Consent == nil || p.Consent.OK != 1 || p.Consent.Total != 3 {
-		t.Fatalf("en attente d'accord, vue de l'autrice : %+v", p)
+	if p := ines.mine()[0]; p.Status != StatusConsent || len(p.Tags) != 3 {
+		t.Fatalf("en attente d'accord : %+v", p)
+	}
+	if len(ines.state().Proposals) != 0 {
+		t.Fatal("carte en attente d'accord montrée à l'autrice")
 	}
 	if len(lea.state().Appear) != 1 {
 		t.Fatal("carte absente de « Mes apparitions »")
@@ -89,7 +92,7 @@ func TestConsentFlow(t *testing.T) {
 	// Zoé peut être prévenue tout de suite, Léa attend ses 24 h, même si on envoie sa clé.
 	clk.add(5 * time.Hour)
 	admin.must("POST", "/api/tcg/admin/card/"+alone, map[string]any{"action": "people", "people": "lea.martin@etud.univ-jfc.fr, zoe.z@etud.univ-jfc.fr"}, 200)
-	if p := hugo.state().Proposals[0]; p.Status != StatusConsent {
+	if p := hugo.mine()[0]; p.Status != StatusConsent {
 		t.Fatalf("personne ajoutée à une carte validée : %s", p.Status)
 	}
 	m = admin.must("GET", "/api/tcg/admin/mailing", nil, 200)
@@ -114,18 +117,18 @@ func TestConsentFlow(t *testing.T) {
 
 	// Réponses : Léa accepte « Au foyer », Hugo aussi → la carte passe au jury d'elle-même.
 	lea.must("POST", "/api/tcg/consent", map[string]any{"card": card, "ok": true}, 200)
-	if p := ines.state().Proposals[0]; p.Status != StatusConsent {
+	if p := ines.mine()[0]; p.Status != StatusConsent {
 		t.Fatal("validée avant la dernière réponse")
 	}
 	hugo.must("POST", "/api/tcg/consent", map[string]any{"card": card, "ok": true}, 200)
-	if p := ines.state().Proposals[0]; p.Status != StatusAccepted {
+	if p := ines.mine()[0]; p.Status != StatusAccepted {
 		t.Fatalf("après le dernier accord : %s", p.Status)
 	}
 	// Léa refuse « Le néon » : la carte est bloquée aussitôt, sans action de l'administration.
 	lea.must("POST", "/api/tcg/consent", map[string]any{"card": alone, "ok": false}, 200)
 	lea.must("POST", "/api/tcg/consent", map[string]any{"card": alone, "ok": true}, 409)
 	ines.must("POST", "/api/tcg/consent", map[string]any{"card": alone, "ok": true}, 404) // pas indiquée
-	if p := hugo.state().Proposals[0]; p.Status != StatusBlocked || !strings.Contains(p.Message, "accord") || strings.Contains(p.Message, "Léa") {
+	if p := hugo.state().Proposals[0]; p.ID != alone || p.Status != StatusBlocked || !strings.Contains(p.Message, "accord") || strings.Contains(p.Message, "Léa") {
 		t.Fatalf("carte refusée, vue de l'auteur : %+v", p)
 	}
 	for _, x := range admin.must("GET", "/api/tcg/admin/mailing", nil, 200)["targets"].([]any) {
@@ -140,7 +143,7 @@ func TestConsentFlow(t *testing.T) {
 	third := propose(ines, "En amphi", 3)
 	admin.must("POST", "/api/tcg/admin/card/"+third, map[string]any{"action": "validate", "people": "z@univ-jfc.fr"}, 200)
 	admin.must("POST", "/api/tcg/admin/card/"+third, map[string]any{"action": "untag", "key": svc.Game.mailKey("z@univ-jfc.fr")}, 200)
-	if p := ines.state().Proposals[0]; p.Status != StatusAccepted {
+	if p := ines.mine()[0]; p.Status != StatusAccepted {
 		t.Fatalf("après retrait de la personne : %s", p.Status)
 	}
 	// « Valider sans attendre » : une carte en attente passe au jury.
@@ -148,7 +151,7 @@ func TestConsentFlow(t *testing.T) {
 	fourth := propose(ines, "Au labo", 4)
 	admin.must("POST", "/api/tcg/admin/card/"+fourth, map[string]any{"action": "validate", "people": "y@univ-jfc.fr"}, 200)
 	admin.must("POST", "/api/tcg/admin/card/"+fourth, map[string]any{"action": "force"}, 200)
-	if p := ines.state().Proposals[0]; p.Status != StatusAccepted {
+	if p := ines.mine()[0]; p.Status != StatusAccepted {
 		t.Fatalf("validation forcée : %s", p.Status)
 	}
 	// L'autrice peut indiquer des personnes : rien ne part avant la validation, et l'administration
@@ -159,7 +162,7 @@ func TestConsentFlow(t *testing.T) {
 		t.Fatalf("proposition avec personnes : %d %v", code, out)
 	}
 	var withLea string
-	for _, p := range ines.state().Proposals {
+	for _, p := range ines.mine() {
 		if p.Title == "Proposée avec Léa" {
 			withLea = p.ID
 		}

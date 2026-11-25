@@ -161,10 +161,11 @@ type Player struct {
 	LastDraw  []Pull           `json:"lastDraw,omitempty"`
 	Ballots   map[int][]Ballot `json:"ballots,omitempty"` // vague → bulletins
 	Trades    []TradeLog       `json:"trades,omitempty"`
-	Muted     bool             `json:"muted,omitempty"`   // propositions suspendues par un administrateur
-	Seen      time.Time        `json:"seen,omitzero"`     // dernier passage (jour), pour les statistiques
-	MailKey   string           `json:"mailKey,omitempty"` // HMAC de l'adresse de sa messagerie (accords)
-	Admin     bool             `json:"admin,omitempty"`   // identifiant dans ADMIN_USERS (envoi des mails d'accord)
+	Muted     bool             `json:"muted,omitempty"`     // propositions suspendues par un administrateur
+	Seen      time.Time        `json:"seen,omitzero"`       // dernier passage (jour), pour les statistiques
+	MailKey   string           `json:"mailKey,omitempty"`   // HMAC de l'adresse de sa messagerie (accords)
+	Admin     bool             `json:"admin,omitempty"`     // identifiant dans ADMIN_USERS (envoi des mails d'accord)
+	Withdrawn int              `json:"withdrawn,omitempty"` // cartes bloquées par la modération puis retirées : comptent toujours au classement
 }
 
 // Wave : une vague de cartes, avec son calendrier.

@@ -95,21 +95,17 @@ func TestValidatedCardLockedAndRaritySecret(t *testing.T) {
 	if err := g.PrintNow(1); err != nil {
 		t.Fatal(err)
 	}
-	rarity := func() Rarity {
-		v, _ := g.PlayerView(a)
-		for _, p := range v.Proposals {
-			if p.ID == kept {
-				return p.Rarity
-			}
-		}
-		return "?"
-	}
-	if r := rarity(); r != "" {
-		t.Fatalf("rareté montrée à l'auteur avant qu'il la tire : %q", r)
+	// Imprimée, elle n'est plus dans « Mes propositions » : sa rareté se découvre en la tirant,
+	// dans la collection.
+	if v, _ := g.PlayerView(a); len(v.Proposals) != 0 {
+		t.Fatalf("carte imprimée montrée à l'auteur : %+v", v.Proposals)
 	}
 	g.st.Players[a].Owned[kept] = []int{0}
-	if r := rarity(); r == "" || r == "?" {
-		t.Fatal("rareté cachée après le tirage")
+	v, _ := g.PlayerView(a)
+	for _, c := range v.Cards {
+		if c.ID == kept && c.Rarity == "" {
+			t.Fatal("rareté cachée dans la collection après le tirage")
+		}
 	}
 }
 
