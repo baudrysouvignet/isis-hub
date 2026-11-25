@@ -50,7 +50,7 @@ export function createTCG(o) {
   const theme = $('meta[name="theme-color"]');
 
   const wrap = h('div.tcg-wrap', { data: { tcgView: '' } });
-  shield({ isOpen: () => open }); // cartes floutées pendant les captures repérables
+  shield(); // cartes floutées pendant les captures repérables, sans aucun message
   const dockBtns = {};
   const dockBadges = {};
   const dock = h(

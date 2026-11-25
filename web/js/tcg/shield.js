@@ -14,14 +14,13 @@
 //  - pas d'« Enregistrer l'image » (appui long, clic droit, glisser-déposer), pas d'impression.
 // Partout où une carte ou une photo du jeu s'affiche : collection, « Mes apparitions » (accord des
 // personnes sur la photo), jury « Tu préfères ? », ouverture d'un booster, fiches des cartes.
-// Rien n'est envoyé au serveur : une capture repérée n'est ni comptée, ni signalée.
-
-import { toast } from '../core/dom.js';
+// Rien n'est envoyé au serveur, et rien n'est affiché : une capture repérée n'est ni comptée, ni
+// signalée, ni commentée ; les cartes se floutent, c'est tout.
 
 const CLASS = 'tcg-veil';
 const PHOTO = '.tc, .tcg img, .tsh img, .op img'; // cartes, photos du jeu, ouverture d'un booster
 
-export function shield({ isOpen = () => true } = {}) {
+export function shield() {
   const root = document.documentElement;
   const touch = matchMedia('(pointer: coarse)').matches;
   let timer = 0;
@@ -29,7 +28,6 @@ export function shield({ isOpen = () => true } = {}) {
   let held = false; // touches d'un raccourci de capture enfoncées
   let sticky = false; // voile gardé jusqu'au prochain geste sur la page
   let since = 0;
-  let told = false;
 
   const veil = () => {
     clearTimeout(timer);
@@ -80,10 +78,6 @@ export function shield({ isOpen = () => true } = {}) {
       if (e.key === 'PrintScreen' || e.key === 'Snapshot') {
         sticky = true;
         veil();
-        if (isOpen() && !told) {
-          told = true;
-          toast('Les cartes se cachent pendant les captures : leurs photos appartiennent aux personnes dessus.', 'lock');
-        }
         return;
       }
       if (held && !shortcut(e)) held = false;

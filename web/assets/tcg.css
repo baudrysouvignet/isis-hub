@@ -1593,6 +1593,9 @@ html:not(.tcg-veil) :is(.tc-art img, .tc-title, .tc-desc, .tcg img, .tsh img, .o
   background: radial-gradient(closest-side, rgba(8, 24, 29, .55), rgba(8, 24, 29, .25));
 }
 .tcg-veil :is(.tc-title, .tc-desc) { filter: blur(max(3px, 1.6cqw)); }
+/* Résumé d'une série du jury : titres des cartes classées. */
+html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
+.tcg-veil .tju-pod b { filter: blur(5px); }
 @media print {
   .tc, .tcg img, .tsh img, .op img { visibility: hidden !important; }
 }
