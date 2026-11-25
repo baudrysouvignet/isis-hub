@@ -413,6 +413,161 @@ func (g *Game) AdminOverview() Overview {
 	return o
 }
 
+// statsSpan : jours montrés dans le graphique des statistiques.
+const statsSpan = 30
+
+// DayStats : une journée de jeu (de 6 h à 6 h).
+type DayStats struct {
+	Day string `json:"day"` // 2026-11-25
+	Activity
+	Boosters int `json:"boosters"`
+}
+
+// WaveStats : chiffres d'une vague.
+type WaveStats struct {
+	N          int       `json:"n"`
+	Printed    bool      `json:"printed"`
+	ReleaseAt  time.Time `json:"releaseAt"`
+	Cards      int       `json:"cards"`      // imprimées (prochaine vague : candidates validées)
+	Jurors     int       `json:"jurors"`     // joueurs ayant classé au moins une série
+	Series     int       `json:"series"`     // séries classées
+	Boosters   int       `json:"boosters"`   // ouverts pendant la vague
+	Copies     int       `json:"copies"`     // exemplaires de ses cartes tirés
+	Discovered int       `json:"discovered"` // cartes tirées au moins une fois
+	Collectors int       `json:"collectors"` // joueurs qui ont au moins une de ses cartes
+}
+
+// AdminStats : statistiques du jeu, en nombres seulement (aucun pseudo).
+type AdminStats struct {
+	Now        time.Time   `json:"now"`
+	Since      string      `json:"since,omitempty"` // premier jour du journal d'activité
+	Players    int         `json:"players"`
+	Joined7    int         `json:"joined7"`
+	Today      int         `json:"today"` // venus aujourd'hui (depuis 6 h)
+	Week       int         `json:"week"`  // venus ces 7 derniers jours
+	Month      int         `json:"month"` // venus ces 30 derniers jours
+	Jurors     int         `json:"jurors"`
+	Series     int         `json:"series"`
+	Boosters   int         `json:"boosters"`
+	Collectors int         `json:"collectors"`
+	Trades     int         `json:"trades"`
+	Creators   int         `json:"creators"`
+	Proposals  int         `json:"proposals"`
+	Days       []DayStats  `json:"days"` // du plus ancien au plus récent
+	Waves      []WaveStats `json:"waves"`
+}
+
+// AdminStats : combien de joueurs viennent, votent, ouvrent des boosters, échangent.
+func (g *Game) AdminStats() AdminStats {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	now := g.now()
+	today := DayKey(now)
+	s := AdminStats{Now: now, Players: len(g.st.Players), Days: make([]DayStats, 0, statsSpan), Waves: []WaveStats{}}
+
+	for d, a := range g.st.Activity {
+		if s.Since == "" || d < s.Since {
+			s.Since = d
+		}
+		s.Trades += a.Trades
+	}
+	day0 := now.In(Paris).Add(-BoosterHour * time.Hour) // comme DayKey, en heure de Paris (changements d'heure)
+	for i := statsSpan - 1; i >= 0; i-- {
+		d := day0.AddDate(0, 0, -i).Format("2006-01-02")
+		ds := DayStats{Day: d, Boosters: g.st.Boosters[d]}
+		if a := g.st.Activity[d]; a != nil {
+			ds.Activity = *a
+		}
+		s.Days = append(s.Days, ds)
+	}
+
+	waves := map[int]*WaveStats{}
+	next := true // première vague pas encore imprimée : ses candidates
+	for _, w := range g.st.Waves {
+		ws := WaveStats{N: w.N, Printed: w.Printed, ReleaseAt: w.ReleaseAt, Boosters: w.Opened}
+		if w.Printed {
+			ws.Cards = len(w.Cards)
+			for _, id := range w.Cards {
+				if c := g.st.Cards[id]; c != nil {
+					ws.Copies += c.Issued
+					if c.Issued > 0 {
+						ws.Discovered++
+					}
+				}
+			}
+		} else if next {
+			next = false
+			for _, c := range g.st.Cards {
+				if c.Status == StatusAccepted || c.Status == StatusConsent {
+					ws.Cards++
+				}
+			}
+		}
+		s.Boosters += w.Opened
+		s.Waves = append(s.Waves, ws)
+	}
+	for i := range s.Waves {
+		waves[s.Waves[i].N] = &s.Waves[i]
+	}
+
+	for _, p := range g.st.Players {
+		if DayKey(p.Seen) == today {
+			s.Today++
+		}
+		if now.Sub(p.Seen) < 7*24*time.Hour {
+			s.Week++
+		}
+		if now.Sub(p.Seen) < 30*24*time.Hour {
+			s.Month++
+		}
+		if now.Sub(p.Created) < 7*24*time.Hour {
+			s.Joined7++
+		}
+		juror := false
+		for n, bs := range p.Ballots {
+			ranked := 0
+			for _, b := range bs {
+				if len(b.Rank) > 0 {
+					ranked++
+				}
+			}
+			if ranked == 0 {
+				continue
+			}
+			juror = true
+			s.Series += ranked
+			if ws := waves[n]; ws != nil {
+				ws.Jurors++
+				ws.Series += ranked
+			}
+		}
+		if juror {
+			s.Jurors++
+		}
+		has := map[int]bool{} // vagues dont le joueur a au moins une carte
+		for id, serials := range p.Owned {
+			if c := g.st.Cards[id]; c != nil && len(serials) > 0 && c.Wave > 0 {
+				has[c.Wave] = true
+			}
+		}
+		if len(has) > 0 {
+			s.Collectors++
+		}
+		for n := range has {
+			if ws := waves[n]; ws != nil {
+				ws.Collectors++
+			}
+		}
+	}
+	creators := map[string]bool{}
+	for _, c := range g.st.Cards {
+		s.Proposals++
+		creators[c.Author] = true
+	}
+	s.Creators = len(creators)
+	return s
+}
+
 // AdminPlayers : joueurs, pour suspendre les propositions d'un auteur.
 func (g *Game) AdminPlayer(pid string) (AdminAuthor, bool) {
 	g.mu.Lock()

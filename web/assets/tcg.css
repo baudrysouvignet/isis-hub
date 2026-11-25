@@ -1532,3 +1532,68 @@ html[data-vt="out"]::view-transition-new(root) { z-index: 1; }
 @media (max-width: 359.98px) {
   .tdu-anon { display: none; }
 }
+
+/* Administration · statistiques du TCG : chiffres, une courbe sur 30 jours, tableau par vague. */
+.tad-stats { display: grid; gap: 14px; background: var(--surface); }
+.tad-stats-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tad-stats-head .tad-sub { margin: 0; }
+.tad-sub--sm { margin: 4px 0 0; font-size: 13.5px; color: var(--text-2); }
+.tad-minis--stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.tad-chart { display: grid; gap: 10px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); }
+.tad-chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; color: var(--text-2); font-size: 13px; }
+.tad-chart-total { color: var(--text); font: 800 20px/1 var(--font); font-variant-numeric: tabular-nums; }
+.tad-chart-max { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tad-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.tad-seg-b { padding: 6px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--text-2); font: 600 12.5px/1.2 var(--font); cursor: pointer; }
+.tad-seg-b:hover { color: var(--text); }
+.tad-seg-b.is-on { background: var(--text); border-color: var(--text); color: var(--surface); }
+.tad-plot {
+  position: relative; display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 2px; align-items: end; height: 140px;
+  padding-top: 6px; border-bottom: 1px solid var(--line);
+  background: linear-gradient(to top, transparent calc(50% - .5px), var(--line) calc(50% - .5px), var(--line) calc(50% + .5px), transparent calc(50% + .5px));
+}
+.tad-bar { position: relative; height: 100%; display: flex; align-items: flex-end; outline-offset: 1px; border-radius: 4px; cursor: default; }
+.tad-bar i { display: block; width: 100%; height: max(var(--bh, 0%), 2px); border-radius: 4px 4px 0 0; background: var(--brand); opacity: .85; transition: opacity .15s; }
+.tad-bar.is-zero i { background: var(--line); opacity: 1; }
+.tad-bar.is-today i { opacity: 1; }
+.tad-bar:hover i, .tad-bar:focus-visible i { opacity: 1; filter: brightness(1.12); }
+.tad-bar::after {
+  content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 6px); translate: -50% 0; z-index: 2; white-space: nowrap; pointer-events: none;
+  padding: 5px 8px; border-radius: 8px; background: var(--text); color: var(--surface); font: 600 12px/1.2 var(--font); opacity: 0; transition: opacity .12s;
+}
+.tad-bar.is-end::after { left: auto; right: 0; translate: 0 0; }
+.tad-bar:nth-child(-n+7)::after { left: 0; translate: 0 0; }
+.tad-bar:hover::after, .tad-bar:focus-visible::after { opacity: 1; }
+.tad-chart-axis { display: flex; justify-content: space-between; color: var(--text-3); font-size: 12px; }
+.tad-tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+.tad-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tad-table th, .tad-table td { padding: 9px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+.tad-table thead th { color: var(--text-3); font-weight: 600; font-size: 12px; background: var(--surface-2); }
+.tad-table th:first-child { text-align: left; }
+.tad-table tbody th { font-weight: 700; }
+.tad-table tbody tr:last-child > * { border-bottom: 0; }
+@media (max-width: 759.98px) {
+  .tad-minis.tad-minis--stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tad-plot { height: 110px; gap: 1px; }
+  .tad-bar i { border-radius: 2px 2px 0 0; }
+}
+
+/* ==========================================================================
+   TCG · cartes et captures d'écran (shield.js)
+   ========================================================================== */
+/* Ni « Enregistrer l'image » au doigt, ni glisser-déposer, ni sélection. */
+/* Photos du jeu : page du TCG (collection, accords, jury…), ses feuilles, l'ouverture d'un booster. */
+:is(.tcg, .tsh, .op) img, .tc img { -webkit-touch-callout: none; -webkit-user-drag: none; -webkit-user-select: none; user-select: none; }
+.tc { -webkit-touch-callout: none; }
+/* Voile : posé sans transition (la capture ne doit rien attraper), retiré en fondu. */
+html:not(.tcg-veil) :is(.tc-art img, .tc-title, .tc-desc, .tcg img, .tsh img, .op img) { transition: filter .35s ease; }
+.tcg-veil :is(.tc-art img, .tcg img, .tsh img, .op img) { filter: blur(18px) saturate(.5) brightness(.85); }
+.tcg-veil .tc-art::after {
+  content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(8, 24, 29, .55), rgba(8, 24, 29, .25));
+}
+.tcg-veil :is(.tc-title, .tc-desc) { filter: blur(max(3px, 1.6cqw)); }
+@media print {
+  .tc, .tcg img, .tsh img, .op img { visibility: hidden !important; }
+}
+

@@ -280,7 +280,11 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 		return View{}, false
 	}
 	now := g.now()
-	if now.Sub(p.Seen) > 6*time.Hour {
+	if DayKey(p.Seen) != DayKey(now) { // première venue de la journée : un visiteur de plus
+		g.activity(now).Visitors++
+		p.Seen = now
+		g.dirty = true
+	} else if now.Sub(p.Seen) > 6*time.Hour {
 		p.Seen = now
 		g.dirty = true
 	}

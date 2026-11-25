@@ -41,6 +41,7 @@ func (g *Game) Join(login, pseudo string) (tok string, created bool, err error) 
 		id = randomID("j")
 		g.st.Players[id] = &Player{ID: id, Pseudo: ps, Created: now, Owned: map[string][]int{}, Ballots: map[int][]Ballot{}}
 		g.st.Keys[key] = id
+		g.activity(now).Joined++
 		created = true
 	}
 	if p := g.st.Players[id]; p != nil && g.IsAdmin != nil && p.Admin != g.IsAdmin(login) {
@@ -241,6 +242,12 @@ func (g *Game) OpenBooster(pid string) ([]Pull, error) {
 	p.Booster, p.BoosterAt = day, now
 	p.LastDraw = pulls
 	g.st.Boosters[day]++
+	for i := len(g.st.Waves) - 1; i >= 0; i-- { // vague en cours : la dernière sortie
+		if g.st.Waves[i].Printed {
+			g.st.Waves[i].Opened++
+			break
+		}
+	}
 	g.dirty = true
 	return pulls, nil
 }
@@ -475,6 +482,7 @@ func (g *Game) Propose(pid string, in NewProposal) (string, error) {
 	c.Tags = g.newTags(pid, in.People) // aucun mail avant la validation (askable)
 	g.st.Cards[c.ID] = c
 	g.st.Used += in.Bytes
+	g.activity(c.Created).Proposals++
 	g.dirty = true
 	return c.ID, nil
 }
@@ -657,6 +665,9 @@ func (g *Game) Vote(pid string, wave, ballot int, rank []string) error {
 			c.JuryPts += len(rank) - 1 - 2*i
 			c.JuryVotes++
 		}
+	}
+	if len(b.Rank) == 0 {
+		g.activity(g.now()).Series++
 	}
 	b.Rank = append([]string(nil), rank...)
 	b.At = g.now()

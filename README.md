@@ -260,6 +260,21 @@ de `VAULT_PEPPER`) ; l'identifiant n'est jamais écrit. Sessions de jeu : cookie
 reprise ; sans copie, le serveur refuse de démarrer plutôt que d'écraser le jeu. « Quitter le TCG »
 (Transparence) efface les données de jeu de l'étudiant.
 
+**Statistiques** (`/admin` → *Cartes TCG* → *Statistiques*) : joueurs inscrits et venus (aujourd'hui,
+7 et 30 jours), jurés et séries classées, boosters ouverts, échanges, créateurs ; une courbe sur 30
+jours (venus, boosters, séries, propositions, inscriptions, échanges) et un tableau par vague
+(cartes, jurés, séries, boosters ouverts pendant la vague, exemplaires tirés, découvertes,
+collectionneurs). Pour cela, le serveur ne garde que des **compteurs par jour** (400 jours) et un
+compteur de boosters par vague : aucun pseudo, rien qui dise qui est venu ou a voté.
+
+**Captures d'écran** (`web/js/tcg/shield.js`) : aucun site ne peut empêcher la capture d'écran d'un
+téléphone, ni dans le navigateur ni installé sur l'écran d'accueil (seule une appli Android native
+le peut). Le jeu fait le reste : cartes floutées dès que la page n'est plus au premier plan (aperçu
+des applis, volet d'Android et sa tuile « Capture », outil Capture de Windows), dès que les touches
+des raccourcis de capture sont enfoncées sur ordinateur (⌘ ⇧ 3/4/5, ⊞ ⇧ S, Ctrl ⇧) et après
+Impr. écran ; pas d'« Enregistrer l'image » ni d'impression. Partout où une carte s'affiche
+(collection, « Mes apparitions », jury, ouverture d'un booster). Rien n'est envoyé au serveur.
+
 ### Images : Cloudflare R2
 
 Sans configuration, les photos sont gardées dans `DATA_DIR/tcg-img`. Pour les mettre dans R2

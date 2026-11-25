@@ -22,6 +22,7 @@ func TestCroustillant(t *testing.T) {
 	defer api.Close()
 	s := New()
 	s.BaseAPI = api.URL
+	s.now = func() time.Time { return time.Date(2026, 11, 17, 9, 0, 0, 0, paris) } // menus d'une semaine : date fixe
 	m := s.Get(context.Background())
 	day := m.Days["2026-11-17"]
 	if m.Source != "Croustillant" || len(day) != 2 || day[0].Name != "Entrées" || day[1].Dishes[0] != "Steak haché de bœuf" {
@@ -44,6 +45,7 @@ func TestFallbackAndCache(t *testing.T) {
 	defer page.Close()
 	s := New()
 	s.BaseAPI, s.BaseCrou = api.URL, page.URL
+	s.now = func() time.Time { return time.Date(2026, 11, 18, 9, 0, 0, 0, paris) }
 	m := s.Get(context.Background())
 	day := m.Days["2026-11-18"]
 	if m.Source != "CROUS Toulouse" || len(day) != 2 || strings.Join(day[0].Dishes, ",") != "Tomates fêta,Salade Verte" {

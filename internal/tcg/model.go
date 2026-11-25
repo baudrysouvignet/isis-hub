@@ -13,7 +13,8 @@
 // Chaque joueur ouvre un booster de 5 cartes par jour et échange ses cartes en face à face.
 //
 // Ce que le serveur garde (fichier tcg.json du volume /data) : le pseudo de chaque joueur, sa
-// collection, ses propositions, ses votes du jury, l'historique de ses échanges. Le joueur est
+// collection, ses propositions, ses votes du jury, l'historique de ses échanges ; pour les
+// statistiques de l'administration, des compteurs par jour et par vague (jamais qui). Le joueur est
 // reconnu par une empreinte de son identifiant universitaire (HMAC avec un secret du serveur,
 // tiré de VAULT_PEPPER) : l'identifiant lui-même n'est jamais enregistré. Les photos des cartes
 // sont gardées dans un stockage d'objets (Cloudflare R2) ou, à défaut, dans le dossier de données.
@@ -181,6 +182,17 @@ type Wave struct {
 	Overrides      map[string]Rarity `json:"overrides,omitempty"` // raretés choisies par l'administrateur
 	Mix            map[Rarity]int    `json:"mix,omitempty"`       // cartes par rareté choisies par l'administrateur (communes : le reste)
 	Runs           map[Rarity]int    `json:"runs,omitempty"`      // exemplaires par carte pour cette vague (sinon ceux de la saison)
+	Opened         int               `json:"opened,omitempty"`    // boosters ouverts pendant la vague (de sa sortie à la suivante)
+}
+
+// Activity : chiffres d'une journée de jeu (de 6 h à 6 h, comme les boosters), pour les
+// statistiques de l'administration. Des compteurs seulement : rien ne dit qui.
+type Activity struct {
+	Visitors  int `json:"visitors,omitempty"`  // joueurs venus sur le TCG ce jour-là
+	Joined    int `json:"joined,omitempty"`    // nouveaux joueurs
+	Proposals int `json:"proposals,omitempty"` // cartes proposées
+	Series    int `json:"series,omitempty"`    // séries du jury classées (une série refaite ne compte pas deux fois)
+	Trades    int `json:"trades,omitempty"`    // échanges conclus
 }
 
 // Season : réglages du jeu.
@@ -210,17 +222,18 @@ type session struct {
 
 // state : tout ce qui est écrit dans tcg.json.
 type state struct {
-	Season   Season             `json:"season"`
-	Waves    []*Wave            `json:"waves"`
-	Cards    map[string]*Card   `json:"cards"`
-	Players  map[string]*Player `json:"players"`
-	Keys     map[string]string  `json:"keys"`     // HMAC(identifiant) → joueur
-	Sessions map[string]session `json:"sessions"` // SHA-256(jeton) → session
-	Feed     []FeedItem         `json:"feed,omitempty"`
-	NextNum  int                `json:"nextNum"`
-	Boosters map[string]int     `json:"boosters,omitempty"` // jour → boosters ouverts (rythme des raretés)
-	Used     int64              `json:"used"`               // octets d'images gardés
-	Mailing  Mailing            `json:"mailing,omitzero"`   // mails d'accord (consent.go)
+	Season   Season               `json:"season"`
+	Waves    []*Wave              `json:"waves"`
+	Cards    map[string]*Card     `json:"cards"`
+	Players  map[string]*Player   `json:"players"`
+	Keys     map[string]string    `json:"keys"`     // HMAC(identifiant) → joueur
+	Sessions map[string]session   `json:"sessions"` // SHA-256(jeton) → session
+	Feed     []FeedItem           `json:"feed,omitempty"`
+	NextNum  int                  `json:"nextNum"`
+	Boosters map[string]int       `json:"boosters,omitempty"` // jour → boosters ouverts (rythme des raretés, statistiques)
+	Activity map[string]*Activity `json:"activity,omitempty"` // jour → compteurs (statistiques)
+	Used     int64                `json:"used"`               // octets d'images gardés
+	Mailing  Mailing              `json:"mailing,omitzero"`   // mails d'accord (consent.go)
 }
 
 func defaultSeason() Season {

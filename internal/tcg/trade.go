@@ -390,6 +390,7 @@ func (g *Game) execTrade(t *trade, now time.Time) error {
 	logB := TradeLog{With: a.ID, Gave: t.b.offer, Got: t.a.offer, At: now, Trade: t.code}
 	a.Trades = append(a.Trades, logA)
 	b.Trades = append(b.Trades, logB)
+	g.activity(now).Trades++
 	if len(a.Trades) > tradesKeep {
 		a.Trades = a.Trades[len(a.Trades)-tradesKeep:]
 	}

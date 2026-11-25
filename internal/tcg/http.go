@@ -541,6 +541,9 @@ func (s *Service) serveAdmin(w http.ResponseWriter, r *http.Request, action stri
 	switch {
 	case action == "overview" && r.Method == http.MethodGet:
 		reply(w, http.StatusOK, s.Game.AdminOverview())
+	case action == "stats" && r.Method == http.MethodGet:
+		w.Header().Set("Cache-Control", "no-store")
+		reply(w, http.StatusOK, s.Game.AdminStats())
 	case action == "mailing" && r.Method == http.MethodGet:
 		w.Header().Set("Cache-Control", "no-store")
 		reply(w, http.StatusOK, s.Game.MailingState())

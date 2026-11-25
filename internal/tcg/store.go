@@ -32,15 +32,15 @@ var Paris = func() *time.Location {
 const BoosterHour = 6
 
 const (
-	saveEvery      = 2 * time.Second
-	sessionTTL     = 180 * 24 * time.Hour
-	feedKeep       = 60
-	tradesKeep     = 30
-	maxPlayers     = 20_000
-	maxPending     = 3_000 // propositions en attente, au total
-	blockedPurge   = 7 * 24 * time.Hour
-	removedPurge   = 30 * 24 * time.Hour // carte retirée du jeu : « Restaurer » possible pendant 30 jours
-	boosterDaysKep = 30
+	saveEvery    = 2 * time.Second
+	sessionTTL   = 180 * 24 * time.Hour
+	feedKeep     = 60
+	tradesKeep   = 30
+	maxPlayers   = 20_000
+	maxPending   = 3_000 // propositions en attente, au total
+	blockedPurge = 7 * 24 * time.Hour
+	removedPurge = 30 * 24 * time.Hour // carte retirée du jeu : « Restaurer » possible pendant 30 jours
+	statsDays    = 400                 // compteurs par jour (boosters, activité) : une année scolaire et plus
 )
 
 var (
@@ -229,6 +229,9 @@ func (g *Game) normalize() {
 	if st.Boosters == nil {
 		st.Boosters = map[string]int{}
 	}
+	if st.Activity == nil {
+		st.Activity = map[string]*Activity{}
+	}
 	for _, p := range st.Players {
 		if p.Owned == nil {
 			p.Owned = map[string][]int{}
@@ -238,6 +241,33 @@ func (g *Game) normalize() {
 		}
 	}
 	sortWaves(st.Waves)
+	backfillOpened(st)
+}
+
+// backfillOpened : boosters par vague d'un fichier écrit avant ce compteur (2.1.1), retrouvés dans
+// les boosters par jour : chaque journée de jeu va à la dernière vague sortie avant sa fin.
+func backfillOpened(st *state) {
+	for _, w := range st.Waves {
+		if w.Opened > 0 {
+			return
+		}
+	}
+	for d, n := range st.Boosters {
+		t, err := time.ParseInLocation("2006-01-02", d, Paris)
+		if err != nil {
+			continue
+		}
+		end := t.Add((24 + BoosterHour) * time.Hour)
+		var cur *Wave
+		for _, w := range st.Waves {
+			if w.Printed && w.ReleaseAt.Before(end) {
+				cur = w
+			}
+		}
+		if cur != nil {
+			cur.Opened += n
+		}
+	}
 }
 
 // Run démarre les tâches de fond : écriture régulière, impression des vagues à l'heure, ménage.
@@ -286,9 +316,18 @@ func (g *Game) Tick() {
 			g.dirty = true
 		}
 	}
+	old := func(d string) bool {
+		t, err := time.ParseInLocation("2006-01-02", d, Paris)
+		return err == nil && now.Sub(t) > statsDays*24*time.Hour
+	}
 	for d := range g.st.Boosters {
-		if t, err := time.ParseInLocation("2006-01-02", d, Paris); err == nil && now.Sub(t) > boosterDaysKep*24*time.Hour {
+		if old(d) {
 			delete(g.st.Boosters, d)
+		}
+	}
+	for d := range g.st.Activity {
+		if old(d) {
+			delete(g.st.Activity, d)
 		}
 	}
 	g.mu.Unlock()
@@ -398,6 +437,17 @@ func DayKey(t time.Time) string {
 }
 
 // calendarDay : jour calendaire à Paris (quotas de propositions).
+// activity : compteurs du jour de jeu de t (créés au besoin).
+func (g *Game) activity(t time.Time) *Activity {
+	d := DayKey(t)
+	a := g.st.Activity[d]
+	if a == nil {
+		a = &Activity{}
+		g.st.Activity[d] = a
+	}
+	return a
+}
+
 func calendarDay(t time.Time) string { return t.In(Paris).Format("2006-01-02") }
 
 // nextBooster : prochaine heure de booster après t.

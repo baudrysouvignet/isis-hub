@@ -175,6 +175,10 @@ func TestJuryPrintAndBoosters(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Statistiques : chaque juré compté une fois, une série refaite ne compte pas deux fois.
+	if s := g.AdminStats(); s.Jurors != 12 || s.Series != 12 || s.Waves[0].Jurors != 12 || s.Waves[0].Series != 12 || s.Days[len(s.Days)-1].Series != 12 {
+		t.Fatalf("statistiques du jury : %+v", s)
+	}
 	clk.t = start.Add(13*24*time.Hour + time.Minute)
 	g.Tick()
 	w := g.st.Waves[0]
@@ -340,6 +344,9 @@ func TestTrade(t *testing.T) {
 	}
 	if len(pa.Trades) != 1 || len(pb.Trades) != 1 {
 		t.Fatal("historique")
+	}
+	if s := g.AdminStats(); s.Trades != 1 || s.Days[len(s.Days)-1].Trades != 1 {
+		t.Fatalf("échanges dans les statistiques : %d", s.Trades)
 	}
 }
 

@@ -10,6 +10,7 @@ import { prefs } from '../core/store.js';
 import { seen, markSeen } from '../core/seen.js';
 import { api, adminApi, TcgError } from './api.js';
 import { cardEl, ic, mark, rchip, RLABEL, CATS, tier, sheet, sheetOpen, tbtn, meter, dayLong, dateShort, hourText, ago, untilText, plural, placeholderArt, pips } from './ui.js';
+import { shield } from './shield.js';
 import { openBooster, showRecap } from './open.js';
 import { renderCreate, createForm, proposalsList } from './create.js';
 import { renderCollection } from './collection.js';
@@ -49,6 +50,7 @@ export function createTCG(o) {
   const theme = $('meta[name="theme-color"]');
 
   const wrap = h('div.tcg-wrap', { data: { tcgView: '' } });
+  shield({ isOpen: () => open }); // cartes floutées pendant les captures repérables
   const dockBtns = {};
   const dockBadges = {};
   const dock = h(

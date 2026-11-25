@@ -10,6 +10,23 @@
 
 export const CHANGELOG = [
   {
+    version: '2.1.1',
+    date: '2026-11-25',
+    title: 'Les cartes se cachent des captures d’écran',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés » (choix de l'équipe)
+    short: [
+      'TCG : les cartes se floutent dès que tu quittes le jeu et pendant les captures repérables sur ordinateur.',
+      'Plus d’« Enregistrer l’image » sur les cartes, et elles ne s’impriment pas.',
+    ],
+    details: [
+      'Cartes floutées (photo, titre et texte) dès que la page du jeu n’est plus au premier plan : autre appli, aperçu des applis ouvertes, volet d’Android et sa tuile « Capture d’écran », outil Capture de Windows. Au retour, elles redeviennent nettes un instant après.',
+      'Sur ordinateur, les cartes se floutent dès que les touches d’un raccourci de capture sont enfoncées (⌘ ⇧ 3/4/5 sur Mac, ⊞ ⇧ S sur Windows, Ctrl ⇧ sur ChromeOS), donc avant la capture, et après la touche Impr. écran ; elles reviennent au premier mouvement de la souris.',
+      'Partout où une carte s’affiche : collection, jury « Tu préfères ? », « Mes apparitions », ouverture d’un booster et son récapitulatif. Ni « Enregistrer l’image » (appui long, clic droit, glisser-déposer), ni impression.',
+      'Ce qu’aucun site ne peut faire : empêcher la capture d’écran d’un téléphone avec ses boutons, dans le navigateur comme dans l’appli installée. Rien n’est envoyé au serveur quand une capture est repérée.',
+      'Le jeu compte, jour par jour, combien de joueurs viennent, votent, ouvrent un booster ou échangent : des nombres seulement, rien qui dise qui.',
+    ],
+  },
+  {
     version: '2.1.0',
     date: '2026-11-24',
     title: 'Le jury en « Tu préfères ? », et le Hub voit plus loin',

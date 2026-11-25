@@ -21,6 +21,19 @@ const REASONS = {
   autre: ['Autre', ''],
 };
 const REPORTS = { moque: 'Se moque de quelqu’un', reconnaissable: 'Personne reconnaissable sans accord', prive: 'Données privées', choquant: 'Contenu choquant', pasdrole: 'Pas drôle', autre: 'Autre' };
+// Courbes des statistiques : clé du serveur, onglet, unité (« 12 venus »).
+const SERIES = [
+  ['visitors', 'Venus', ['joueur venu', 'joueurs venus']],
+  ['boosters', 'Boosters', ['booster ouvert', 'boosters ouverts']],
+  ['series', 'Jury', ['série classée', 'séries classées']],
+  ['proposals', 'Propositions', ['carte proposée', 'cartes proposées']],
+  ['joined', 'Inscriptions', ['nouveau joueur', 'nouveaux joueurs']],
+  ['trades', 'Échanges', ['échange conclu', 'échanges conclus']],
+];
+const dayDate = (d) => new Date(`${d}T12:00:00`);
+const shortDay = (d) => dayDate(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+const n0 = (n) => (n ?? 0).toLocaleString('fr-FR');
+
 const FILTERS = [
   ['pending', 'À valider', 'clock', 'tad-kpi--pending'],
   ['consent', 'En attente d’accord', 'person', 'tad-kpi--consent'],
@@ -63,6 +76,8 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
   }
 
   let ov = null; // vue d'ensemble
+  let st = null; // statistiques
+  let metric = 'visitors';
   let filter = 'pending';
   let cards = [];
   let current = null;
@@ -71,6 +86,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
   let printWave = 0;
 
   const launch = h('section.tad-launch');
+  const statsBox = h('div.tad-box.tad-stats');
   const mailing = h('section.tad-mailing', { hidden: true });
   const kpis = h('div.tad-kpis', { attrs: { role: 'tablist', 'aria-label': 'Filtrer' } });
   const list = h('ul.tad-list', { attrs: { 'aria-label': 'Propositions' } });
@@ -95,6 +111,111 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     const c = ov.counts ?? {};
     onCount?.((c.pending ?? 0) + (c.reports ?? 0));
     return ov;
+  }
+
+  // ---------------------------------------------------------------- statistiques
+  async function loadStats() {
+    try {
+      st = await tapi('stats');
+    } catch {
+      st = null;
+    }
+  }
+
+  function renderStats() {
+    if (!st) {
+      statsBox.replaceChildren(h('h3.tad-sub', { text: 'Statistiques' }), h('p.tad-help', { text: 'Statistiques indisponibles pour l’instant.' }));
+      return;
+    }
+    const days = st.days ?? [];
+    const last = days[days.length - 1] ?? {};
+    const kpi = (label, value, sub) => h('div.tad-mini', {}, h('span', { text: label }), h('b', { text: n0(value) }), sub ? h('small', { text: sub }) : null);
+    const used = (ov?.used ?? 0) / (1024 * 1024);
+    const tiles = h(
+      'div.tad-minis.tad-minis--stats',
+      {},
+      kpi('Joueurs inscrits', st.players, `+${n0(st.joined7)} cette semaine`),
+      kpi('Venus aujourd’hui', st.today, `${n0(st.week)} sur 7 jours · ${n0(st.month)} sur 30`),
+      kpi('Ont voté au jury', st.jurors, plural(st.series, 'série classée', 'séries classées')),
+      kpi('Boosters ouverts', st.boosters, `${n0(last.boosters)} aujourd’hui`),
+      kpi('Échanges conclus', st.trades, `${plural(st.collectors, 'joueur a', 'joueurs ont')} des cartes`),
+      kpi('Créateurs', st.creators, plural(st.proposals, 'proposition', 'propositions')),
+      h('div.tad-mini', {}, h('span', { text: 'Photos' }), h('b', { text: `${used < 10 ? used.toFixed(1) : Math.round(used)} Mo` }), h('small', { text: ov?.storage === 'r2' ? 'Cloudflare R2' : 'dossier de données du serveur' })),
+    );
+
+    // Graphique : une courbe à la fois (30 derniers jours), barres d'une seule couleur.
+    const [, , unit] = SERIES.find(([k]) => k === metric) ?? SERIES[0];
+    const values = days.map((d) => d[metric] ?? 0);
+    const max = Math.max(1, ...values);
+    const total = values.reduce((a, b) => a + b, 0);
+    const tabs = h(
+      'div.tad-seg',
+      { attrs: { role: 'tablist', 'aria-label': 'Courbe' } },
+      ...SERIES.map(([k, label]) => {
+        const b = h(`button.tad-seg-b${k === metric ? '.is-on' : ''}`, { type: 'button', text: label, attrs: { role: 'tab', 'aria-selected': String(k === metric) } });
+        b.addEventListener('click', () => {
+          metric = k;
+          renderStats();
+        });
+        return b;
+      }),
+    );
+    const plot = h('div.tad-plot', { attrs: { role: 'list', 'aria-label': `${plural(total, unit[0], unit[1])} sur 30 jours` } });
+    days.forEach((d, i) => {
+      const v = values[i];
+      const tip = `${shortDay(d.day)} : ${plural(v, unit[0], unit[1])}`;
+      const bar = h(`span.tad-bar${v ? '' : '.is-zero'}${i === days.length - 1 ? '.is-today' : ''}`, { tabIndex: 0, data: { tip }, attrs: { role: 'listitem', 'aria-label': tip } }, h('i'));
+      bar.style.setProperty('--bh', `${((v / max) * 100).toFixed(1)}%`);
+      if (i > days.length - 8) bar.classList.add('is-end'); // infobulle calée à droite
+      plot.append(bar);
+    });
+    const chart = h(
+      'div.tad-chart',
+      {},
+      tabs,
+      h('div.tad-chart-head', {}, h('div', {}, h('b.tad-chart-total', { text: n0(total) }), h('span', { text: ` ${total > 1 ? unit[1] : unit[0]} sur 30 jours` })), h('span.tad-chart-max', { text: `max ${n0(max === 1 && !values.some(Boolean) ? 0 : max)} / jour` })),
+      plot,
+      h('div.tad-chart-axis', {}, h('span', { text: days[0] ? shortDay(days[0].day) : '' }), h('span', { text: 'aujourd’hui' })),
+    );
+
+    // Vagues.
+    const cols = [
+      ['Vague', (w) => `V${w.n}${w.printed ? '' : ' · à venir'}`],
+      ['Cartes', (w) => n0(w.cards)],
+      ['Jurés', (w) => n0(w.jurors)],
+      ['Séries', (w) => n0(w.series)],
+      ['Boosters', (w) => (w.printed ? n0(w.boosters) : '–')],
+      ['Exemplaires tirés', (w) => (w.printed ? n0(w.copies) : '–')],
+      ['Découvertes', (w) => (w.printed ? `${n0(w.discovered)}/${n0(w.cards)}` : '–')],
+      ['Collectionneurs', (w) => (w.printed ? n0(w.collectors) : '–')],
+    ];
+    const table = (st.waves ?? []).length
+      ? h(
+          'div.tad-tablewrap',
+          {},
+          h(
+            'table.tad-table',
+            {},
+            h('thead', {}, h('tr', {}, ...cols.map(([t]) => h('th', { text: t, attrs: { scope: 'col' } })))),
+            h('tbody', {}, ...st.waves.map((w) => h('tr', {}, ...cols.map(([, f], i) => h(i ? 'td' : 'th', { text: f(w), attrs: i ? {} : { scope: 'row' } }))))),
+          ),
+        )
+      : h('p.tad-help', { text: 'Aucune vague pour l’instant.' });
+
+    const since = st.since ? `depuis le ${dayDate(st.since).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}` : 'depuis cette version';
+    statsBox.replaceChildren(
+      h('header.tad-stats-head', {}, h('h3.tad-sub', { text: 'Statistiques' }), btn('btn--ghost btn--sm', 'Actualiser', 'loop', async (e) => {
+        const b = e.currentTarget;
+        b.disabled = true;
+        await loadStats();
+        renderStats();
+      })),
+      tiles,
+      chart,
+      h('h4.tad-sub.tad-sub--sm', { text: 'Par vague' }),
+      table,
+      h('p.tad-help', { text: `Boosters : ouverts pendant la vague, de sa sortie à la suivante. Journées de 6 h à 6 h, comme les boosters ; venues, inscriptions, propositions, séries et échanges sont comptés jour par jour ${since}. Rien que des nombres : aucun pseudo, rien qui dise qui est venu.` }),
+    );
   }
 
   function renderLaunch() {
@@ -181,20 +302,12 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     const add = btn(first ? 'btn--sm' : 'btn--primary', first ? `Programmer la vague ${waves.length + 1}` : 'Créer la vague 1 (lancement)', 'plus', () => waveForm(null));
     const pv = h('div.tad-print', { hidden: true });
 
-    const kpi = (label, value, sub) => h('div.tad-mini', {}, h('span', { text: label }), h('b', { text: value }), sub ? h('small', { text: sub }) : null);
-    const used = ov.used / (1024 * 1024);
-    const stats = h(
-      'div.tad-minis',
-      {},
-      kpi('Joueurs', String(ov.players), `${ov.active} actifs cette semaine`),
-      kpi('Boosters ouverts aujourd’hui', String(ov.today)),
-      kpi('Photos', `${used < 10 ? used.toFixed(1) : Math.round(used)} Mo`, ov.storage === 'r2' ? 'Cloudflare R2' : 'dossier de données du serveur'),
-    );
+    renderStats();
 
     launch.replaceChildren(
       h('header.tad-launch-head', {}, h('div', {}, h('h2.tad-h', { text: 'Lancement et vagues' }), h('p.tad-help', { text: 'Les dates sont à l’heure de cet appareil.' })), status),
       checklist,
-      stats,
+      statsBox,
       h('details.tad-box', { open: !s.enabled || !first }, h('summary', {}, ic('pen'), 'Réglages de la saison'), season),
       h('div.tad-box', {}, h('h3.tad-sub', { text: 'Vagues' }), waves.length ? wl : h('p.tad-help', { text: 'Aucune vague : crée la vague 1 pour fixer la date de lancement affichée aux étudiants.' }), h('div.tad-row.tad-row--start', {}, add), pv),
     );
@@ -728,7 +841,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
   });
 
   async function refreshAll() {
-    await loadOverview();
+    await Promise.all([loadOverview(), loadStats()]);
     renderLaunch();
     await loadCards(true);
     await loadMailing();
