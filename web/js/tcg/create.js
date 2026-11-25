@@ -6,7 +6,8 @@
 
 import { h, toast, motionOK } from '../core/dom.js';
 import { api, TcgError } from './api.js';
-import { cardEl, ic, quota, tbtn, CATS, dayLong, plural } from './ui.js';
+import { cardEl, ic, quota, tbtn, CATS, dayLong, dateShort, plural } from './ui.js';
+import { consentLink } from './consent-text.js';
 import { peoplePicker } from './people.js';
 import { cropRect, fitZoom, MAX_ZOOM } from './crop.js';
 
@@ -389,7 +390,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
       fd.append('photo', big, `photo.${ext}`);
       fd.append('thumb', small, `vignette.${small.type === 'image/webp' ? 'webp' : 'jpg'}`);
       await api.propose(fd);
-      toast('Carte envoyée : elle ne s’affiche plus ici. Si elle est bloquée, elle réapparaîtra avec le motif.', 'check');
+      toast('Carte envoyée : suis son avancement dans « Mes cartes envoyées ».', 'check');
       if (blobURL) URL.revokeObjectURL(blobURL);
       ctx.draftForm = null; // envoyée : le prochain affichage repart d'un formulaire vide
       await ctx.reload();
@@ -408,47 +409,95 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     h('div', {}, h('p.tk', { text: 'Atelier' }), h(`${heading}.tv-h1`, { tabIndex: -1, text: launch ? 'Propose ta carte' : 'Crée ta carte' }), h('p.tcr-lead', { text: 'Une photo, un titre, deux phrases. La promo joue à « Tu préfères ? » : les cartes préférées deviennent les plus rares.' })),
     h('div.tcr-quota', {}, quota(left, perDay), h('span', { text: muted ? 'Propositions suspendues' : left > 0 ? `${plural(left, 'proposition')} aujourd’hui` : 'Reviens demain' })),
   );
-  host.append(head, h('section.tcr', {}, h('div.tcr-grid', {}, form, preview), proposalsList(ctx)));
+  host.append(head, h('section.tcr', {}, h('div.tcr-grid', {}, form, preview), proposalsList(ctx, launch)));
   return host;
 }
 
-/**
- * Cartes envoyées : elles ne se revoient plus (leur sort reste une surprise). Seules les cartes
- * BLOQUÉES par la modération reviennent ici, avec le motif et le message, pour la corriger ou la
- * retirer. Le serveur n'envoie d'ailleurs que celles-là.
- */
-export function proposalsList(ctx) {
+// Suivi de mes cartes, sans spoiler : le titre, l'avancement et ce que je peux faire (relancer les
+// personnes indiquées, corriger ou retirer une carte bloquée). Ni la description, ni la photo nette,
+// ni la rareté, ni le nombre de tirages : le serveur ne les envoie pas (ProposalView).
+const STEPS = ['Validation', 'Accords', 'Jury', 'En jeu'];
+
+/** Étape en cours (0 à 3) et libellé, d'après le statut envoyé par le serveur. */
+function progress(p, launch) {
+  switch (p.status) {
+    case 'pending':
+      return { at: 0, icon: 'clock', tone: 'wait', text: 'En attente de validation par l’équipe (48 h au plus)' };
+    case 'consent':
+      return { at: 1, icon: 'person', tone: 'wait', text: p.consent ? `En attente d’accord · ${p.consent.ok} / ${p.consent.total} personnes ont accepté` : 'En attente de l’accord des personnes sur la photo' };
+    case 'accepted':
+      return p.atJury
+        ? { at: 2, icon: 'jury', tone: 'now', text: `Au jury de la promo jusqu’au ${dateShort(p.juryEnd)}` }
+        : { at: 2, icon: 'check', tone: 'ok', next: true, text: launch ? 'Validée · elle passera au jury de lancement' : 'Validée · elle passera au prochain jury' };
+    case 'printed':
+      return { at: 4, icon: 'cards', tone: 'ok', text: `Dans le jeu · Vague ${p.wave} · rareté secrète : tire-la pour la découvrir` };
+    case 'blocked':
+      return { blocked: true, icon: 'x', tone: 'bad', text: p.reason === 'Refusée par une personne sur la photo' ? 'Une personne sur la photo a refusé' : `Bloquée · ${(p.reason || 'motif').toLowerCase()}` };
+    default:
+      return { blocked: true, icon: 'x', tone: 'bad', text: p.reason === 'Refusée par une personne sur la photo' ? 'Retirée du jeu : une personne a retiré son accord' : 'Retirée du jeu après signalements' };
+  }
+}
+
+/** Message à envoyer aux personnes indiquées (partage du téléphone, sinon copié). */
+async function remind(p) {
+  const text = `Tu apparais sur ma carte « ${p.title} » du TCG de la promo. Pour qu’elle entre dans le jeu, il me faut ton accord : ISIS Hub, onglet TCG, « Mes apparitions ».`;
+  const url = consentLink();
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'TCG de la promo', text, url });
+      return;
+    } catch (e) {
+      if (e?.name === 'AbortError') return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(`${text}\n${url}`);
+    toast('Message copié : envoie-le aux personnes indiquées.', 'check');
+  } catch {
+    toast('Copie impossible sur cet appareil.', 'alert');
+  }
+}
+
+/** « Mes cartes envoyées » : titre et avancement seulement, la carte reste une surprise. */
+export function proposalsList(ctx, launch) {
   const st = ctx.st;
-  const blocked = (st?.proposals ?? []).filter((p) => p.status === 'blocked');
-  const sec = h('section.tcr-mine', {}, h('h2.tco-sec-h', {}, h('span', { text: blocked.length ? 'Cartes bloquées' : 'Mes cartes envoyées' }), blocked.length ? h('small', { text: 'à corriger ou à retirer' }) : null));
-  if (!blocked.length) {
-    sec.append(
-      h(
-        'p.tcr-sent',
-        {},
-        ic('lock', 'ic ic--sm'),
-        h('span', { text: st ? 'Une fois envoyée, ta carte ne s’affiche plus ici : son sort reste une surprise jusqu’au jeu. Si la modération en bloque une, elle réapparaît ici avec le motif, pour que tu puisses la corriger ou la retirer.' : 'Rejoins le jeu en envoyant ta première carte.' }),
-      ),
-    );
+  const items = st?.proposals ?? [];
+  const sec = h('section.tcr-mine', {}, h('h2.tco-sec-h', {}, h('span', { text: 'Mes cartes envoyées' }), h('small', { text: 'le titre et l’avancement : la carte reste une surprise' })));
+  if (!items.length) {
+    sec.append(h('p.tcr-sent', {}, ic('lock', 'ic ic--sm'), h('span', { text: st ? 'Tes cartes envoyées apparaîtront ici, avec leur avancement : validation, accords, jury, puis le jeu. Ni leur photo ni leur rareté ne s’affichent : la surprise reste entière.' : 'Rejoins le jeu en envoyant ta première carte : tu suivras ici son avancement.' })));
     return sec;
   }
-  const list = h('ul.tcr-list');
-  for (const p of blocked) {
-    const why = p.reason === 'Refusée par une personne sur la photo' ? 'Une personne sur la photo a refusé' : `Bloquée · ${(p.reason || 'motif').toLowerCase()}`;
-    const it = h('div.tcr-it', {}, h('b', { text: p.title }), h('span', { text: why }), p.message ? h('q.tcr-msg', { text: p.message }) : null);
-    const rm = h('button.tcr-rm', { type: 'button', text: 'Retirer' });
-    rm.addEventListener('click', async () => {
-      if (!confirm(`Retirer « ${p.title} » ? Elle disparaît, et ne te rend pas de proposition aujourd’hui.`)) return;
-      try {
-        await api.withdraw(p.id);
-        await ctx.reload();
-        toast('Carte retirée.', 'check');
-      } catch (e) {
-        toast(e.message, 'alert');
-      }
-    });
-    it.append(rm);
-    list.append(h('li.tcr-item.is-refused', {}, h('span.tcr-thumb.tcr-thumb--blocked', {}, ic('x', 'ic')), it, h('span.tstatus.tstatus--refused', {}, ic('x', 'ic ic--xs'), 'Bloquée')));
+  const list = h('ul.tcr-cards');
+  for (const p of items) {
+    const g = progress(p, launch);
+    const thumb = g.blocked || !p.thumb ? h('span.tcr-ph', {}, ic(g.blocked ? 'x' : 'photo', 'ic')) : h('span.tcr-ph.is-veil', {}, h('img', { alt: '', src: p.thumb, draggable: false }));
+    const body = h('div.tcr-cb', {}, h('b.tcr-ct', { text: p.title }), h(`p.tcr-st.tcr-st--${g.tone}`, {}, ic(g.icon, 'ic ic--xs'), h('span', { text: g.text })));
+    if (!g.blocked) {
+      const track = h('ol.tcr-track', { attrs: { 'aria-label': `Étape ${Math.min(g.at + 1, 4)} sur 4` } });
+      const cls = (i) => (i < g.at ? '.is-done' : i === g.at ? (g.next ? '.is-next' : '.is-now') : '');
+      STEPS.forEach((label, i) => track.append(h(`li${cls(i)}`, {}, h('i'), h('span', { text: label }))));
+      body.append(track);
+    } else if (p.message) {
+      body.append(h('q.tcr-msg', { text: p.message }));
+    }
+    const acts = h('div.tcr-acts');
+    if (p.status === 'consent') acts.append(tbtn('Relancer', 'send', 'tbtn--ghost tbtn--sm', () => remind(p)));
+    if (p.status === 'pending' || p.status === 'blocked') {
+      const rm = h('button.tcr-rm', { type: 'button', text: 'Retirer' });
+      rm.addEventListener('click', async () => {
+        if (!confirm(`Retirer « ${p.title} » ? Elle ne sera pas imprimée, et ne te rend pas de proposition aujourd’hui.`)) return;
+        try {
+          await api.withdraw(p.id);
+          await ctx.reload();
+          toast('Carte retirée.', 'check');
+        } catch (e) {
+          toast(e.message, 'alert');
+        }
+      });
+      acts.append(rm);
+    }
+    if (acts.childElementCount) body.append(acts);
+    list.append(h(`li.tcr-card.tcr-card--${g.tone}`, {}, thumb, body));
   }
   sec.append(list);
   return sec;

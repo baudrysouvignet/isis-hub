@@ -610,7 +610,7 @@ func TestHTTPFlow(t *testing.T) {
 	}
 	var st View
 	json.Unmarshal(do("GET", "/api/tcg/state", "", cookie, nil).Body.Bytes(), &st)
-	if len(st.Proposals) != 0 { // envoyée : ne se revoit plus
+	if len(st.Proposals) != 1 || st.Proposals[0].Status != StatusPending || st.Proposals[0].Thumb == "" {
 		t.Fatalf("propositions : %+v", st.Proposals)
 	}
 	var sent, sentID string

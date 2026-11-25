@@ -1,7 +1,9 @@
 package tcg
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -95,10 +97,12 @@ func TestValidatedCardLockedAndRaritySecret(t *testing.T) {
 	if err := g.PrintNow(1); err != nil {
 		t.Fatal(err)
 	}
-	// Imprimée, elle n'est plus dans « Mes propositions » : sa rareté se découvre en la tirant,
-	// dans la collection.
-	if v, _ := g.PlayerView(a); len(v.Proposals) != 0 {
-		t.Fatalf("carte imprimée montrée à l'auteur : %+v", v.Proposals)
+	// Imprimée : « Mes propositions » dit seulement qu'elle est en jeu, sans sa rareté ni le nombre
+	// de tirages ; sa rareté se découvre en la tirant, dans la collection.
+	pv, _ := g.PlayerView(a)
+	raw, _ := json.Marshal(pv.Proposals)
+	if len(pv.Proposals) != 1 || pv.Proposals[0].Status != StatusPrinted || strings.Contains(string(raw), "rarity") || strings.Contains(string(raw), "issued") {
+		t.Fatalf("suivi d'une carte imprimée : %s", raw)
 	}
 	g.st.Players[a].Owned[kept] = []int{0}
 	v, _ := g.PlayerView(a)

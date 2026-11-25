@@ -238,8 +238,11 @@ connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
 2. **Propositions** : photo recadrée et compressée **dans la page** (960 × 720 et vignette 320 × 240,
    WebP sinon JPEG, métadonnées retirées), titre de 28 caractères, deux phrases, catégorie, deux
    engagements sur la photo. Le serveur revérifie tout (nature et dimensions de l'image, EXIF retiré).
-   Une fois envoyée, la carte ne se revoit plus (le serveur ne renvoie à l'auteur que ses cartes
-   **bloquées**, avec le motif et le message, pour la corriger ou la retirer).
+   Suivi sans spoiler (« Mes cartes envoyées ») : le serveur ne renvoie à l'auteur que le titre et
+   l'avancement de chaque carte (validation, accords « 2 / 3 » sans dire qui, jury, en jeu), la
+   vignette affichée floutée, et pour une carte bloquée le motif et le message ; jamais la
+   description, la rareté ni le nombre de tirages. « Relancer » prépare un message pour les
+   personnes indiquées (partage du téléphone, sinon copié).
    Quota du jour **par compte** (tous appareils) : le serveur compte les envois de la journée sous
    l'empreinte de l'identifiant ; ni un retrait ni « Quitter le TCG » ne rendent de proposition le
    même jour, et ce compteur est oublié le lendemain.

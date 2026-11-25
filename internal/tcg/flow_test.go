@@ -246,8 +246,8 @@ func TestFullLaunchFlow(t *testing.T) {
 	if code, _ := ines.propose("Une de trop", photo, thumb, true); code != 429 {
 		t.Fatalf("4e proposition du jour : %d", code)
 	}
-	// Envoyées, elles ne se revoient plus (seules les cartes bloquées reviennent).
-	if st := ines.state(); len(st.Proposals) != 0 || st.Me.ProposalsLeft != 0 || len(ines.mine()) != 3 {
+	// Suivi : le titre et l'avancement seulement.
+	if st := ines.state(); len(st.Proposals) != 3 || st.Proposals[0].Status != StatusPending || st.Proposals[0].Title == "" || st.Me.ProposalsLeft != 0 {
 		t.Fatalf("mes propositions : %+v", st.Proposals)
 	}
 	// La photo est servie par le serveur, sans ses métadonnées.

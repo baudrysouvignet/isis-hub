@@ -10,6 +10,18 @@
 
 export const CHANGELOG = [
   {
+    version: '2.2.2',
+    date: '2026-11-25',
+    title: 'TCG : suis l’avancement de tes cartes, sans rien dévoiler',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
+    short: ['TCG : « Mes cartes envoyées » revient, avec le titre et l’avancement de chaque carte, et un bouton pour relancer les personnes sur la photo.'],
+    details: [
+      'Créer une carte : « Mes cartes envoyées » montre le titre et l’avancement de chaque carte (validation, accords, jury, en jeu), avec sa photo floutée. Ni la description, ni la rareté, ni le nombre de tirages : la surprise reste entière.',
+      'Accords en attente : tu vois combien de personnes ont accepté (sans savoir qui) et « Relancer » prépare un message pour elles, avec le lien vers « Mes apparitions » (partage du téléphone, ou copié sur ordinateur).',
+      'Une carte bloquée garde son motif, le message de l’équipe et « Retirer ». Une carte en attente de validation peut aussi être retirée.',
+    ],
+  },
+  {
     version: '2.2.1',
     date: '2026-11-25',
     title: 'TCG : une carte envoyée ne se revoit plus',

@@ -60,8 +60,9 @@ func TestConsentFlow(t *testing.T) {
 	if p := ines.mine()[0]; p.Status != StatusConsent || len(p.Tags) != 3 {
 		t.Fatalf("en attente d'accord : %+v", p)
 	}
-	if len(ines.state().Proposals) != 0 {
-		t.Fatal("carte en attente d'accord montrée à l'autrice")
+	// L'autrice suit les accords (sans savoir qui), pour relancer les personnes indiquées.
+	if p := ines.state().Proposals[0]; p.Status != StatusConsent || p.Consent == nil || p.Consent.OK != 1 || p.Consent.Total != 3 {
+		t.Fatalf("accords vus par l'autrice : %+v", p)
 	}
 	if len(lea.state().Appear) != 1 {
 		t.Fatal("carte absente de « Mes apparitions »")
