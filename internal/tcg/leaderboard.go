@@ -230,6 +230,18 @@ type Leaderboard struct {
 	Rank   int      `json:"rank,omitempty"`
 	Tied   bool     `json:"tied,omitempty"` // ma place est partagée (ex æquo)
 	Total  int      `json:"total"`          // créateurs classés
+	// Today : le podium de la journée (points gagnés depuis minuit), pendant le jury de lancement :
+	// c'est lui qui donne les boosters bonus à minuit.
+	Today *DayBoard `json:"today,omitempty"`
+}
+
+// DayBoard : le podium de la journée en cours, et ma place (0 : rien gagné aujourd'hui).
+type DayBoard struct {
+	Day    string   `json:"day"` // jour (Paris)
+	Podium []Leader `json:"podium"`
+	Rank   int      `json:"rank,omitempty"`
+	Tied   bool     `json:"tied,omitempty"`
+	Total  int      `json:"total"` // créateurs qui ont gagné des points aujourd'hui
 }
 
 type creator struct {
@@ -320,7 +332,8 @@ func (g *Game) rank(vals map[string]cardValue) []creator {
 // podiumMax : créateurs affichés au podium au plus (beaucoup d'ex æquo au tout début).
 const podiumMax = 12
 
-// leaderboard : le podium (places 1 à 3, ex æquo compris) et la place du joueur pid.
+// leaderboard : le podium (places 1 à 3, ex æquo compris) et la place du joueur pid ; pendant le
+// jury de lancement, le podium de la journée en plus.
 func (g *Game) leaderboard(pid string) Leaderboard {
 	r := g.ranking()
 	lb := Leaderboard{Podium: []Leader{}, Total: len(r)}
@@ -337,7 +350,30 @@ func (g *Game) leaderboard(pid string) Leaderboard {
 			lb.Rank, lb.Tied = cr.place, same[cr.place] > 1
 		}
 	}
+	if lw, now := g.launchWave(), g.now(); lw != nil && !lw.JuryFrom.IsZero() && !now.Before(lw.JuryFrom) && now.Before(lw.ReleaseAt) {
+		lb.Today = g.dayBoard(pid, now)
+	}
 	return lb
+}
+
+// dayBoard : le podium de la journée, de minuit à maintenant.
+func (g *Game) dayBoard(pid string, now time.Time) *DayBoard {
+	r := g.dayRanking(dayStart(now), now)
+	db := &DayBoard{Day: calendarDay(now), Podium: []Leader{}, Total: len(r)}
+	same := map[int]int{}
+	for _, d := range r {
+		same[d.place]++
+	}
+	for _, d := range r {
+		if d.place <= podiumSize && len(db.Podium) < podiumMax {
+			p := g.st.Players[d.id]
+			db.Podium = append(db.Podium, Leader{Pseudo: p.Pseudo, Initials: Initials(p.Pseudo), Place: d.place, Me: d.id == pid})
+		}
+		if d.id == pid {
+			db.Rank, db.Tied = d.place, same[d.place] > 1
+		}
+	}
+	return db
 }
 
 // ------------------------------------------------------------ détail des scores (administration)
@@ -364,6 +400,8 @@ type ScoreRow struct {
 	Rank   int         `json:"rank,omitempty"`
 	Tied   bool        `json:"tied,omitempty"` // un autre créateur a la même place
 	Score  float64     `json:"score"`
+	Today  float64     `json:"today"`             // points gagnés depuis minuit (podium de la journée)
+	Day    int         `json:"dayRank,omitempty"` // place au podium de la journée
 	Muted  bool        `json:"muted,omitempty"`
 	Cards  []ScoreCard `json:"cards"`
 }
@@ -382,6 +420,7 @@ type ScoresAdmin struct {
 	NextSize  int                `json:"nextSize,omitempty"` // cartes retenues au plus
 	JudgeWave int                `json:"penaltyWave,omitempty"`
 	Podium    int                `json:"podium"`
+	DayGifts  bool               `json:"dayGifts,omitempty"` // le podium de la journée donne des boosters bonus à minuit
 }
 
 // AdminScores : tous les créateurs (au moins une carte proposée), les classés d'abord, dans
@@ -393,6 +432,14 @@ func (g *Game) AdminScores() ScoresAdmin {
 	out := ScoresAdmin{Rows: []ScoreRow{}, Rarity: maps.Clone(rarityPoints), Validated: validatedPoints, Penalty: juryPenalty, MinVotes: penaltyMinVotes, PlanVotes: minPlanVotes, NextWave: next, JudgeWave: judge, Podium: podiumSize}
 	if w := g.wave(next); w != nil {
 		out.NextSize = w.Size
+	}
+	now := g.now()
+	if lw := g.launchWave(); lw != nil && !lw.JuryFrom.IsZero() && !now.Before(lw.JuryFrom) && now.Before(lw.ReleaseAt) {
+		out.DayGifts = true
+	}
+	today, dayPlace := map[string]float64{}, map[string]int{}
+	for _, d := range g.dayRanking(dayStart(now), now) {
+		today[d.id], dayPlace[d.id] = d.gain, d.place
 	}
 	ranked := g.rank(vals)
 	place, order, sameCount := map[string]int{}, map[string]int{}, map[int]int{}
@@ -408,7 +455,7 @@ func (g *Game) AdminScores() ScoresAdmin {
 		}
 		row := by[p.ID]
 		if row == nil {
-			row = &ScoreRow{Pseudo: p.Pseudo, Rank: place[p.ID], Tied: place[p.ID] > 0 && sameCount[place[p.ID]] > 1, Muted: p.Muted, Cards: []ScoreCard{}}
+			row = &ScoreRow{Pseudo: p.Pseudo, Rank: place[p.ID], Tied: place[p.ID] > 0 && sameCount[place[p.ID]] > 1, Today: today[p.ID], Day: dayPlace[p.ID], Muted: p.Muted, Cards: []ScoreCard{}}
 			by[p.ID] = row
 		}
 		v := vals[c.ID] // zéro : en attente, bloquée, retirée
@@ -445,6 +492,76 @@ func (g *Game) AdminScores() ScoresAdmin {
 	})
 	for _, id := range ids {
 		out.Rows = append(out.Rows, *by[id])
+	}
+	return out
+}
+
+// ------------------------------------------------------------ podium de la journée
+
+// dayGain : ce qu'un créateur a gagné dans une journée, avec le barème du classement.
+type dayGain struct {
+	id    string
+	gain  float64
+	added int // cartes validées dans la journée (qui comptent) : ordre d'affichage des ex æquo
+	place int // ex æquo : même place
+}
+
+// dayStart : le minuit (Paris) qui ouvre la journée de t.
+func dayStart(t time.Time) time.Time {
+	p := t.In(Paris)
+	return time.Date(p.Year(), p.Month(), p.Day(), 0, 0, 0, 0, Paris)
+}
+
+// dayRanking : le podium d'une journée, de from à to : les points gagnés (score à to moins score à
+// from), cartes validées dans la journée et cartes qui ont monté au jury ce jour-là. C'est lui qui
+// donne les boosters bonus du soir (rewards.go) : chaque journée repart de zéro, l'avance de la
+// veille ne compte pas. Seuls ceux qui ont gagné des points sont classés.
+func (g *Game) dayRanking(from, to time.Time) []dayGain {
+	after, _, _ := g.valuation(to)
+	before, _, _ := g.valuation(from)
+	by := map[string]*dayGain{}
+	add := func(vals map[string]cardValue, sign float64, count bool) {
+		for id, v := range vals {
+			c := g.st.Cards[id]
+			p := g.st.Players[c.Author]
+			if p == nil || p.Muted {
+				continue
+			}
+			d := by[p.ID]
+			if d == nil {
+				d = &dayGain{id: p.ID}
+				by[p.ID] = d
+			}
+			d.gain += sign * v.points
+			if count && validatedAt(c).After(from) {
+				d.added++
+			}
+		}
+	}
+	add(after, 1, true)
+	add(before, -1, false)
+	out := make([]dayGain, 0, len(by))
+	for _, d := range by {
+		if d.gain > 0 {
+			out = append(out, *d)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.gain != b.gain {
+			return a.gain > b.gain
+		}
+		if a.added != b.added {
+			return a.added > b.added
+		}
+		return a.id < b.id
+	})
+	for i := range out {
+		if i > 0 && out[i].gain == out[i-1].gain {
+			out[i].place = out[i-1].place
+		} else {
+			out[i].place = i + 1
+		}
 	}
 	return out
 }

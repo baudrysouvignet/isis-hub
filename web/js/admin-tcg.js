@@ -418,8 +418,8 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       h(
         'div.tad-rewards',
         {},
-        h('p.tad-help', { text: `${plural(r.cards, 'carte bonus', 'cartes bonus')} pour ${plural(rows.length, 'joueur')} sur ${n0(r.players)}. Chaque soir où la promo a voté, à minuit : 1er 5 cartes, 2e 4, 3e 3, du 4e au 13e 1 ; 4 cartes par participant (carte validée ou série du jury). ${r.maxNights} meilleurs soirs au plus par joueur. Attribuées d’elles-mêmes à la sortie de la vague 1, valables 24 h.` }),
-        nights ? h('h4.tad-sub.tad-sub--sm', { text: 'Podium de chaque soir (classement à minuit)' }) : null,
+        h('p.tad-help', { text: `${plural(r.cards, 'carte bonus', 'cartes bonus')} pour ${plural(rows.length, 'joueur')} sur ${n0(r.players)}. Chaque soir où la promo a voté, à minuit, le podium du jour (les points gagnés dans la journée, chaque journée repart de zéro) : 1er 5 cartes, 2e 4, 3e 3, du 4e au 13e 1, ex æquo compris ; 4 cartes par participant (carte validée ou série du jury). ${r.maxNights} meilleurs soirs au plus par joueur. Attribuées d’elles-mêmes à la sortie de la vague 1, valables 24 h.` }),
+        nights ? h('h4.tad-sub.tad-sub--sm', { text: 'Podium de chaque journée (points gagnés ce jour-là, à minuit)' }) : null,
         nights,
         rows.length ? h('h4.tad-sub.tad-sub--sm', { text: rewardsAll || rows.length <= FIRST ? 'Cartes bonus par joueur' : `Cartes bonus · les ${FIRST} premiers sur ${rows.length}` }) : null,
         list,
@@ -531,7 +531,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
                 'summary',
                 {},
                 h('span.tad-sc-rank', { text: rankText(r) }),
-                h('span.tad-sc-who', {}, h('b', { text: r.pseudo }), h('span', { text: [off ? off[0].toUpperCase() + off.slice(1) : null, breakdown(r)].filter(Boolean).join(' · ') || 'Aucune carte' })),
+                h('span.tad-sc-who', {}, h('b', { text: r.pseudo }), h('span', { text: [off ? off[0].toUpperCase() + off.slice(1) : null, r.today ? `Aujourd’hui ${pts(r.today)}${r.dayRank ? ` (${nth(r.dayRank)} du jour)` : ''}` : null, breakdown(r)].filter(Boolean).join(' · ') || 'Aucune carte' })),
                 h(`span.tad-sc-pts${r.score < 0 ? '.is-neg' : ''}`, {}, n0(r.score), h('small', { text: 'points' })),
               ),
               h(
@@ -555,7 +555,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       h(
         'header.tad-launch-head',
         {},
-        h('div', {}, h('h2.tad-h', { text: 'Détail des scores' }), h('p.tad-help', { text: 'Le classement des créateurs (podium du TCG), avec les points de chacun et ce que rapporte chaque carte. Visible ici seulement : les joueurs ne voient que le podium et leur place, jamais un score.' })),
+        h('div', {}, h('h2.tad-h', { text: 'Détail des scores' }), h('p.tad-help', { text: `Le classement des créateurs (podium du TCG), avec les points de chacun et ce que rapporte chaque carte${s.dayGifts ? ', et les points gagnés aujourd’hui (le podium du jour, qui donne les boosters bonus à minuit)' : ''}. Visible ici seulement : les joueurs ne voient que les podiums et leur place, jamais un score.` })),
         btn('btn--ghost btn--sm', 'Actualiser', 'loop', async (e) => {
           e.currentTarget.disabled = true;
           await loadScores();

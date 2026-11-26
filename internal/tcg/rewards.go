@@ -7,11 +7,12 @@ import (
 
 // Récompenses de lancement.
 //
-// Chaque soir du jury de la vague 1 où la promo a voté, à minuit (heure de Paris), on reprend le
-// classement des créateurs tel qu'il s'affichait : avant le lancement, une carte validée vaut un
-// point (leaderboard.go). Il se reconstitue à la sortie de la vague 1 à partir de la date de
-// validation de chaque carte (Card.Validated) et de la date des séries du jury (Ballot.At) : rien
-// d'autre n'est gardé pour ça. Ce soir-là :
+// Chaque soir du jury de la vague 1 où la promo a voté, à minuit (heure de Paris), le podium de la
+// journée donne des boosters bonus : les points gagnés ce jour-là au classement des créateurs
+// (dayRanking, même barème que le classement, leaderboard.go). Chaque journée repart de zéro :
+// l'avance de la veille ne compte pas. Il se reconstitue à la sortie de la vague 1 à partir de la
+// date de validation de chaque carte (Card.Validated) et de la date des séries du jury (Ballot.At) :
+// rien d'autre n'est gardé pour ça. Ce soir-là :
 //
 //	1re place       un booster bonus de 5 cartes (une taille qui n'existe pas en boosters du jour)
 //	2e place        4 cartes
@@ -22,12 +23,12 @@ import (
 // booster bonus de 4 cartes. Tous ces boosters s'ajoutent aux deux boosters du jour, se tirent au
 // même taux par carte (draw) et sont valables 24 h après la sortie de la vague 1.
 //
-// Équilibrage (simulation : sim_test.go). Pour que personne ne rafle les cartes numérotées le
-// premier jour, le rythme des raretés compte ces boosters bonus d'avance (boostersPerDay) : le jour
-// du lancement distribue ~7 % du stock numéroté, bonus ou pas. Et le classement étant cumulatif, les
-// mêmes finissent en tête chaque soir : seuls les maxNights meilleurs soirs d'un joueur comptent
-// (3 ; 1er tous les soirs : 4 + 3 × 5 = 19 cartes bonus, plutôt que 44 sur 8 soirs), ce qui garde
-// l'ordre 1er > 2e > 3e et l'avance du podium à environ deux jours de jeu.
+// Équilibrage (simulations : sim_test.go, day_sim_test.go). Pour que personne ne rafle les cartes
+// numérotées le premier jour, le rythme des raretés compte ces boosters bonus d'avance
+// (boostersPerDay) : le jour du lancement distribue ~7 % du stock numéroté, bonus ou pas. Le podium
+// de la journée fait gagner 5 à 6 créateurs différents en 7 soirs (le classement cumulé : presque
+// toujours le même), et seuls les maxNights meilleurs soirs d'un joueur comptent (3 ; 1er tous les
+// soirs : 4 + 3 × 5 = 19 cartes bonus au plus).
 var rankPackSize = map[int]int{1: 5, 2: 4, 3: 3}
 
 const (
@@ -55,7 +56,7 @@ func packSize(rank int) int {
 // RewardNight : la place d'un joueur un soir de jury.
 type RewardNight struct {
 	Day  string `json:"day"`  // jour calendaire (Paris) du soir
-	Rank int    `json:"rank"` // place à minuit
+	Rank int    `json:"rank"` // place au podium de la journée, à minuit
 	Size int    `json:"size"` // cartes du booster bonus
 }
 
@@ -94,9 +95,9 @@ func (g *Game) launchRewards(w *Wave, until time.Time, atRelease bool) (map[stri
 	nights := map[string][]RewardNight{}
 	for _, mid := range g.launchNights(w, until, atRelease) {
 		day := calendarDay(mid.Add(-time.Minute))
-		for _, cr := range g.rankingAt(mid) { // ex æquo : même place, même booster
-			if n := packSize(cr.place); n > 0 {
-				nights[cr.id] = append(nights[cr.id], RewardNight{Day: day, Rank: cr.place, Size: n})
+		for _, d := range g.dayRanking(dayStart(mid.Add(-time.Minute)), mid) { // ex æquo : même place, même booster
+			if n := packSize(d.place); n > 0 {
+				nights[d.id] = append(nights[d.id], RewardNight{Day: day, Rank: d.place, Size: n})
 			}
 		}
 	}
@@ -232,7 +233,7 @@ type RewardRow struct {
 	Opened      int           `json:"opened"` // cartes bonus déjà ouvertes
 }
 
-// NightPodium : le podium d'un soir de jury, tel qu'il est reconstitué (pour le vérifier).
+// NightPodium : le podium de la journée d'un soir de jury, tel qu'il est reconstitué (pour le vérifier).
 type NightPodium struct {
 	Day    string   `json:"day"`
 	Top    []string `json:"top"`    // pseudos des places 1 à 3 (ex æquo compris)
@@ -257,12 +258,12 @@ func (g *Game) AdminRewards() RewardsAdmin {
 	podiums := func(w *Wave, until time.Time, atRelease bool) {
 		for _, mid := range g.launchNights(w, until, atRelease) {
 			np := NightPodium{Day: calendarDay(mid.Add(-time.Minute)), Top: []string{}, Places: []int{}}
-			for _, cr := range g.rankingAt(mid) {
-				if cr.place > podiumSize {
+			for _, d := range g.dayRanking(dayStart(mid.Add(-time.Minute)), mid) {
+				if d.place > podiumSize {
 					break
 				}
-				np.Top = append(np.Top, g.pseudo(cr.id))
-				np.Places = append(np.Places, cr.place)
+				np.Top = append(np.Top, g.pseudo(d.id))
+				np.Places = append(np.Places, d.place)
 			}
 			out.Podiums = append(out.Podiums, np)
 		}

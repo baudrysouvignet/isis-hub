@@ -299,22 +299,27 @@ connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
    est rangé à part (`Player.Replicas`, jamais dans `Owned`) : aucun échange, double ni correspondance
    ne peut le voir.
 7. **Meilleurs créateurs** : podium des 3 premiers et place de chacun (accueil du jeu, page
-   d'attente). Score calculé par le serveur (`internal/tcg/leaderboard.go`) et jamais envoyé : carte
-   en jeu selon sa rareté (commune 2 … unique 25), carte validée 1. Les points ne font que monter,
-   sauf une exception : une carte validée, non retenue, que le jury de la vague en jeu a placée dans
-   son dernier quart (au moins 3 classements, score négatif) coûte 2 (−1 au total). Elle se calcule
-   vague par vague, avec les seuls classements de ce jury. Cartes bloquées, retirées, refusées par
-   une personne sur la photo et propositions en attente : 0. La page dit ce qui compte et à quel
-   point (jauges), sans chiffre, pour ne rien dévoiler de la rareté.
+   d'attente). Score calculé par le serveur (`internal/tcg/leaderboard.go`) et jamais envoyé : une
+   carte vaut selon sa rareté (commune 1, rare 5, épique 9, légendaire 15, unique 25) : celle de son
+   impression, et avant l'impression celle que lui donne l'aperçu de la prochaine vague (le calcul de
+   l'impression, d'après le jury), dès 2 classements au jury ; avant, ou si elle n'est pas retenue,
+   1. Une carte commune ou non retenue que le jury de sa vague place dans son dernier quart (au
+   moins 3 classements, score négatif) vaut −1. Cartes bloquées, retirées, refusées par une personne
+   sur la photo et propositions en attente : 0. Même score, même place (ex æquo sur la même marche).
+   La page dit ce qui compte et à quel point (jauges), sans chiffre, pour ne rien dévoiler de la
+   rareté. L'administration voit le détail des scores (onglet « Détail des scores » du TCG).
+   Équilibrage simulé : `TCG_SIM=1 go test ./internal/tcg/ -run TestScoreSimulation -v`.
 8. **Récompenses de lancement** (`internal/tcg/rewards.go`) : chaque soir du jury de la vague 1 où
-   la promo a voté, à minuit, le classement des créateurs tel qu'il s'affichait est reconstitué (date
-   de validation de chaque carte, date des séries du jury) : 1er → booster bonus de 5 cartes, 2e → 4,
-   3e → 3, du 4e au 13e → 1 ; chaque participant (une carte validée ou une série du jury) reçoit 4
-   cartes. Les 3 meilleurs soirs d'un joueur comptent. Attribués d'eux-mêmes à la sortie de la
-   vague 1, valables 24 h, au même taux de tirage que les boosters du jour, et comptés d'avance dans
-   le rythme des cartes numérotées. Avant la sortie, chacun voit ce qu'il a gagné à ce jour, et
-   l'administration le tableau complet. Équilibrage simulé avec le vrai code :
-   `TCG_SIM=1 go test ./internal/tcg/ -run TestLaunchSimulation -v`.
+   la promo a voté, à minuit, le **podium du jour** compte : les points gagnés dans la journée (score
+   à minuit moins score à la minuit d'avant, reconstitués d'après la date de validation de chaque
+   carte et la date des séries du jury) ; chaque journée repart de zéro. 1er → booster bonus de 5
+   cartes, 2e → 4, 3e → 3, du 4e au 13e → 1, ex æquo compris ; chaque participant (une carte validée
+   ou une série du jury) reçoit 4 cartes. Les 3 meilleurs soirs d'un joueur comptent. Attribués
+   d'eux-mêmes à la sortie de la vague 1, valables 24 h, au même taux de tirage que les boosters du
+   jour, et comptés d'avance dans le rythme des cartes numérotées. Pendant le jury, les joueurs voient
+   le podium du jour à côté du classement global, et ce qu'ils ont gagné à ce jour ; l'administration
+   voit le tableau complet. Équilibrage simulé avec le vrai code :
+   `TCG_SIM=1 go test ./internal/tcg/ -run 'TestLaunchSimulation|TestDailyPodiumSimulation' -v`.
    Avant le lancement, l'administration peut **essayer une ouverture** (booster du jour ou bonus,
    avec une réplique) depuis la page d'attente : raretés inventées, rien n'est enregistré.
 

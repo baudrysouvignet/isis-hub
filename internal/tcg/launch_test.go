@@ -220,7 +220,8 @@ func TestLaunchRewards(t *testing.T) {
 			clk.add(time.Minute)
 		}
 	}
-	// Jour 0 : c0 = 6 cartes, c1 = 5, c2 = 4, puis 1 chacun pour c3 … c14 (dans l'ordre).
+	// Jour 1 (premier jour du jury) : c0 = 6 cartes, c1 = 5, c2 = 4, puis 1 chacun pour c3 … c14.
+	clk.t = day(1, 8)
 	validate(creators[0], 6)
 	validate(creators[1], 5)
 	validate(creators[2], 4)
@@ -231,8 +232,9 @@ func TestLaunchRewards(t *testing.T) {
 		p := g.st.Players[voter]
 		p.Ballots[1] = append(p.Ballots[1], Ballot{Cards: []string{"x"}, Rank: []string{"x"}, At: at})
 	}
-	vote(day(1, 14)) // soir 1 : c0, c1, c2 au podium, c3 … c14 ensuite, tous 4es ex æquo (1 carte chacun)
-	// Jour 2 : pas de vote. Jour 3 : c14 passe premier avec 9 cartes de plus.
+	vote(day(1, 14)) // soir 1 : c0, c1, c2 au podium du jour, c3 … c14 ensuite, tous 4es ex æquo
+	// Jour 2 : pas de vote. Jour 3 : seul c14 gagne des points (9 cartes) : seul au podium du jour,
+	// l'avance de c0 la veille ne compte pas.
 	clk.t = day(3, 9)
 	validate(creators[14], 9)
 	vote(day(3, 18))
@@ -267,10 +269,10 @@ func TestLaunchRewards(t *testing.T) {
 			t.Fatalf("%s : %v, attendu %v", g.st.Players[pid].Pseudo, got, want)
 		}
 	}
-	eq(creators[0], allPackSize, 5, 4)  // 1er le soir 1, 2e le soir 3
+	eq(creators[0], allPackSize, 5)     // 1er le soir 1 ; le soir 3, rien gagné ce jour-là
 	eq(creators[14], allPackSize, 1, 5) // 4e ex æquo le soir 1 (1 carte comme c3 … c13), 1er le soir 3
-	eq(creators[3], allPackSize, 1, 1)  // 4e ex æquo, puis 5e ex æquo
-	eq(creators[13], allPackSize, 1, 1) // même score que c3 : même place, même booster
+	eq(creators[3], allPackSize, 1)     // 4e ex æquo le soir 1
+	eq(creators[13], allPackSize, 1)    // même gain que c3 ce soir-là : même place, même booster
 	eq(voter, allPackSize)              // une série du jury : participant
 	eq(idle)                            // ni carte, ni vote
 	if pk := g.st.Players[creators[0]].Packs[1]; pk.Kind != "rank" || pk.Rank != 1 || pk.Day != "2026-11-25" {
@@ -430,16 +432,16 @@ func TestLaunchRewardsRetroactive(t *testing.T) {
 	a := mustJoin(t, g, "a", "Alice A.")
 	b := mustJoin(t, g, "b", "Bob B.")
 	v := mustJoin(t, g, "v", "Vic V.")
-	// Alice : 2 cartes validées le jour 0. Bob : 3 cartes validées le jour 0, mais l'une attendait
-	// des accords jusqu'au jour 3 (Decided réécrit), avec un mail parti le jour 0 à 11 h.
+	// Alice : 2 cartes validées le jour 1. Bob : 3 cartes validées le jour 1, mais l'une attendait
+	// des accords jusqu'au jour 3 (Decided réécrit), avec un mail parti le jour 1 à 11 h.
 	add := func(id, author string, decided time.Time, tags ...Tag) {
 		g.st.Cards[id] = &Card{ID: id, Author: author, Status: StatusAccepted, Created: day(0, 8), Decided: decided, Tags: tags}
 	}
-	add("a1", a, day(0, 10))
-	add("a2", a, day(0, 10))
-	add("b1", b, day(0, 10))
-	add("b2", b, day(0, 10))
-	add("b3", b, day(3, 15), Tag{Key: "k", Notified: day(0, 11), Answer: "ok", At: day(3, 15)})
+	add("a1", a, day(1, 10))
+	add("a2", a, day(1, 10))
+	add("b1", b, day(1, 10))
+	add("b2", b, day(1, 10))
+	add("b3", b, day(3, 15), Tag{Key: "k", Notified: day(1, 11), Answer: "ok", At: day(3, 15)})
 	g.st.Players[v].Ballots[1] = []Ballot{{Cards: []string{"a1"}, Rank: []string{"a1"}, At: day(1, 12)}}
 	clk.t = day(2, 9)
 	if err := g.Flush(); err != nil {
@@ -456,9 +458,11 @@ func TestLaunchRewardsRetroactive(t *testing.T) {
 		t.Fatal(err)
 	}
 	g2.now = clk.now
-	if got := g2.st.Cards["b3"].Validated; !got.Equal(day(0, 11)) {
+	if got := g2.st.Cards["b3"].Validated; !got.Equal(day(1, 11)) {
 		t.Fatalf("date de validation reconstituée : %v", got)
 	}
+	// Podium du soir 1 (points gagnés le jour 1) : Bob 3, Alice 2. Sans la date reconstituée, b3
+	// compterait le jour 3 : Bob et Alice seraient ex æquo.
 	nights, _ := g2.launchRewards(g2.st.Waves[0], clk.now(), false)
 	if n := nights[b]; len(n) != 1 || n[0].Rank != 1 || n[0].Day != "2026-11-25" {
 		t.Fatalf("Bob au soir 1 : %+v", n)

@@ -786,7 +786,7 @@ export function createTCG(o) {
   function rewardsPanel(rw) {
     if (!rw || (!rw.participant && !rw.nights?.length && !rw.packs?.length)) {
       if (!rw?.preview) return null;
-      return h('section.trw', {}, h('div.trw-head', {}, h('div', {}, h('h2', { text: 'Récompenses de lancement' }), h('p', { text: 'Chaque soir de jury, à minuit, le classement des créateurs compte : 1er → booster bonus de 5 cartes, 2e → 4, 3e → 3, du 4e au 13e → 1. Et un booster de 4 cartes pour chaque participant (une carte validée ou une série du jury). Tu les ouvriras le jour du lancement.' }))), h('p.trw-note', { text: 'Rien pour l’instant : propose une carte ou joue une série du jury pour participer.' }));
+      return h('section.trw', {}, h('div.trw-head', {}, h('div', {}, h('h2', { text: 'Récompenses de lancement' }), h('p', { text: 'Chaque soir de jury, à minuit, le podium du jour compte (les points gagnés dans la journée, chaque journée repart de zéro) : 1er → booster bonus de 5 cartes, 2e → 4, 3e → 3, du 4e au 13e → 1. Et un booster de 4 cartes pour chaque participant (une carte validée ou une série du jury). Tu les ouvriras le jour du lancement.' }))), h('p.trw-note', { text: 'Rien pour l’instant : propose une carte ou joue une série du jury pour participer.' }));
     }
     const live = !rw.preview;
     const left = live && rw.until ? Math.max(0, new Date(rw.until) - Date.now()) : 0;
@@ -816,10 +816,10 @@ export function createTCG(o) {
     }
     const why = h('ul.trw-why');
     if (rw.participant) why.append(h('li', {}, h('span.trw-rank', {}, ic('check', 'ic ic--xs')), h('span', {}, h('b', { text: 'Participation' }), ' au lancement'), h('span.trw-n', { text: `+${allPackSizeOf(rw)}` })));
-    for (const n of rw.nights ?? []) why.append(h('li', {}, h('span.trw-rank', { text: placeTxt(n.rank) }), h('span', {}, 'Soir du ', h('b', { text: dayLong(n.day + 'T12:00:00') }), ' (classement à minuit)'), h('span.trw-n', { text: `+${n.size}` })));
+    for (const n of rw.nights ?? []) why.append(h('li', {}, h('span.trw-rank', { text: placeTxt(n.rank) }), h('span', {}, 'Soir du ', h('b', { text: dayLong(n.day + 'T12:00:00') }), ' (podium du jour, à minuit)'), h('span.trw-n', { text: `+${n.size}` })));
     sec.append(why);
     const counted = rw.maxNights ? ` Seuls tes ${rw.maxNights} meilleurs soirs comptent.` : '';
-    sec.append(h('p.trw-note', { text: live ? `Valables jusqu’au ${dayLong(rw.until)} à ${hourText(rw.until)}, puis ils expirent.${counted}` : `Chaque soir de jury, à minuit : 1er → 5 cartes, 2e → 4, 3e → 3, du 4e au 13e → 1 ; et 4 cartes pour chaque participant.${counted} Le classement ne montre que des places, jamais de score.` }));
+    sec.append(h('p.trw-note', { text: live ? `Valables jusqu’au ${dayLong(rw.until)} à ${hourText(rw.until)}, puis ils expirent.${counted}` : `Chaque soir de jury, à minuit, le podium du jour (les points gagnés dans la journée) : 1er → 5 cartes, 2e → 4, 3e → 3, du 4e au 13e → 1 ; et 4 cartes pour chaque participant.${counted} Le classement ne montre que des places, jamais de score.` }));
     if (live && open.length) sec.append(h('div.trw-acts', {}, tbtn(open.length > 1 ? `Ouvrir un booster bonus (${open.length})` : 'Ouvrir le booster bonus', 'gift', 'tbtn--primary', (e) => openPack(open[0], e.currentTarget))));
     return sec;
   }

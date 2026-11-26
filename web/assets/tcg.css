@@ -2085,3 +2085,10 @@ html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
 .tlb-more { align-self: center; padding: 4px 8px; border-radius: 99px; background: var(--surface-2); color: var(--text-2); font: 750 12px/1 var(--font); }
 .tlb-tie { margin-bottom: -2px; color: var(--text-3); font: 750 10.5px/1 var(--font); letter-spacing: .05em; text-transform: uppercase; }
 .tlb-ties { margin: 0; padding: 0 14px 12px; color: var(--text-3); font-size: 12.5px; }
+/* Podium du jour / depuis le début (pendant le jury de lancement). */
+.tlb-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; max-width: 360px; margin: 0 0 16px; padding: 4px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); }
+.tlb-tab { padding: 8px 10px; border: 0; border-radius: 99px; background: none; color: var(--text-2); font: 650 13px/1.2 var(--font); cursor: pointer; }
+.tlb-tab:hover { color: var(--text); }
+.tlb-tab.is-on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, .25), inset 0 0 0 1px var(--line); }
+.tlb-gifts { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; padding: 10px 14px; border-radius: 14px; background: rgba(245, 196, 81, .07); border: 1px solid rgba(245, 196, 81, .2); color: var(--text-2); font-size: 13px; }
+.tlb-gifts .ic { flex: none; color: #F5C451; }

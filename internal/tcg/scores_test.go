@@ -173,3 +173,53 @@ func TestScorePlannedRarity(t *testing.T) {
 		t.Fatalf("rareté imprimée : %s", g.st.Cards["a1"].Rarity)
 	}
 }
+
+// Podium de la journée : chaque journée repart de zéro. Louis, 1er hier, garde la tête du
+// classement global, mais Marie, qui gagne plus de points aujourd'hui, est 1re du jour et c'est
+// elle qui reçoit le booster de la 1re place ce soir.
+func TestDayPodium(t *testing.T) {
+	g, clk, _ := newGame(t)
+	g.st.Season.Enabled = true
+	day := func(d, h int) time.Time { return time.Date(2026, 11, 24+d, h, 0, 0, 0, Paris) }
+	g.st.Waves = []*Wave{{N: 1, JuryFrom: day(1, 0), JuryUntil: day(4, 20), ReleaseAt: day(5, 6), Size: 50}}
+	louis := mustJoin(t, g, "l", "Louis L.")
+	marie := mustJoin(t, g, "m", "Marie M.")
+	voter := mustJoin(t, g, "v", "Vic V.")
+	n := 0
+	add := func(author string, at time.Time, k int) {
+		for i := 0; i < k; i++ {
+			n++
+			id := fmt.Sprintf("k%d", n)
+			g.st.Cards[id] = &Card{ID: id, Num: n, Title: id, Author: author, Status: StatusAccepted, Validated: at, Decided: at}
+		}
+	}
+	vote := func(at time.Time) {
+		p := g.st.Players[voter]
+		p.Ballots[1] = append(p.Ballots[1], Ballot{Cards: []string{"x"}, Rank: []string{"x"}, At: at})
+	}
+	add(louis, day(1, 9), 10) // hier : Louis +10
+	vote(day(1, 14))
+	add(marie, day(2, 9), 3) // aujourd'hui : Marie +3, Louis +1
+	add(louis, day(2, 10), 1)
+	vote(day(2, 14))
+	clk.t = day(2, 15)
+
+	v, _ := g.PlayerView(marie)
+	lb := v.Leaders
+	if lb.Rank != 2 || lb.Podium[0].Pseudo != "Louis L." {
+		t.Fatalf("classement global : %+v", lb)
+	}
+	if lb.Today == nil || lb.Today.Rank != 1 || lb.Today.Total != 2 || lb.Today.Podium[0].Pseudo != "Marie M." || lb.Today.Podium[1].Place != 2 {
+		t.Fatalf("podium du jour : %+v", lb.Today)
+	}
+	clk.t = day(3, 9) // le lendemain matin : les deux soirs sont passés
+	nights, _ := g.launchRewards(g.st.Waves[0], clk.now(), false)
+	if fmt.Sprint(nights[louis]) != "[{2026-11-25 1 5} {2026-11-26 2 4}]" || fmt.Sprint(nights[marie]) != "[{2026-11-26 1 5}]" {
+		t.Fatalf("soirs : Louis %v, Marie %v", nights[louis], nights[marie])
+	}
+	// Après la sortie, plus de podium du jour.
+	clk.t = day(5, 7)
+	if v, _ := g.PlayerView(marie); v.Leaders.Today != nil {
+		t.Fatalf("podium du jour après la sortie : %+v", v.Leaders.Today)
+	}
+}

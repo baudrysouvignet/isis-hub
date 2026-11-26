@@ -10,6 +10,20 @@
 
 export const CHANGELOG = [
   {
+    version: '2.4.3',
+    date: '2026-11-26',
+    title: 'TCG : un podium du jour pour les boosters bonus',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
+    short: [
+      'Meilleurs créateurs : pendant le jury, un podium du jour à côté du classement global.',
+      'Boosters bonus du soir : c’est le podium du jour qui compte, chaque journée repart de zéro.',
+    ],
+    details: [
+      'Meilleurs créateurs : pendant le jury de lancement, choisis « Aujourd’hui » ou « Depuis le début ». Le podium du jour classe les points gagnés depuis minuit : tes cartes validées dans la journée, et celles qui montent au jury ce jour-là.',
+      'Récompenses de lancement : chaque soir de jury, à minuit, c’est le podium du jour qui donne les boosters bonus (1er → 5 cartes, 2e → 4, 3e → 3, du 4e au 13e → 1, ex æquo compris). L’avance de la veille ne compte pas : chaque soir, tout le monde peut gagner. Tes 3 meilleurs soirs comptent toujours, et les soirs déjà passés sont recomptés de la même façon.',
+    ],
+  },
+  {
     version: '2.4.2',
     date: '2026-11-26',
     title: 'TCG : la place de tes cartes au jury compte au classement',
