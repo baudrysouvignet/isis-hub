@@ -10,6 +10,22 @@
 
 export const CHANGELOG = [
   {
+    version: '2.4.2',
+    date: '2026-11-26',
+    title: 'TCG : la place de tes cartes au jury compte au classement',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
+    short: [
+      'Meilleurs créateurs : avant l’impression, une carte compte déjà selon sa place au jury.',
+      'Ex æquo : même nombre de points, même place, sur la même marche du podium.',
+    ],
+    details: [
+      'Meilleurs créateurs : une carte validée compte désormais, avant l’impression, comme si la vague s’imprimait maintenant : la rareté que le jury lui donne (une carte que la promo adore rapporte autant qu’une Légendaire ou une Unique). Ça commence dès ses 2 premiers classements au jury ; d’ici là, ou si elle n’entre pas dans la vague, elle rapporte un peu. Une fois imprimée, elle garde ces points : l’impression ne change pas le classement.',
+      'Meilleurs créateurs : une carte commune rapporte un peu moins qu’avant, et une carte commune ou pas retenue que le jury place tout en bas (son dernier quart) coûte un peu. Beaucoup de cartes sans soin ne suffisent plus pour le podium : la qualité compte bien plus que le nombre.',
+      'Ex æquo : à égalité de points, même place. Deux premiers ex æquo partagent la première marche et le suivant est 3e ; trois ex æquo partagent la même marche. Les soirs du jury de lancement, des ex æquo reçoivent le même booster bonus.',
+      'Récompenses de lancement : le classement de chaque soir, à minuit, est recompté avec ces règles et les votes faits avant minuit.',
+    ],
+  },
+  {
     version: '2.4.0',
     date: '2026-11-26',
     title: 'Le mode sombre, la copie cachée et le détail des évaluations',

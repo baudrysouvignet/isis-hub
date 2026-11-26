@@ -83,7 +83,8 @@ func TestBackfillOpened(t *testing.T) {
 	}
 }
 
-// Classement des créateurs : la qualité compte plus que le nombre, et jamais de score envoyé.
+// Classement des créateurs : la qualité compte plus que le nombre, ex æquo sur la même marche, et
+// jamais de score envoyé.
 func TestLeaderboard(t *testing.T) {
 	g, _, _ := liveGame(t) // Alice et Bob : 5 cartes imprimées chacun (vague de 10)
 	c := mustJoin(t, g, "c", "Chloé C.")
@@ -96,21 +97,25 @@ func TestLeaderboard(t *testing.T) {
 			g.st.Cards[id] = &Card{ID: id, Author: author, Status: status, Rarity: r, Decided: g.now()}
 		}
 	}
-	// Toutes les cartes de la vague deviennent communes : 5 × 2 = 10 points chacun.
+	// Toutes les cartes de la vague deviennent communes : 5 × 1 = 5 points chacun, ex æquo.
 	for _, card := range g.st.Cards {
 		card.Rarity = Commune
 	}
 	set(c, StatusPrinted, Legendaire, 1) // une légendaire : 15
-	set(d, StatusAccepted, "", 9)        // beaucoup de cartes validées, pas encore imprimées : 9
+	set(d, StatusAccepted, "", 9)        // beaucoup de cartes validées, pas encore classées au jury : 9
 	set(d, StatusBlocked, "", 3)         // et des cartes bloquées : -3
 	set(e, StatusPending, "", 4)         // seulement en attente : pas classé
 
 	v, _ := g.PlayerView(e)
 	lb := v.Leaders
-	if lb.Total != 4 || lb.Rank != 0 || len(lb.Podium) != 3 || lb.Podium[0].Pseudo != "Chloé C." {
+	if lb.Total != 4 || lb.Rank != 0 || len(lb.Podium) != 4 || lb.Podium[0].Pseudo != "Chloé C." || lb.Podium[0].Place != 1 || lb.Podium[1].Pseudo != "Dan D." || lb.Podium[1].Place != 2 {
 		t.Fatalf("classement : %+v", lb)
 	}
-	if v, _ := g.PlayerView(d); v.Leaders.Rank != 4 {
+	// Alice et Bob, même score : tous deux 3e, sur la même marche.
+	if lb.Podium[2].Place != 3 || lb.Podium[3].Place != 3 {
+		t.Fatalf("ex æquo : %+v", lb.Podium)
+	}
+	if v, _ := g.PlayerView(d); v.Leaders.Rank != 2 {
 		t.Fatalf("place de Dan : %d", v.Leaders.Rank)
 	}
 	if v, _ := g.PlayerView(c); !v.Leaders.Podium[0].Me || v.Leaders.Rank != 1 || v.Leaders.Podium[0].Cards != 1 {
@@ -121,11 +126,14 @@ func TestLeaderboard(t *testing.T) {
 	if strings.Contains(string(raw), "score") || strings.Contains(string(raw), "legendaire") {
 		t.Fatalf("score ou rareté envoyés : %s", raw)
 	}
-	// Plus de pénalité : bloquée, retirée (signalements ou accord retiré) : 0 point.
+	// Plus de pénalité : bloquée, retirée (signalements ou accord retiré), en attente : ne comptent pas.
 	for _, st := range []string{StatusBlocked, StatusRemoved, StatusPending} {
 		for _, reason := range []string{"", "personne", "moque"} {
-			if pts := cardPoints(&Card{Status: st, Reason: reason}, nil); pts != 0 {
-				t.Fatalf("%s (%s) : %v point(s)", st, reason, pts)
+			g.st.NextNum++
+			id := fmt.Sprintf("z%d", g.st.NextNum)
+			g.st.Cards[id] = &Card{ID: id, Author: e, Status: st, Reason: reason, Decided: g.now(), Validated: g.now()}
+			if vals, _, _ := g.valuation(time.Time{}); vals[id] != (cardValue{}) {
+				t.Fatalf("%s (%s) : %+v", st, reason, vals[id])
 			}
 		}
 	}

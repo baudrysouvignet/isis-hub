@@ -94,9 +94,9 @@ func (g *Game) launchRewards(w *Wave, until time.Time, atRelease bool) (map[stri
 	nights := map[string][]RewardNight{}
 	for _, mid := range g.launchNights(w, until, atRelease) {
 		day := calendarDay(mid.Add(-time.Minute))
-		for i, cr := range g.rankingAt(mid) {
-			if n := packSize(i + 1); n > 0 {
-				nights[cr.id] = append(nights[cr.id], RewardNight{Day: day, Rank: i + 1, Size: n})
+		for _, cr := range g.rankingAt(mid) { // ex æquo : même place, même booster
+			if n := packSize(cr.place); n > 0 {
+				nights[cr.id] = append(nights[cr.id], RewardNight{Day: day, Rank: cr.place, Size: n})
 			}
 		}
 	}
@@ -234,8 +234,9 @@ type RewardRow struct {
 
 // NightPodium : le podium d'un soir de jury, tel qu'il est reconstitué (pour le vérifier).
 type NightPodium struct {
-	Day string   `json:"day"`
-	Top []string `json:"top"` // pseudos, du 1er au 3e
+	Day    string   `json:"day"`
+	Top    []string `json:"top"`    // pseudos des places 1 à 3 (ex æquo compris)
+	Places []int    `json:"places"` // place de chacun (1, 1, 3…)
 }
 
 type RewardsAdmin struct {
@@ -255,12 +256,13 @@ func (g *Game) AdminRewards() RewardsAdmin {
 	out := RewardsAdmin{Rows: []RewardRow{}, Players: len(g.st.Players), Max: maxNights, Podiums: []NightPodium{}}
 	podiums := func(w *Wave, until time.Time, atRelease bool) {
 		for _, mid := range g.launchNights(w, until, atRelease) {
-			np := NightPodium{Day: calendarDay(mid.Add(-time.Minute)), Top: []string{}}
-			for i, cr := range g.rankingAt(mid) {
-				if i >= podiumSize {
+			np := NightPodium{Day: calendarDay(mid.Add(-time.Minute)), Top: []string{}, Places: []int{}}
+			for _, cr := range g.rankingAt(mid) {
+				if cr.place > podiumSize {
 					break
 				}
 				np.Top = append(np.Top, g.pseudo(cr.id))
+				np.Places = append(np.Places, cr.place)
 			}
 			out.Podiums = append(out.Podiums, np)
 		}

@@ -3,6 +3,7 @@ package tcg
 import (
 	"fmt"
 	"math/rand"
+	"sort"
 	"testing"
 	"time"
 )
@@ -79,9 +80,16 @@ func TestJuryPenaltyBottomQuarter(t *testing.T) {
 		}
 		g.st.Players[v].Ballots[1] = []Ballot{{Cards: r, Rank: r, At: now}}
 	}
-	bottom := g.juryBottom()
-	if len(bottom) != 2 || !bottom["k0"] || !bottom["k1"] {
-		t.Fatalf("dernier quart : %v", bottom)
+	vals, _, judge := g.valuation(time.Time{})
+	var bottom []string
+	for id, v := range vals {
+		if v.penalty {
+			bottom = append(bottom, id)
+		}
+	}
+	sort.Strings(bottom)
+	if judge != 1 || len(bottom) != 2 || bottom[0] != "k0" || bottom[1] != "k1" {
+		t.Fatalf("dernier quart : %v (jury de la vague %d)", bottom, judge)
 	}
 	score := func(pid string) float64 {
 		for _, cr := range g.ranking() {
@@ -223,7 +231,7 @@ func TestLaunchRewards(t *testing.T) {
 		p := g.st.Players[voter]
 		p.Ballots[1] = append(p.Ballots[1], Ballot{Cards: []string{"x"}, Rank: []string{"x"}, At: at})
 	}
-	vote(day(1, 14)) // soir 1 : c0, c1, c2 au podium, c3 … c12 ensuite
+	vote(day(1, 14)) // soir 1 : c0, c1, c2 au podium, c3 … c14 ensuite, tous 4es ex æquo (1 carte chacun)
 	// Jour 2 : pas de vote. Jour 3 : c14 passe premier avec 9 cartes de plus.
 	clk.t = day(3, 9)
 	validate(creators[14], 9)
@@ -259,12 +267,12 @@ func TestLaunchRewards(t *testing.T) {
 			t.Fatalf("%s : %v, attendu %v", g.st.Players[pid].Pseudo, got, want)
 		}
 	}
-	eq(creators[0], allPackSize, 5, 4) // 1er le soir 1, 2e le soir 3
-	eq(creators[14], allPackSize, 5)   // hors des 13 le soir 1 (dernier validé), 1er le soir 3
-	eq(creators[3], allPackSize, 1, 1) // 4e puis 5e
-	eq(creators[13], allPackSize)      // 14e le soir 1, 15e le soir 3
-	eq(voter, allPackSize)             // une série du jury : participant
-	eq(idle)                           // ni carte, ni vote
+	eq(creators[0], allPackSize, 5, 4)  // 1er le soir 1, 2e le soir 3
+	eq(creators[14], allPackSize, 1, 5) // 4e ex æquo le soir 1 (1 carte comme c3 … c13), 1er le soir 3
+	eq(creators[3], allPackSize, 1, 1)  // 4e ex æquo, puis 5e ex æquo
+	eq(creators[13], allPackSize, 1, 1) // même score que c3 : même place, même booster
+	eq(voter, allPackSize)              // une série du jury : participant
+	eq(idle)                            // ni carte, ni vote
 	if pk := g.st.Players[creators[0]].Packs[1]; pk.Kind != "rank" || pk.Rank != 1 || pk.Day != "2026-11-25" {
 		t.Fatalf("soir : %+v", pk)
 	}

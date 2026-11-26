@@ -402,7 +402,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       ? h(
           'ol.tad-nights',
           {},
-          ...[...r.podiums].reverse().map((n) => h('li', {}, h('b', { text: `Soir du ${dayDate(n.day).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}` }), h('span', { text: n.top.length ? n.top.map((p, i) => `${place(i + 1)} ${p}`).join(' · ') : 'personne au classement' }))),
+          ...[...r.podiums].reverse().map((n) => h('li', {}, h('b', { text: `Soir du ${dayDate(n.day).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}` }), h('span', { text: n.top.length ? n.top.map((p, i) => `${place(n.places?.[i] ?? i + 1)} ${p}`).join(' · ') : 'personne au classement' }))),
         )
       : null;
     const box = h(
@@ -437,6 +437,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
   const fold = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const pts = (n) => (n > 0 ? `+${n0(n)}` : n < 0 ? `−${n0(-n)}` : '0');
   const rlabels = (r, n) => (n > 1 ? `${RLABEL[r]}s` : RLABEL[r]);
+  const nth = (n) => (n === 1 ? '1er' : `${n}e`);
   let scores = null;
 
   async function loadScores() {
@@ -452,29 +453,37 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
 
   /** Ce que vaut une carte, en clair. */
   function cardWhy(c, s) {
-    if (c.status === 'printed') return `En jeu · ${RLABEL[c.rarity] ?? 'rareté inconnue'}${c.wave ? ` · vague ${c.wave}` : ''}`;
+    const pen = (wave) => (c.penalty ? ` · dernier quart du jury de la vague ${wave} (${n0(s.validated)} − ${n0(-s.penalty)})` : '');
+    if (c.status === 'printed') return `En jeu · ${RLABEL[c.rarity] ?? 'rareté inconnue'}${c.wave ? ` · vague ${c.wave}` : ''}${pen(c.wave)}`;
     if (c.status === 'accepted' || c.status === 'consent') {
-      const base = c.status === 'consent' ? 'Validée · attend l’accord des personnes sur la photo' : 'Validée · pas encore imprimée';
-      return c.penalty ? `${base} · dernier quart du jury de la vague ${s.penaltyWave} (${n0(s.validated)} − ${n0(-s.penalty)})` : base;
+      let base;
+      if (c.status === 'consent') base = 'Validée · attend l’accord des personnes sur la photo';
+      else if (c.planned && c.few) base = `Validée · rareté prévue ${RLABEL[c.rarity]}, comptée dès ${plural(s.planVotes, 'classement')} au jury (${n0(c.votes)} pour l’instant)`;
+      else if (c.planned) base = `Validée · rareté prévue ${RLABEL[c.rarity]} · ${nth(c.place)} de l’aperçu de la vague ${c.wave}`;
+      else if (c.out) base = `Validée · pas retenue dans l’aperçu de la vague ${c.wave} (${nth(c.place)}${s.nextSize ? `, ${s.nextSize} cartes au plus` : ''})`;
+      else base = 'Validée · aucune vague prévue pour l’instant';
+      return base + pen(s.penaltyWave);
     }
     if (c.status === 'pending') return 'À valider · ne compte qu’une fois validée';
     if (c.status === 'blocked') return 'Bloquée · ne compte pas';
     return 'Retirée du jeu · ne compte pas';
   }
 
-  /** Résumé d'un joueur : « 2 Épiques +18 · 3 validées +3 · 1 en bas du jury −1 · 2 sans points ». */
+  /** Résumé d'un joueur : « 2 Épiques +18 · 1 Rare prévue +5 · 3 validées +3 · 1 en bas du jury −1 ». */
   function breakdown(row) {
     const parts = [];
-    const printed = {};
-    for (const c of row.cards) if (c.status === 'printed') (printed[c.rarity] ??= []).push(c);
-    for (const r of [...RARITIES].reverse()) {
-      const list = printed[r];
-      if (list) parts.push(`${list.length} ${rlabels(r, list.length)} ${pts(list.reduce((a, c) => a + c.points, 0))}`);
-    }
-    const valid = row.cards.filter((c) => (c.status === 'accepted' || c.status === 'consent') && !c.penalty);
-    if (valid.length) parts.push(`${plural(valid.length, 'validée', 'validées')} ${pts(valid.reduce((a, c) => a + c.points, 0))}`);
+    const sum = (list) => pts(list.reduce((a, c) => a + c.points, 0));
+    const group = (list, suffix) => {
+      const by = {};
+      for (const c of list) (by[c.rarity] ??= []).push(c);
+      for (const r of [...RARITIES].reverse()) if (by[r]) parts.push(`${by[r].length} ${rlabels(r, by[r].length)}${suffix(by[r].length)} ${sum(by[r])}`);
+    };
+    group(row.cards.filter((c) => c.status === 'printed' && !c.penalty), () => '');
+    group(row.cards.filter((c) => c.planned && !c.few && !c.penalty), (n) => (n > 1 ? ' prévues' : ' prévue'));
+    const valid = row.cards.filter((c) => (c.status === 'accepted' || c.status === 'consent') && !(c.planned && !c.few) && !c.penalty);
+    if (valid.length) parts.push(`${plural(valid.length, 'validée', 'validées')} ${sum(valid)}`);
     const pen = row.cards.filter((c) => c.penalty);
-    if (pen.length) parts.push(`${n0(pen.length)} en bas du jury ${pts(pen.reduce((a, c) => a + c.points, 0))}`);
+    if (pen.length) parts.push(`${n0(pen.length)} en bas du jury ${sum(pen)}`);
     const zero = row.cards.filter((c) => !['printed', 'accepted', 'consent'].includes(c.status));
     if (zero.length) parts.push(`${n0(zero.length)} sans points`);
     return parts.join(' · ');
@@ -485,7 +494,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     const rows = s.rows ?? [];
     const ranked = rows.filter((r) => r.rank);
     const penalized = rows.reduce((a, r) => a + r.cards.filter((c) => c.penalty).length, 0);
-    const place = (r) => (r.rank ? (r.rank === 1 ? '1er' : `${r.rank}e`) : 'Hors classement');
+    const rankText = (r) => (r.rank ? `${nth(r.rank)}${r.tied ? ' ex æquo' : ''}` : 'Hors classement');
     const why = (r) => {
       if (r.rank) return null;
       if (r.muted) return 'propositions suspendues';
@@ -496,9 +505,9 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     const scale = h(
       'ul.tad-scale',
       { attrs: { 'aria-label': 'Barème' } },
-      ...RARITIES.map((r) => h('li', {}, `${RLABEL[r]} en jeu `, h('b', { text: pts(s.rarity?.[r] ?? 0) }))),
-      h('li', {}, 'Validée, pas encore imprimée ', h('b', { text: pts(s.validated) })),
-      h('li', {}, s.penaltyWave ? `En plus, dernier quart du jury de la vague ${s.penaltyWave} ` : 'En plus, dernier quart du jury de la vague en jeu ', h('b', { text: pts(s.penalty) })),
+      ...RARITIES.map((r) => h('li', {}, `${RLABEL[r]} `, h('b', { text: pts(s.rarity?.[r] ?? 0) }))),
+      h('li', {}, `Validée : moins de ${plural(s.planVotes, 'classement')}, pas retenue ou en attente d’accord `, h('b', { text: pts(s.validated) })),
+      h('li', {}, `Commune ou pas retenue, dernier quart du jury${s.penaltyWave ? ` de la vague ${s.penaltyWave}` : ''} `, h('b', { text: pts(s.validated + s.penalty) })),
       h('li', {}, 'À valider, bloquée, retirée ', h('b', { text: '0' })),
     );
 
@@ -521,7 +530,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
               h(
                 'summary',
                 {},
-                h('span.tad-sc-rank', { text: place(r) }),
+                h('span.tad-sc-rank', { text: rankText(r) }),
                 h('span.tad-sc-who', {}, h('b', { text: r.pseudo }), h('span', { text: [off ? off[0].toUpperCase() + off.slice(1) : null, breakdown(r)].filter(Boolean).join(' · ') || 'Aucune carte' })),
                 h(`span.tad-sc-pts${r.score < 0 ? '.is-neg' : ''}`, {}, n0(r.score), h('small', { text: 'points' })),
               ),
@@ -557,9 +566,9 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
         {},
         h('div.tad-mini', {}, h('span', { text: 'Créateurs classés' }), h('b', { text: n0(ranked.length) }), h('small', { text: `sur ${plural(rows.length, 'créateur')}` })),
         h('div.tad-mini', {}, h('span', { text: 'En tête' }), h('b', { text: ranked[0] ? n0(ranked[0].score) : '–' }), h('small', { text: ranked[0] ? `points · ${ranked[0].pseudo}` : 'personne n’est classé' })),
-        h('div.tad-mini', {}, h('span', { text: 'Cartes en bas du jury' }), h('b', { text: n0(penalized) }), h('small', { text: s.penaltyWave ? `jury de la vague ${s.penaltyWave} · ${pts(s.penalty)} chacune` : 'aucune vague imprimée' })),
+        h('div.tad-mini', {}, h('span', { text: 'Cartes en bas du jury' }), h('b', { text: n0(penalized) }), h('small', { text: s.penaltyWave ? `jury de la vague ${s.penaltyWave} · ${pts(s.validated + s.penalty)} chacune` : 'pas encore de jury' })),
       ),
-      h('details.tad-box.tad-scale-d', {}, h('summary', {}, ic('info'), 'Barème : comment les points se comptent', ic('chev', 'ic ic--sm tad-rewards-chev')), scale, h('p.tad-help', { text: `Une carte compte selon sa rareté une fois imprimée (le jury décide de la rareté), 1 point tant qu’elle est validée sans être imprimée. Seule pénalité : une carte validée non retenue que le jury de la vague en jeu place dans son dernier quart (au moins ${plural(s.minVotes, 'classement')}, score négatif). Classés : au moins une carte validée, un score positif et des propositions non suspendues. À égalité : le plus de cartes validées, puis la première validée le plus tôt.` })),
+      h('details.tad-box.tad-scale-d', {}, h('summary', {}, ic('info'), 'Barème : comment les points se comptent', ic('chev', 'ic ic--sm tad-rewards-chev')), scale, h('p.tad-help', { text: `Une carte compte selon sa rareté : celle qu’elle a une fois imprimée, et avant l’impression celle que lui donne l’aperçu de la vague ${s.nextWave || 'à venir'} (le calcul de l’impression, d’après le jury), dès ${plural(s.planVotes, 'classement')} au jury. Le classement d’avant l’impression est donc celui d’après. Seule pénalité : une carte commune ou pas retenue que le jury de sa vague place dans son dernier quart (au moins ${plural(s.minVotes, 'classement')}, score négatif). Classés : au moins une carte validée, un score positif et des propositions non suspendues. Même score, même place (ex æquo) ; à égalité, l’ordre d’affichage : le plus de cartes validées, puis la première validée le plus tôt.` })),
       h('div.tad-sc-tools', {}, search, count),
       ul,
     );

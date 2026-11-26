@@ -251,19 +251,33 @@ type Candidate struct {
 // Les plus attendues par le jury deviennent les plus rares ; l'administrateur peut forcer une
 // rareté (ou « out » : écartée).
 func (g *Game) plan(w *Wave) []Candidate {
-	var cands []Candidate
+	var pool []*Card
 	for _, c := range g.st.Cards {
 		if c.Status == StatusAccepted {
-			cands = append(cands, Candidate{Card: c, Score: juryScore(c)})
+			pool = append(pool, c)
 		}
+	}
+	return planCards(w, pool, func(c *Card) (int, int) { return c.JuryPts, c.JuryVotes })
+}
+
+// planCards : l'aperçu de l'impression pour ces cartes, votes(c) donnant les points et le nombre de
+// classements du jury de chacune (ceux de la carte, ou ceux d'un instant passé pour le classement
+// à minuit, leaderboard.go). Même tri, mêmes raretés que l'impression.
+func planCards(w *Wave, pool []*Card, votes func(c *Card) (pts, n int)) []Candidate {
+	cands := make([]Candidate, 0, len(pool))
+	ranked := map[string]int{}
+	for _, c := range pool {
+		pts, k := votes(c)
+		ranked[c.ID] = k
+		cands = append(cands, Candidate{Card: c, Score: float64(pts) / float64(k+2)})
 	}
 	sort.SliceStable(cands, func(i, j int) bool {
 		a, b := cands[i], cands[j]
 		if a.Score != b.Score {
 			return a.Score > b.Score
 		}
-		if a.Card.JuryVotes != b.Card.JuryVotes {
-			return a.Card.JuryVotes > b.Card.JuryVotes
+		if ranked[a.Card.ID] != ranked[b.Card.ID] {
+			return ranked[a.Card.ID] > ranked[b.Card.ID]
 		}
 		return a.Card.Num < b.Card.Num
 	})

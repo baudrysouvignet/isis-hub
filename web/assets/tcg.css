@@ -2070,3 +2070,18 @@ html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
 }
 .tad-scale-d[open] > summary { margin-bottom: 10px; }
 .tad-scale-d[open] .tad-rewards-chev { rotate: -90deg; }
+
+/* Podium : une marche par place occupée, les ex æquo ensemble sur la même marche (1er, 1er, 3e…). */
+.tlb-podium { grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); }
+.tlb-podium:has(> :only-child .is-shared) { grid-template-columns: minmax(0, 300px); }
+.tlb-step { position: relative; }
+.tlb-step--or .tlb-who { padding-top: 0; }
+.tlb-whos { display: flex; justify-content: center; gap: 8px 6px; min-width: 0; max-width: 100%; }
+.tlb-step--or .tlb-whos { padding-top: 16px; }
+.tlb-whos.is-shared { flex-wrap: wrap; }
+.tlb-whos.is-shared .tlb-who { flex: 1 1 0; min-width: 46px; }
+.tlb-whos.is-shared .tlb-av, .tlb-step--or .tlb-whos.is-shared .tlb-av { width: 40px; height: 40px; font-size: 14px; }
+.tlb-whos.is-shared .tlb-name { font-size: 12px; line-height: 1.15; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tlb-more { align-self: center; padding: 4px 8px; border-radius: 99px; background: var(--surface-2); color: var(--text-2); font: 750 12px/1 var(--font); }
+.tlb-tie { margin-bottom: -2px; color: var(--text-3); font: 750 10.5px/1 var(--font); letter-spacing: .05em; text-transform: uppercase; }
+.tlb-ties { margin: 0; padding: 0 14px 12px; color: var(--text-3); font-size: 12.5px; }
