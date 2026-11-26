@@ -337,6 +337,12 @@ func TestTryBooster(t *testing.T) {
 	if _, err := g.TryBooster(a, ""); err == nil {
 		t.Fatal("essai ouvert à un joueur")
 	}
+	// Sans aucune carte proposée : l'essai marche quand même (cartes de démonstration).
+	g2, _, _ := newGame(t)
+	g2.IsAdmin = g.IsAdmin
+	if try, err := g2.TryBooster(mustJoin(t, g2, "boss", "Boss B."), "pack"); err != nil || len(try.Cards) != 5 || try.Cards[0].Title == "" {
+		t.Fatalf("essai sans carte : %+v %v", try, err)
+	}
 	for kind, n := range map[string]int{"": 4, "pack": 5} {
 		try, err := g.TryBooster(admin, kind)
 		if err != nil || len(try.Pulls) != n || len(try.Cards) != n {

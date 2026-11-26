@@ -931,16 +931,22 @@ func (g *Game) TryBooster(pid, kind string) (TryOpen, error) {
 			ids = append(ids, c.ID)
 		}
 	}
-	if len(ids) < len(plan) {
-		return TryOpen{}, userErr(http.StatusConflict, "Il faut au moins %d cartes proposées pour essayer.", len(plan))
-	}
 	g.shuffle(ids)
+	// Pas assez de cartes proposées (tout début) : des cartes de démonstration complètent l'essai.
+	demos := [][3]string{{"Le néon du couloir", "lieu", "Il clignote depuis la rentrée."}, {"Le café de 10 h", "moment", "La file devant la machine."}, {"Le bus de 18 h 12", "truc", "Toujours plein, toujours en retard."}, {"Le wifi du campus", "meme", "Connecté, sans Internet."}, {"La salle B204", "lieu", "Trop chaude en hiver."}}
 	out := TryOpen{Pack: kind == "pack"}
 	for i, d := range plan {
-		c := g.st.Cards[ids[i]]
-		v := g.candidateView(c)
+		var v CardView
+		if i < len(ids) {
+			c := g.st.Cards[ids[i]]
+			v = g.candidateView(c)
+			v.Author = g.pseudo(c.Author)
+		} else {
+			x := demos[i%len(demos)]
+			v = CardView{Title: x[0], Cat: x[1], Desc: x[2] + " (carte d’essai)", Author: "Démo"}
+		}
 		v.ID = "try" + itoa(i+1)
-		v.Author, v.Rarity, v.Run, v.Wave, v.No, v.Total = g.pseudo(c.Author), d.r, d.run, 1, 140+i, 150
+		v.Rarity, v.Run, v.Wave, v.No, v.Total = d.r, d.run, 1, 140+i, 150
 		if d.echo {
 			v.Issued = d.run
 		}
