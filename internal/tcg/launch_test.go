@@ -277,7 +277,7 @@ func TestLaunchRewards(t *testing.T) {
 	if _, err := g.OpenPack(creators[0], "b3"); err == nil {
 		t.Fatal("booster bonus ouvert après 24 h")
 	}
-	// Seuls les meilleurs soirs comptent (5 au plus), remis dans l'ordre des soirs.
+	// Seuls les meilleurs soirs comptent (3 au plus), remis dans l'ordre des soirs.
 	var many []RewardNight
 	for i, r := range []int{4, 1, 1, 2, 3, 1, 1} {
 		many = append(many, RewardNight{Day: fmt.Sprintf("2026-12-0%d", i+1), Rank: r, Size: packSize(r)})
@@ -287,7 +287,7 @@ func TestLaunchRewards(t *testing.T) {
 	for _, pk := range got {
 		days = append(days, pk.Day[8:])
 	}
-	if len(got) != maxNights || fmt.Sprint(days) != "[02 03 04 06 07]" {
+	if len(got) != maxNights || fmt.Sprint(days) != "[02 03 06]" {
 		t.Fatalf("meilleurs soirs : %+v", got)
 	}
 }
@@ -395,5 +395,54 @@ func TestLaunchDayPacing(t *testing.T) {
 	// Un jour de jeu vaut 1/14 du stock pour ~135 boosters : 20 boosters ≈ 1 % du stock.
 	if numbered > stock/40 {
 		t.Fatalf("%d exemplaires numérotés dans les 20 premiers boosters (stock %d)", numbered, stock)
+	}
+}
+
+// Rétroactif : un fichier d'avant 2.3.0 (ni Card.Validated, ni récompenses) rechargé reconstitue les
+// soirs de jury déjà passés. Une carte passée par les accords est datée de sa validation, pas de la
+// dernière réponse (Decided réécrit).
+func TestLaunchRewardsRetroactive(t *testing.T) {
+	g, clk, dir := newGame(t)
+	g.st.Season.Enabled = true
+	day := func(d, h int) time.Time { return time.Date(2026, 11, 24+d, h, 0, 0, 0, Paris) }
+	g.st.Waves = []*Wave{{N: 1, JuryFrom: day(1, 0), JuryUntil: day(4, 20), ReleaseAt: day(6, 6), Size: 50}}
+	a := mustJoin(t, g, "a", "Alice A.")
+	b := mustJoin(t, g, "b", "Bob B.")
+	v := mustJoin(t, g, "v", "Vic V.")
+	// Alice : 2 cartes validées le jour 0. Bob : 3 cartes validées le jour 0, mais l'une attendait
+	// des accords jusqu'au jour 3 (Decided réécrit), avec un mail parti le jour 0 à 11 h.
+	add := func(id, author string, decided time.Time, tags ...Tag) {
+		g.st.Cards[id] = &Card{ID: id, Author: author, Status: StatusAccepted, Created: day(0, 8), Decided: decided, Tags: tags}
+	}
+	add("a1", a, day(0, 10))
+	add("a2", a, day(0, 10))
+	add("b1", b, day(0, 10))
+	add("b2", b, day(0, 10))
+	add("b3", b, day(3, 15), Tag{Key: "k", Notified: day(0, 11), Answer: "ok", At: day(3, 15)})
+	g.st.Players[v].Ballots[1] = []Ballot{{Cards: []string{"a1"}, Rank: []string{"a1"}, At: day(1, 12)}}
+	clk.t = day(2, 9)
+	if err := g.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	// Ancien fichier : on efface ce que 2.3.0 ajoute, puis on recharge.
+	for _, c := range g.st.Cards {
+		c.Validated = time.Time{}
+	}
+	g.dirty = true
+	g.Flush()
+	g2, err := Open(dir, "poivre-de-test", Local{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g2.now = clk.now
+	if got := g2.st.Cards["b3"].Validated; !got.Equal(day(0, 11)) {
+		t.Fatalf("date de validation reconstituée : %v", got)
+	}
+	nights, _ := g2.launchRewards(g2.st.Waves[0], clk.now(), false)
+	if n := nights[b]; len(n) != 1 || n[0].Rank != 1 || n[0].Day != "2026-11-25" {
+		t.Fatalf("Bob au soir 1 : %+v", n)
+	}
+	if n := nights[a]; len(n) != 1 || n[0].Rank != 2 {
+		t.Fatalf("Alice au soir 1 : %+v", n)
 	}
 }

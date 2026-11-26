@@ -407,7 +407,7 @@
 .op-rays.is-legendaire { background: repeating-conic-gradient(from 0deg, rgba(255, 138, 101, 0) 0deg 9deg, rgba(255, 138, 101, .2) 9deg 13deg); }
 .op-rays.is-unique { background: repeating-conic-gradient(from 0deg, rgba(245, 196, 81, 0) 0deg 8deg, rgba(255, 232, 163, .26) 8deg 13deg); animation-duration: 12s; }
 .op-dim { position: absolute; inset: 0; background: rgba(0, 0, 0, .62); opacity: 0; pointer-events: none; }
-.op-flash { position: absolute; inset: 0; z-index: 4; background: radial-gradient(circle, #FFFFFF, rgba(255, 255, 255, .55) 38%, transparent 72%); opacity: 0; pointer-events: none; }
+.op-flash { position: absolute; inset: 0; z-index: 4; background: radial-gradient(circle, #FFFFFF, color-mix(in srgb, var(--flash, #FFFFFF) 60%, transparent) 38%, transparent 72%); opacity: 0; pointer-events: none; }
 .op-fx { position: fixed; inset: 0; z-index: 250; pointer-events: none; overflow: hidden; }
 .tfx { position: absolute; width: var(--s, 6px); height: var(--s, 6px); border-radius: 50%; background: var(--c); box-shadow: 0 0 10px var(--c); }
 .tfx--star { border-radius: 0; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); box-shadow: none; }
@@ -1918,3 +1918,89 @@ html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
 /* Récompenses de lancement (administration) : grille, pour que le tableau défile au lieu d'élargir la page. */
 .tad-rewards { display: grid; gap: 10px; min-width: 0; }
 .tad-rewards .tad-sub, .tad-rewards .tad-help { margin: 0; }
+
+/* ==========================================================================
+   2.3.0 · Ouverture : montée en tension par rareté (paliers), retournement, écho caché
+   ========================================================================== */
+/* Rien d'un écho ne se voit sur une carte face cachée, même pendant le retournement (certains
+   navigateurs mobiles laissent voir les calques animés à travers le dos). */
+.tc.is-back .tc-echo, .tc.is-back .tc-ripple, .tc.is-back.is-echo .tc-frame::before { visibility: hidden; transition: none; }
+.tc .tc-echo, .tc .tc-ripple { transition: visibility 0s linear .32s; }
+/* Lueur du fond, à la couleur du palier en cours */
+.op-glow {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: 0; transition: opacity .4s ease;
+  background: radial-gradient(circle at 50% 46%, color-mix(in srgb, var(--tone, #4CC3D3) 50%, transparent), color-mix(in srgb, var(--tone, #4CC3D3) 12%, transparent) 38%, transparent 62%);
+}
+.op-glow.is-on { opacity: 1; }
+.op-rays.is-epique { background: repeating-conic-gradient(from 0deg, rgba(169, 139, 255, 0) 0deg 10deg, rgba(169, 139, 255, .16) 10deg 14deg); }
+/* Palier annoncé au-dessus de la carte */
+.op-tier { position: absolute; z-index: 7; left: 0; right: 0; top: max(70px, 8%); display: grid; justify-items: center; pointer-events: none; }
+.op-tier-k {
+  display: inline-block; padding: 0 8px; font: 900 clamp(26px, 7vw, 46px)/1.1 var(--font); letter-spacing: .14em; text-transform: uppercase;
+  color: var(--tone, #4CC3D3); text-shadow: 0 0 26px color-mix(in srgb, var(--tone, #4CC3D3) 75%, transparent), 0 3px 0 rgba(0, 0, 0, .35);
+}
+.op-tier-k.is-legendaire, .op-tier-k.is-unique { color: transparent; text-shadow: none; -webkit-background-clip: text; background-clip: text; }
+.op-tier-k.is-legendaire { background-image: linear-gradient(90deg, #FF7A59, #FFB86B, #FF4D9D, #A98BFF); filter: drop-shadow(0 0 18px rgba(255, 138, 101, .75)); }
+.op-tier-k.is-unique { background-image: linear-gradient(90deg, #FFE8A3, #F5C451, #FFF6CF, #F5C451); filter: drop-shadow(0 0 22px rgba(245, 196, 81, .85)); }
+/* La carte qui se charge : halo, bordure et marque à la couleur du palier */
+.tc[data-charge] { --hint: var(--tone); }
+.tc[data-charge]::before { opacity: 1; inset: -20%; filter: blur(14px); animation: chargeGlow .45s ease-in-out infinite alternate; }
+.tc[data-charge] .tc-back { border-color: var(--tone); box-shadow: inset 0 0 9cqw color-mix(in srgb, var(--tone) 45%, transparent); transition: border-color .25s, box-shadow .25s; }
+.tc[data-charge] .tc-back-ring { border-color: var(--tone); box-shadow: 0 0 0 4cqw color-mix(in srgb, var(--tone) 12%, transparent), inset 0 0 6cqw color-mix(in srgb, var(--tone) 40%, transparent); }
+.tc[data-charge] .tc-back-mark { fill: var(--tone); filter: drop-shadow(0 0 6cqw var(--tone)); }
+.tc[data-charge] .tc-back-txt { color: var(--tone); }
+@keyframes chargeGlow { from { transform: scale(1); opacity: .7; } to { transform: scale(1.1); opacity: 1; } }
+.tc.is-tremble { animation: tremble .08s linear infinite; }
+@keyframes tremble { 0% { translate: 0 0; } 25% { translate: 2px -1px; } 50% { translate: -2px 1px; } 75% { translate: 1px 2px; } 100% { translate: 0 0; } }
+/* Onde de choc du retournement */
+.op-shock {
+  position: absolute; width: 90px; aspect-ratio: 1; border-radius: 50%; pointer-events: none; transform: translate(-50%, -50%);
+  border: 4px solid var(--tone, #4CC3D3); box-shadow: 0 0 30px var(--tone, #4CC3D3), inset 0 0 22px var(--tone, #4CC3D3);
+}
+.op-banner.is-small .op-banner-k { font-size: clamp(24px, 5.4vw, 40px); }
+.op-banner-k.is-rare { background: linear-gradient(90deg, #B4F3F9, #4CC3D3, #B4F3F9); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 4px 22px rgba(76, 195, 211, .6)); }
+.op-banner-k.is-epique { background: linear-gradient(90deg, #E6DCFF, #A98BFF, #8FEAF3); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 4px 24px rgba(169, 139, 255, .65)); }
+.op-banner-k.op-banner--echo { background: linear-gradient(90deg, #EEF4F5, #B8C9CC); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 4px 18px rgba(201, 226, 230, .35)); }
+.op-banner.is-small .op-banner-s { color: #DDEFF2; }
+/* Le booster trahit sa meilleure carte : déchirure colorée, et dès Légendaire, il tremble et luit */
+.pack[class*="is-tease-"] .pack-tear i { background: linear-gradient(90deg, #FFFFFF, var(--tease)); box-shadow: 0 0 16px 4px var(--tease); }
+.pack.is-tease-legendaire .pack-tilt, .pack.is-tease-unique .pack-tilt { animation: packWobble 1.9s ease-in-out infinite; }
+.pack.is-tease-legendaire .pack-body, .pack.is-tease-unique .pack-body { animation: teaseGlow 1.9s ease-in-out infinite; }
+@keyframes packWobble { 0%, 40%, 100% { transform: none; } 6% { transform: rotate(-3deg) scale(1.02); } 12% { transform: rotate(3deg) scale(1.03); } 18% { transform: rotate(-2deg) scale(1.02); } 24% { transform: rotate(1deg); } 30% { transform: none; } }
+@keyframes teaseGlow { 0%, 100% { filter: drop-shadow(0 0 4px var(--tease)); } 12% { filter: drop-shadow(0 0 28px var(--tease)); } 40% { filter: drop-shadow(0 0 10px var(--tease)); } }
+.op-sound { margin-left: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .tc.is-tremble, .tc[data-charge]::before, .pack[class*="is-tease-"] .pack-tilt, .pack[class*="is-tease-"] .pack-body { animation: none !important; }
+}
+
+/* Ouverture · le booster arrive (rayons, particules, atterrissage) et s'ouvre (capuchon, faisceau) */
+.op-sun {
+  position: absolute; left: 50%; top: 46%; z-index: 1; width: 150vmax; height: 150vmax; margin: -75vmax 0 0 -75vmax; pointer-events: none; opacity: 0; transition: opacity .6s ease;
+  background: repeating-conic-gradient(from 0deg, transparent 0deg 7deg, color-mix(in srgb, var(--tone, #8FEAF3) 20%, transparent) 7deg 11deg);
+  -webkit-mask-image: radial-gradient(circle, #000 0, rgba(0, 0, 0, .55) 16%, transparent 42%); mask-image: radial-gradient(circle, #000 0, rgba(0, 0, 0, .55) 16%, transparent 42%);
+  animation: sunSpin 28s linear infinite;
+}
+.op-sun.is-on { opacity: 1; }
+.op-sun::after { content: ""; position: absolute; inset: 40%; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--tone, #8FEAF3) 38%, transparent), transparent 70%); animation: sunPulse 2.4s ease-in-out infinite; }
+@keyframes sunSpin { to { rotate: 360deg; } }
+@keyframes sunPulse { 0%, 100% { opacity: .55; scale: 1; } 50% { opacity: 1; scale: 1.12; } }
+.op-motes { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.op-motes i {
+  position: absolute; bottom: -12px; left: var(--x); width: calc(6px * var(--z)); height: calc(6px * var(--z)); border-radius: 50%;
+  background: var(--tone, #8FEAF3); box-shadow: 0 0 12px var(--tone, #8FEAF3); opacity: 0;
+  animation: moteRise var(--d) linear infinite; animation-delay: var(--w);
+}
+@keyframes moteRise { 0% { transform: translate(0, 0); opacity: 0; } 15% { opacity: .85; } 100% { transform: translate(24px, -82vh); opacity: 0; } }
+.op-land { position: absolute; width: 140px; aspect-ratio: 1; border-radius: 50%; pointer-events: none; border: 3px solid var(--tone, #8FEAF3); box-shadow: 0 0 20px var(--tone, #8FEAF3); }
+.op-cap { position: absolute; right: auto; z-index: 3; border-radius: 16px 16px 4px 4px; box-shadow: 0 12px 30px -6px rgba(0, 0, 0, .6); pointer-events: none; }
+.op-cap--bonus { background: repeating-linear-gradient(90deg, rgba(0, 0, 0, .14) 0 2px, transparent 2px 6px), linear-gradient(180deg, #FFE8A3, #C8922A); }
+.op-beam {
+  position: absolute; height: 84vh; transform-origin: 50% 100%; pointer-events: none; mix-blend-mode: screen;
+  background: conic-gradient(from -24deg at 50% 100%, transparent 0deg, color-mix(in srgb, var(--tone, #8FEAF3) 55%, transparent) 12deg, #FFFFFF 24deg, color-mix(in srgb, var(--tone, #8FEAF3) 55%, transparent) 36deg, transparent 48deg, transparent 360deg);
+  -webkit-mask-image: linear-gradient(to top, #000 15%, transparent 92%); mask-image: linear-gradient(to top, #000 15%, transparent 92%);
+}
+.pack.is-tearing .pack-sheen { opacity: calc(.4 + var(--tp, 0) * .8); }
+@media (prefers-reduced-motion: reduce) {
+  .op-sun, .op-sun::after, .op-motes i { animation: none !important; }
+  .op-motes { display: none; }
+}

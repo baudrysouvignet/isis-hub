@@ -749,6 +749,7 @@ export function createTCG(o) {
       pulls,
       bonus,
       kicker,
+      trial,
       season: data()?.season,
       cardOf,
       ownedCount: trial ? () => 0 : collected,

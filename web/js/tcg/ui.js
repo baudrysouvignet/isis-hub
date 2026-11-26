@@ -50,6 +50,8 @@ const ICONS = {
   echo: ['M12 12h.01', 'M15.5 8.5a5 5 0 0 1 0 7M8.5 15.5a5 5 0 0 1 0-7', 'M18.4 5.6a9 9 0 0 1 0 12.8M5.6 18.4a9 9 0 0 1 0-12.8'],
   gift: ['M4 11h16v9H4zM3 7.5h18V11H3zM12 7.5V20', 'M12 7.5C10.5 4 7 3.5 7 5.8 7 7.5 12 7.5 12 7.5zM12 7.5c1.5-3.5 5-4 5-1.7 0 1.7-5 1.7-5 1.7z'],
   undo: ['M9 14L4 9l5-5', 'M4 9h10.5a5.5 5.5 0 0 1 0 11H11'],
+  sound: ['M4 9.5h3.5L12 5.5v13l-4.5-4H4z', 'M15.5 9a4 4 0 0 1 0 6M18.2 6.3a7.8 7.8 0 0 1 0 11.4'],
+  mute: ['M4 9.5h3.5L12 5.5v13l-4.5-4H4z', 'M16 9.5l5 5M21 9.5l-5 5'],
 };
 
 /** Nom d'une copie de substitution : même carte, non numérotée, non échangeable. */
@@ -150,7 +152,12 @@ export function cardEl(card, o = {}) {
   const echo = Boolean(o.echo && !o.mystery && rarity !== 'commune');
   const label = o.mystery ? card.title || 'Carte' : `${card.title}, ${RLABEL[rarity]}${echo ? `, ${ECHO} (non échangeable)` : ''}`;
   const el = h(`article.tc.tc--${rarity}.tc--${o.size || 'md'}${echo ? '.is-echo' : ''}`, { data: { card: card.id || '' }, attrs: { 'aria-label': label } });
-  if (o.back) el.classList.add('is-back');
+  if (o.back) {
+    // Face cachée : rien de la carte (titre, rareté, écho) n'est lu avant le retournement.
+    el.classList.add('is-back');
+    el.dataset.label = label;
+    el.setAttribute('aria-label', 'Carte face cachée');
+  }
   if (o.live) el.classList.add('is-live');
 
   const head = h('header.tc-head', {}, h('h3.tc-title', { text: card.title || '' }));

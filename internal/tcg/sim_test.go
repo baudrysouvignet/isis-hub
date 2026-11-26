@@ -29,7 +29,7 @@ func TestLaunchSimulation(t *testing.T) {
 		{"sans récompenses", -1},
 		{"proposition (tous les soirs)", 1000},
 		{"5 meilleurs soirs", 5},
-		{"4 meilleurs soirs", 4},
+		{"3 meilleurs soirs (retenu)", 3},
 	}
 	const seeds = 30
 	var b strings.Builder

@@ -26,8 +26,8 @@ import (
 // premier jour, le rythme des raretés compte ces boosters bonus d'avance (boostersPerDay) : le jour
 // du lancement distribue ~7 % du stock numéroté, bonus ou pas. Et le classement étant cumulatif, les
 // mêmes finissent en tête chaque soir : seuls les maxNights meilleurs soirs d'un joueur comptent
-// (1er tous les soirs : 4 + 5 × 5 = 29 cartes bonus, plutôt que 39), ce qui garde l'ordre
-// 1er > 2e > 3e et l'avance du podium à environ trois jours de jeu.
+// (3 ; 1er tous les soirs : 4 + 3 × 5 = 19 cartes bonus, plutôt que 44 sur 8 soirs), ce qui garde
+// l'ordre 1er > 2e > 3e et l'avance du podium à environ deux jours de jeu.
 var rankPackSize = map[int]int{1: 5, 2: 4, 3: 3}
 
 const (
@@ -39,7 +39,7 @@ const (
 
 // maxNights : soirs récompensés au plus par joueur (ses meilleurs). Variable pour la simulation
 // d'équilibrage (sim_test.go).
-var maxNights = 5
+var maxNights = 3
 
 // packSize : taille du booster bonus pour la place rank un soir (0 : rien).
 func packSize(rank int) int {

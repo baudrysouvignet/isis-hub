@@ -291,7 +291,7 @@ connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
    la promo a voté, à minuit, le classement des créateurs tel qu'il s'affichait est reconstitué (date
    de validation de chaque carte, date des séries du jury) : 1er → booster bonus de 5 cartes, 2e → 4,
    3e → 3, du 4e au 13e → 1 ; chaque participant (une carte validée ou une série du jury) reçoit 4
-   cartes. Les 5 meilleurs soirs d'un joueur comptent. Attribués d'eux-mêmes à la sortie de la
+   cartes. Les 3 meilleurs soirs d'un joueur comptent. Attribués d'eux-mêmes à la sortie de la
    vague 1, valables 24 h, au même taux de tirage que les boosters du jour, et comptés d'avance dans
    le rythme des cartes numérotées. Avant la sortie, chacun voit ce qu'il a gagné à ce jour, et
    l'administration le tableau complet. Équilibrage simulé avec le vrai code :

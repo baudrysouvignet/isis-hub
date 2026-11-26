@@ -236,9 +236,8 @@ func (g *Game) normalize() {
 		st.Sent = map[string]Sent{}
 	}
 	for _, c := range st.Cards {
-		// Fichier d'avant Card.Validated : la décision tient lieu de date de validation.
 		if c.Validated.IsZero() && (c.Status == StatusAccepted || c.Status == StatusConsent) {
-			c.Validated = c.Decided
+			c.Validated = guessValidated(c)
 		}
 	}
 	for _, p := range st.Players {
@@ -251,6 +250,26 @@ func (g *Game) normalize() {
 	}
 	sortWaves(st.Waves)
 	backfillOpened(st)
+}
+
+// guessValidated : date de validation d'une carte d'un fichier d'avant Card.Validated (récompenses de
+// lancement rétroactives). Decided a pu être réécrit après la validation (dernière réponse des
+// personnes sur la photo, « Valider sans attendre ») ; mais tout ce qui suit la validation la borne :
+// mails d'accord partis, réponses, et l'accord d'office de l'auteur qui s'indique lui-même, daté de
+// la validation. On prend donc la plus ancienne de ces dates, jamais avant la proposition.
+func guessValidated(c *Card) time.Time {
+	v := c.Decided
+	for _, t := range c.Tags {
+		for _, x := range []time.Time{t.Notified, t.At} {
+			if !x.IsZero() && (v.IsZero() || x.Before(v)) {
+				v = x
+			}
+		}
+	}
+	if !v.IsZero() && v.Before(c.Created) {
+		v = c.Created
+	}
+	return v
 }
 
 // backfillOpened : boosters par vague d'un fichier écrit avant ce compteur (2.1.1), retrouvés dans
