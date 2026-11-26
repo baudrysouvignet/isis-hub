@@ -413,6 +413,14 @@ function setupDashboard() {
   fetchContent().then((content) => {
     renderLinks(content);
     bento.refresh();
+    // Ambiance de saison : chargée seulement si l'administration l'a activée, ou en aperçu sur cet
+    // appareil (choisi depuis l'administration).
+    const preview = prefs.get('ambiance-apercu') === 'noel';
+    if (content?.ambiance === 'noel' || preview) {
+      import('./ui/ambiance.js')
+        .then((m) => m.startAmbiance({ app: $('.app'), preview: preview && content?.ambiance !== 'noel', onStopPreview: () => prefs.set('ambiance-apercu', null) }))
+        .catch(() => {});
+    }
   });
   setupIcal(() => ({ promo: state.promo, choice: state.choice }));
   $$('[data-login-open]').forEach((b) => b.addEventListener('click', openLogin));

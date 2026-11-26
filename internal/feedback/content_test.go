@@ -108,3 +108,35 @@ func TestLinks(t *testing.T) {
 		t.Errorf("sans session : %d", rec.Code)
 	}
 }
+
+// Ambiance de saison : réservée à l'administration, et absente de la réponse publique tant qu'elle
+// est coupée (rien ne laisse deviner qu'elle existe), gardée au redémarrage, raccourcis intacts.
+func TestAmbiance(t *testing.T) {
+	s, _, cookie, dir := contentService(t)
+	admin := map[string]string{"X-Hub-Admin": "1"}
+	public := func() string { return call(s, "GET", "/api/content", nil, nil).Body.String() }
+	if strings.Contains(public(), "ambiance") {
+		t.Fatalf("ambiance visible alors qu'elle est coupée : %s", public())
+	}
+	if rec := call(s, "POST", "/api/admin/ambiance", map[string]string{"ambiance": "noel"}, admin); rec.Code != http.StatusUnauthorized {
+		t.Errorf("sans session : %d", rec.Code)
+	}
+	if rec := call(s, "POST", "/api/admin/ambiance", map[string]string{"ambiance": "carnaval"}, admin, cookie); rec.Code != http.StatusBadRequest {
+		t.Errorf("ambiance inconnue : %d", rec.Code)
+	}
+	call(s, "POST", "/api/admin/links", map[string]any{"links": []map[string]string{{"title": "Izly", "url": "https://www.izly.fr"}}}, admin, cookie)
+	if rec := call(s, "POST", "/api/admin/ambiance", map[string]string{"ambiance": "noel"}, admin, cookie); rec.Code != http.StatusOK {
+		t.Fatalf("activer : %d %s", rec.Code, rec.Body)
+	}
+	if p := public(); !strings.Contains(p, `"ambiance":"noel"`) || !strings.Contains(p, "izly") {
+		t.Fatalf("après activation : %s", p)
+	}
+	again, err := OpenContent(dir, defaults(t))
+	if err != nil || again.Get().Ambiance != "noel" || len(again.Get().Links) != 1 {
+		t.Fatalf("au redémarrage : %+v %v", again.Get(), err)
+	}
+	call(s, "POST", "/api/admin/ambiance", map[string]string{"ambiance": ""}, admin, cookie)
+	if p := public(); strings.Contains(p, "ambiance") || !strings.Contains(p, "izly") {
+		t.Fatalf("après arrêt : %s", p)
+	}
+}

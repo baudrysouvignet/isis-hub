@@ -1,0 +1,44 @@
+/* Ambiance de saison du Hub (js/ui/ambiance.js) : chargée seulement quand elle est active.
+   Jamais dans le jeu (TCG). */
+
+/* Neige : calque fixe, au-dessus des bentos, sous l'en-tête et les vues plein écran ; ne capte rien. */
+.amb-snow { position: fixed; inset: 0; z-index: 30; width: 100%; height: 100%; pointer-events: none; }
+.amb-snow[hidden] { display: none; }
+
+/* En-tête : une guirlande au bas, des ampoules surtout rouges. */
+.app[data-ambiance] .top { overflow: visible; }
+.amb-garland { position: absolute; left: 0; right: 0; top: calc(100% - 6px); width: 100%; height: 22px; overflow: visible; pointer-events: none; }
+.amb-wire { fill: none; stroke: color-mix(in srgb, var(--text) 32%, transparent); stroke-width: 1.2; }
+.amb-cap { fill: color-mix(in srgb, var(--text) 45%, var(--bg)); }
+.amb-bulb ellipse { animation: ambTwinkle 2.8s ease-in-out infinite; animation-delay: calc(var(--i, 0) * -.43s); }
+.amb-bulb--red ellipse { fill: #D7263D; filter: drop-shadow(0 0 3px rgba(215, 38, 61, .55)); }
+.amb-bulb--gold ellipse { fill: #F2BE4E; filter: drop-shadow(0 0 3px rgba(242, 190, 78, .5)); }
+.amb-bulb--white ellipse { fill: #FFF3DA; filter: drop-shadow(0 0 3px rgba(255, 236, 196, .55)); }
+@keyframes ambTwinkle { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+
+/* Logo : un brin de houx, deux feuilles et trois baies rouges. */
+.app[data-ambiance] .top .brand { position: relative; }
+.amb-holly { position: absolute; left: 14px; top: -6px; width: 22px; height: 16px; pointer-events: none; rotate: -12deg; }
+.amb-leaf { fill: #2E7D4F; }
+.amb-leaf--b { fill: #3B9460; }
+.amb-berry { fill: #D7263D; stroke: rgba(0, 0, 0, .12); stroke-width: .5; }
+
+/* Menu du compte : l'interrupteur, sous le choix du thème, dans le même groupe. */
+.menu-theme:has(+ .amb-menu) { margin-bottom: 0; padding-bottom: 4px; border-bottom: 0; }
+.amb-menu { margin: 0 0 4px; border-bottom: 1px solid var(--line); border-radius: 9px 9px 0 0; }
+
+/* Rien de tout ça dans le jeu. */
+.app.is-tcg .amb-garland, .app.is-tcg .amb-holly { display: none; }
+
+/* Aperçu (appareil de l'administrateur) : une étiquette discrète, en bas à gauche. */
+.amb-chip {
+  position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 90;
+  display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border-radius: 99px;
+  background: color-mix(in srgb, var(--surface, #fff) 92%, transparent); border: 1px solid var(--line, rgba(0, 0, 0, .1));
+  box-shadow: var(--shadow-2, 0 8px 24px rgba(0, 0, 0, .15)); color: var(--text-2, #555); font: 600 12.5px/1.2 var(--font, system-ui);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+@media (max-width: 759.98px) { .amb-chip { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); } }
+.amb-chip-b { padding: 6px 12px; border: 0; border-radius: 99px; background: #D7263D; color: #fff; font: 700 12px/1 var(--font, system-ui); cursor: pointer; }
+
+@media (prefers-reduced-motion: reduce) { .amb-bulb ellipse { animation: none; } }

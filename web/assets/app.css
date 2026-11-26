@@ -125,6 +125,17 @@ button.chip.sync.is-busy { pointer-events: none; opacity: .7; }
 .adm-tabs { margin: 0 0 16px; }
 .adm-panel { display: grid; gap: 14px; }
 .adm-links { display: grid; gap: 8px; }
+/* Administration · Ambiance (décor de saison du Hub). */
+.adm-amb { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 16px; border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--surface-2); }
+.adm-amb-art { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(160deg, #1B3A5C, #0F2236); }
+.adm-amb-art svg { width: 26px; height: 26px; fill: none; stroke: #F2F7FC; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.adm-amb-t { display: grid; gap: 4px; min-width: 0; }
+.adm-amb-t b { color: var(--text); font: 700 15px/1.2 var(--font); }
+.adm-amb-t span { color: var(--text-2); font-size: 13px; }
+.adm-amb-state { justify-self: start; margin-top: 2px; padding: 3px 9px; border-radius: 99px; background: var(--sunken); color: var(--text-2); font: 650 12px/1.3 var(--font); }
+.adm-amb-state.is-on { background: rgba(215, 38, 61, .12); color: #C4202F; }
+.adm-amb-acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+@media (max-width: 640px) { .adm-amb { grid-template-columns: auto minmax(0, 1fr); } .adm-amb-acts { grid-column: 1 / -1; justify-content: flex-start; } }
 .adm-link { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.6fr) auto; gap: 8px; align-items: center; }
 .adm-link .input { height: 38px; }
 @media (max-width: 759.98px) {

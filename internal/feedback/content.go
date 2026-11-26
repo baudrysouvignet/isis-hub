@@ -29,7 +29,13 @@ type Link struct {
 
 type Content struct {
 	Links []Link `json:"links"`
+	// Ambiance : décor de saison du Hub, choisi par l'administrateur. Absent tant qu'il n'y en a
+	// pas : rien ne se voit dans la réponse publique avant qu'il soit activé.
+	Ambiance string `json:"ambiance,omitempty"`
 }
+
+// Ambiances : les décors possibles (« » : aucun).
+var Ambiances = map[string]bool{"": true, "noel": true}
 
 var DefaultLinks = []Link{{ID: "ent", Title: "ENT", Subtitle: "Portail de l'université", URL: "https://ent.univ-jfc.fr/"}}
 
@@ -56,6 +62,9 @@ func OpenContent(dir string, defaults calendar.Data) (*ContentStore, error) {
 		}
 		if saved.Links != nil {
 			c.data.Links = saved.Links
+		}
+		if Ambiances[saved.Ambiance] {
+			c.data.Ambiance = saved.Ambiance
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
@@ -101,7 +110,24 @@ func writeAtomic(path string, data []byte) error {
 func (c *ContentStore) Get() Content {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return Content{Links: append([]Link(nil), c.data.Links...)}
+	return Content{Links: append([]Link(nil), c.data.Links...), Ambiance: c.data.Ambiance}
+}
+
+// SetAmbiance choisit le décor de saison du Hub (« » : aucun).
+func (c *ContentStore) SetAmbiance(a string) error {
+	if !Ambiances[a] {
+		return errors.New("ambiance inconnue")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	prev := c.data.Ambiance
+	c.data.Ambiance = a
+	raw, _ := json.MarshalIndent(c.data, "", " ")
+	if err := writeAtomic(filepath.Join(c.dir, "content.json"), raw); err != nil {
+		c.data.Ambiance = prev
+		return err
+	}
+	return nil
 }
 
 // Classes rend la répartition en vigueur.
@@ -202,6 +228,19 @@ func (s *Service) adminContent(w http.ResponseWriter, r *http.Request, action st
 			return true
 		}
 		if err := s.cfg.Content.SetLinks(in.Links); err != nil {
+			fail(w, http.StatusBadRequest, err.Error())
+			return true
+		}
+		reply(w, http.StatusOK, s.cfg.Content.Get())
+		return true
+	case "ambiance":
+		var in struct {
+			Ambiance string `json:"ambiance"`
+		}
+		if !s.readJSON(w, r, 1<<10, &in) {
+			return true
+		}
+		if err := s.cfg.Content.SetAmbiance(in.Ambiance); err != nil {
 			fail(w, http.StatusBadRequest, err.Error())
 			return true
 		}

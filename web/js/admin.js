@@ -9,6 +9,7 @@ import { $, $$, h, toast, motionOK, EASE } from './core/dom.js';
 import { setupGradesAdmin } from './admin-grades.js';
 import { setupTcgAdmin } from './admin-tcg.js';
 import { applyTheme } from './core/theme.js';
+import { prefs } from './core/store.js';
 
 applyTheme(); // même thème que le Hub (choisi dans le menu du compte)
 
@@ -377,6 +378,53 @@ $('[data-adm-links-save]').addEventListener('click', async () => {
   }
 });
 
+// ------------------------------------------------------------ ambiance (décor de saison du Hub)
+// Activée : tout le monde la voit au prochain chargement, sans annonce. Aperçu : sur cet appareil
+// seulement (préférence locale, rien n'est envoyé).
+
+const AMB = 'noel';
+const previewing = () => prefs.get('ambiance-apercu') === AMB;
+function renderAmbiance() {
+  const on = content.ambiance === AMB;
+  const state = $('[data-amb-state]');
+  state.textContent = on ? 'Visible par tout le monde' : 'Coupée';
+  state.classList.toggle('is-on', on);
+  const toggle = $('[data-amb-toggle]');
+  toggle.textContent = on ? 'Couper' : 'Activer pour tout le monde';
+  toggle.classList.toggle('btn--primary', !on);
+  $('[data-amb-preview]').textContent = previewing() ? 'Arrêter l’aperçu' : 'Aperçu sur cet appareil';
+  $('[data-amb-note]').textContent = on
+    ? 'Les étudiants la voient au prochain chargement du Hub.'
+    : previewing()
+      ? 'Aperçu actif : le Hub l’affiche sur cet appareil seulement, avec une étiquette « Aperçu ». Personne d’autre ne la voit.'
+      : 'L’aperçu ne se voit que sur cet appareil et ne change rien pour les étudiants.';
+}
+$('[data-amb-preview]').addEventListener('click', () => {
+  if (previewing()) {
+    prefs.set('ambiance-apercu', null);
+    renderAmbiance();
+    return;
+  }
+  prefs.set('ambiance-apercu', AMB);
+  renderAmbiance();
+  window.open('./', '_blank', 'noopener');
+});
+$('[data-amb-toggle]').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  const on = content.ambiance === AMB;
+  if (!on && !confirm('Activer l’ambiance de Noël pour tout le monde ? Les étudiants la verront au prochain chargement du Hub, sans aucune annonce.')) return;
+  btn.disabled = true;
+  try {
+    content = await api('ambiance', { ambiance: on ? '' : AMB });
+    renderAmbiance();
+    toast(on ? 'Ambiance coupée.' : 'Ambiance activée pour tout le monde.', 'check');
+  } catch (err) {
+    toast(`Refusé : ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 // ------------------------------------------------------------ fréquentation
 
 const WEEK = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
@@ -624,6 +672,7 @@ async function load() {
   ]);
   renderClasses();
   renderLinks();
+  renderAmbiance();
   await gradesAdmin.load().catch((err) => toast(`Maquettes de notes indisponibles : ${err.message}`));
   await loadStats().catch((err) => toast(`Fréquentation indisponible : ${err.message}`));
 }
