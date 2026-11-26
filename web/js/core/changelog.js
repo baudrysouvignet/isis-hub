@@ -26,7 +26,7 @@ export const CHANGELOG = [
       'Cartes numérotées : le jour du lancement, leur rythme compte d’avance tous les joueurs et tous les boosters bonus. Ouvrir son booster le premier ne donne pas plus de chances d’avoir une carte rare.',
       'Meilleurs créateurs : les points ne font plus que monter. Une carte bloquée ou retirée ne compte plus, ni en plus ni en moins. Seule exception : une carte validée que le jury de la vague a placée tout en bas (son dernier quart) et qui n’a pas été retenue coûte un peu ; au jury suivant, elle a une nouvelle chance.',
       'Créer : retirer une carte bloquée par l’équipe te rend une proposition le jour même, pour en envoyer une autre version. Retirer une carte en attente ne rend toujours rien.',
-      'Ouverture des boosters : le booster tombe du ciel et s’ouvre dans un faisceau de lumière, et les cartes en sortent une à une. Chaque carte rare se charge palier par palier (Rare, Épique, Légendaire, Unique) avant de se retourner ; une Légendaire ou une Unique tourne sur elle-même. S’il cache une Légendaire ou mieux, le booster tremble et luit avant même d’être ouvert. Son facultatif, coupé par défaut.',
+      'Ouverture des boosters : le booster tombe du ciel et s’ouvre dans un faisceau de lumière, et les cartes en sortent une à une. Chaque carte rare se charge palier par palier (Rare, Épique, Légendaire, Unique) avant de se retourner ; une Légendaire ou une Unique tourne sur elle-même. Tous les dos de cartes sont les mêmes, et tous les boosters se ressemblent : rien ne trahit la rareté avant de toucher la carte. Son facultatif, coupé par défaut.',
     ],
   },
   {

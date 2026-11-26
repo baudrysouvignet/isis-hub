@@ -4,9 +4,8 @@
 // « Starr Drops » des jeux mobiles :
 //   1. le booster tombe du haut de l'écran et atterrit (impact, poussière d'étincelles), des rayons
 //      tournent derrière lui et des particules montent. Glisser le doigt sur le haut (ou « Ouvrir »,
-//      ou Entrée) le déchire : des étincelles suivent le doigt, il vibre de plus en plus. S'il cache
-//      une Légendaire ou mieux, il tremble et luit, et la déchirure prend la couleur de sa meilleure
-//      carte. À l'ouverture : éclair, le haut du booster s'envole, un faisceau de lumière jaillit, et
+//      ou Entrée) le déchire : des étincelles suivent le doigt, il vibre de plus en plus. Tous les
+//      boosters se ressemblent : rien ne trahit ce qu'ils contiennent. À l'ouverture : éclair, le haut du booster s'envole, un faisceau de lumière jaillit, et
 //      les cartes sortent une à une avant de retomber en pile ;
 //   2. les cartes, face cachée. Une Commune se retourne tout de suite. Les autres prennent leur
 //      temps : la carte se soulève, le fond s'assombrit, puis elle se charge palier par palier
@@ -256,13 +255,6 @@ export function openBooster(o) {
   const slots = reveal.map(() => h('span.op-slot'));
   const tray = h('div.op-tray', {}, ...slots);
   const pack = packEl({ size: reveal.length, bonus: Boolean(o.bonus), season: o.season });
-  // Le booster trahit sa meilleure vraie carte (pas une réplique) : lueur et tremblement dès Légendaire,
-  // couleur de la déchirure dès Rare.
-  const best = reveal.reduce((m, p) => (p.replica ? m : Math.max(m, tier(p.card.rarity))), 0);
-  if (best >= 1) {
-    pack.classList.add(`is-tease-${LADDER[best - 1]}`);
-    pack.style.setProperty('--tease', TONE[LADDER[best - 1]]);
-  }
   const openBtn = tbtn('Ouvrir', 'booster', 'tbtn--primary op-openbtn');
   const stage = h('div.op-stage', {}, pack, openBtn);
   // Derrière le booster : rayons qui tournent, halo, particules qui montent (à la couleur de sa
@@ -277,7 +269,8 @@ export function openBooster(o) {
     m.style.setProperty('--z', `${(0.5 + Math.random()).toFixed(2)}`);
     motes.append(m);
   }
-  const packTone = best >= 1 ? TONE[LADDER[best - 1]] : '#8FEAF3';
+  // Mêmes couleurs pour tous les boosters : rien ne trahit leur contenu avant les cartes.
+  const packTone = '#8FEAF3';
   sun.style.setProperty('--tone', packTone);
   motes.style.setProperty('--tone', packTone);
   const layer = h(
@@ -350,7 +343,7 @@ export function openBooster(o) {
       ring.style.setProperty('--tone', packTone);
       fx.append(ring);
       ring.animate([{ opacity: 0.9, transform: 'translate(-50%, -50%) scale(.3, .12)' }, { opacity: 0, transform: 'translate(-50%, -50%) scale(3.4, 1)' }], { duration: 700, easing: 'cubic-bezier(.1,.7,.3,1)' }).onfinish = () => ring.remove();
-      burst(fx, best >= 1 ? SPARKS[LADDER[best - 1]] : SPARKS.rare, { n: 10, x, y, spread: 110, fall: -50 });
+      burst(fx, SPARKS.rare, { n: 10, x, y, spread: 110, fall: -50 });
       layer.animate([{ transform: 'none' }, { transform: 'translateY(5px)' }, { transform: 'translateY(-2px)' }, { transform: 'none' }], { duration: 260, easing: 'ease-out' });
       sound.thump();
       buzz(20);
@@ -371,7 +364,7 @@ export function openBooster(o) {
     if (p - lastSpark > 0.12 || p < lastSpark) {
       lastSpark = p;
       const r = tear.getBoundingClientRect();
-      if (p > 0) burst(fx, best >= 1 ? SPARKS[LADDER[best - 1]] : ['#FFFFFF', '#8FEAF3'], { n: 3, x: r.left + r.width * p, y: r.top, spread: 36, fall: 30 });
+      if (p > 0) burst(fx, ['#FFFFFF', '#8FEAF3'], { n: 3, x: r.left + r.width * p, y: r.top, spread: 36, fall: 30 });
     }
   };
   let drag = null;
@@ -424,8 +417,7 @@ export function openBooster(o) {
     setP(1);
     openBtn.hidden = true;
     sound.tear();
-    if (best >= 3) sound.thump();
-    buzz(best >= 3 ? [30, 40, 60] : 25);
+    buzz(25);
     if (motionOK()) {
       const r = pack.getBoundingClientRect();
       const x = r.left + r.width / 2;
@@ -451,7 +443,7 @@ export function openBooster(o) {
       beam.style.setProperty('width', `${r.width * 1.7}px`);
       fx.append(beam);
       beam.animate([{ opacity: 0, transform: 'translate(-50%, -100%) scaleY(0)' }, { opacity: 1, transform: 'translate(-50%, -100%) scaleY(1)', offset: 0.35 }, { opacity: 0, transform: 'translate(-50%, -100%) scaleY(1.1) scaleX(1.5)' }], { duration: 820, easing: 'ease-out' }).onfinish = () => beam.remove();
-      burst(fx, best >= 1 ? SPARKS[LADDER[best - 1]] : SPARKS.rare, { n: 12 + best * 4, x, y: top, spread: 150, fall: -40 });
+      burst(fx, SPARKS.rare, { n: 14, x, y: top, spread: 150, fall: -40 });
       sun.animate([{ opacity: 1 }, { opacity: 0, transform: 'scale(1.6)' }], { duration: 600, fill: 'forwards' });
       motes.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400, fill: 'forwards' });
       // Le booster retombe pendant que les cartes en sortent : il quitte la mise en page (position
@@ -516,11 +508,8 @@ export function openBooster(o) {
     if (!el) return;
     el.classList.add('is-top');
     count.textContent = `${k + 1} / ${reveal.length}`;
-    const r = reveal[k].card.rarity;
-    // Le dos luit avant une Épique ou mieux, réplique comprise : rien ne trahit une réplique avant le
-    // retournement.
-    if (tier(r) >= 2 && !reveal[k].card.removed) el.classList.add(`is-hint-${r}`);
-    hint.textContent = k === 0 ? 'Touche la carte pour la retourner' : tier(r) >= 2 ? 'Celle-ci brille… touche pour la retourner' : 'Touche pour retourner';
+    // Tous les dos sont les mêmes : ni bord ni lueur de couleur avant de toucher la carte.
+    hint.textContent = k === 0 ? 'Touche la carte pour la retourner' : 'Touche pour retourner';
   }
 
   const centerOf = (el) => {
@@ -550,7 +539,6 @@ export function openBooster(o) {
     if (t === 0 || !motionOK() || p.card.removed) return;
     phase = 'charge';
     hint.textContent = '';
-    el.classList.remove(...LADDER.map((x) => `is-hint-${x}`));
     const c = centerOf(el);
     const LIFT = 'translateY(-12px) scale(1.03)';
     // Le souffle : la carte se soulève, le fond s'assombrit, tout se tait.
@@ -653,7 +641,7 @@ export function openBooster(o) {
   function flip(el, p) {
     const r = p.card.rarity;
     const t = tier(r);
-    el.classList.remove('is-back', ...LADDER.map((x) => `is-hint-${x}`));
+    el.classList.remove('is-back');
     delete el.dataset.charge;
     el._lift?.cancel();
     // L'annonce du palier laisse la place à la bannière.

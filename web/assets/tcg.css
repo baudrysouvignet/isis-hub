@@ -239,12 +239,6 @@
 .tc-back-ring { position: absolute; width: 64cqw; aspect-ratio: 1; border-radius: 50%; border: .8cqw solid rgba(127, 227, 238, .35); box-shadow: 0 0 0 4cqw rgba(127, 227, 238, .05), inset 0 0 6cqw rgba(127, 227, 238, .15); }
 .tc-back-mark { position: relative; width: 30cqw; height: auto; fill: #8FEAF3; filter: drop-shadow(0 0 4cqw rgba(76, 195, 211, .7)); }
 .tc-back-txt { position: absolute; bottom: 9cqw; font: 850 4.4cqw/1 var(--font); letter-spacing: .32em; color: #8FEAF3; }
-.tc.is-hint-epique { --hint: rgba(169, 139, 255, .95); }
-.tc.is-hint-legendaire { --hint: rgba(255, 138, 101, 1); }
-.tc.is-hint-unique { --hint: rgba(245, 196, 81, 1); }
-.tc[class*="is-hint-"]::before { opacity: 1; animation: hintGlow 1.3s ease-in-out infinite; }
-.tc[class*="is-hint-"] .tc-back { border-color: color-mix(in srgb, var(--hint), #0B3B44 55%); }
-@keyframes hintGlow { 0%, 100% { transform: scale(1); opacity: .65; } 50% { transform: scale(1.06); opacity: 1; } }
 /* Badges */
 .tc-count { position: absolute; right: -6px; top: -7px; z-index: 3; padding: 4px 7px; border-radius: 99px; background: #EAF6F7; color: #062026; font: 850 11px/1 var(--font); box-shadow: 0 4px 12px rgba(0, 0, 0, .5); }
 .tc-new { position: absolute; left: 0; right: 0; top: -10px; z-index: 3; width: max-content; margin: 0 auto; padding: 4px 9px; border-radius: 99px; background: linear-gradient(90deg, #FF7A59, #FFB86B); color: #2A0E00; font: 850 10.5px/1 var(--font); letter-spacing: .07em; text-transform: uppercase; box-shadow: 0 6px 16px -4px rgba(255, 122, 89, .8); }
@@ -795,7 +789,7 @@
 @media (prefers-reduced-motion: reduce) {
   .pack-tilt, .pack-foil, .pack-sheen, .pack-shadow, .th-halo, .tc--legendaire .tc-front, .tc-back::after, .op-rays, .op-hint,
   .tqr-scan, .tjoin-line, .ttb-link, .tcg-bg i, .mode-dot, .tbtn--xl.tbtn--primary, .tqr-dots i, .th-meter-bar i,
-  .tc--epique, .tc--legendaire, .tc--unique, .tc[class*="is-hint-"]::before { animation: none !important; }
+  .tc--epique, .tc--legendaire, .tc--unique { animation: none !important; }
   .mode-thumb, .tc-tilt, .tc-inner { transition: none; }
 }
 
@@ -1962,15 +1956,9 @@ html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
 .op-banner-k.is-epique { background: linear-gradient(90deg, #E6DCFF, #A98BFF, #8FEAF3); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 4px 24px rgba(169, 139, 255, .65)); }
 .op-banner-k.op-banner--replica { background: linear-gradient(90deg, #EEF4F5, #B8C9CC); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 4px 18px rgba(201, 226, 230, .35)); }
 .op-banner.is-small .op-banner-s { color: #DDEFF2; }
-/* Le booster trahit sa meilleure carte : déchirure colorée, et dès Légendaire, il tremble et luit */
-.pack[class*="is-tease-"] .pack-tear i { background: linear-gradient(90deg, #FFFFFF, var(--tease)); box-shadow: 0 0 16px 4px var(--tease); }
-.pack.is-tease-legendaire .pack-tilt, .pack.is-tease-unique .pack-tilt { animation: packWobble 1.9s ease-in-out infinite; }
-.pack.is-tease-legendaire .pack-body, .pack.is-tease-unique .pack-body { animation: teaseGlow 1.9s ease-in-out infinite; }
-@keyframes packWobble { 0%, 40%, 100% { transform: none; } 6% { transform: rotate(-3deg) scale(1.02); } 12% { transform: rotate(3deg) scale(1.03); } 18% { transform: rotate(-2deg) scale(1.02); } 24% { transform: rotate(1deg); } 30% { transform: none; } }
-@keyframes teaseGlow { 0%, 100% { filter: drop-shadow(0 0 4px var(--tease)); } 12% { filter: drop-shadow(0 0 28px var(--tease)); } 40% { filter: drop-shadow(0 0 10px var(--tease)); } }
 .op-sound { margin-left: 2px; }
 @media (prefers-reduced-motion: reduce) {
-  .tc.is-tremble, .tc[data-charge]::before, .pack[class*="is-tease-"] .pack-tilt, .pack[class*="is-tease-"] .pack-body { animation: none !important; }
+  .tc.is-tremble, .tc[data-charge]::before { animation: none !important; }
 }
 
 /* Ouverture · le booster arrive (rayons, particules, atterrissage) et s'ouvre (capuchon, faisceau) */
