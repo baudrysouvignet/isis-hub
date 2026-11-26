@@ -8,15 +8,17 @@
 //      une Légendaire ou mieux, il tremble et luit, et la déchirure prend la couleur de sa meilleure
 //      carte. À l'ouverture : éclair, le haut du booster s'envole, un faisceau de lumière jaillit, et
 //      les cartes sortent une à une avant de retomber en pile ;
-//   2. les cartes, face cachée. Une Commune se retourne tout de suite. Les autres se chargent,
-//      palier par palier (Rare, puis Épique, puis Légendaire, puis Unique) : à chaque palier la
-//      lueur change de couleur, la carte tremble plus fort, des étincelles partent, le fond
-//      s'assombrit. Avant une Légendaire ou une Unique, un temps d'attente ; avant une Unique, une
-//      pluie d'or converge vers la carte. Toucher l'écran fait passer au palier suivant ;
-//   3. le retournement : Rare et Épique, onde de choc et éclat ; Légendaire et Unique, la carte
-//      tourne sur elle-même, l'écran tremble, rayons, bannière et confettis. Un écho (copie de
+//   2. les cartes, face cachée. Une Commune se retourne tout de suite. Les autres prennent leur
+//      temps : la carte se soulève, le fond s'assombrit, puis elle se charge palier par palier
+//      (Rare, puis Épique, puis Légendaire, puis Unique) : la couleur change, un anneau de lumière
+//      tourne de plus en plus vite autour d'elle, elle bat comme un cœur. Avant une Légendaire ou
+//      une Unique, une longue attente (la carte tremble ; pour une Unique, l'or converge vers elle),
+//      puis un silence. Rien ne s'accélère ni ne se saute en touchant l'écran : chaque carte va au
+//      bout de son suspense ;
+//   3. le retournement : Rare et Épique, une onde nette ; Légendaire et Unique, la carte tourne sur
+//      elle-même, rayons, bannière et pluie de confettis. Une réplique (copie de
 //      substitution) se charge comme sa rareté, mais se révèle sobrement : une onde, une bannière
-//      grise, ni rayons ni confettis. Rien ne dit « écho » avant le retournement ;
+//      grise, ni rayons ni confettis. Rien ne dit « réplique » avant le retournement ;
 //   4. récapitulatif du tirage.
 // Son facultatif (coupé par défaut, synthétisé dans la page : aucun fichier, aucune requête) et
 // vibrations. Sans animations (réglage du système), tout se retourne sans attendre.
@@ -24,18 +26,18 @@
 
 import { h, motionOK, sleep, lockScroll } from '../core/dom.js';
 import { prefs } from '../core/store.js';
-import { cardEl, ic, mark, tier, RLABEL, ECHO, sheet, tbtn, placeholderArt, plural } from './ui.js';
+import { cardEl, ic, mark, tier, RLABEL, REPLICA, sheet, tbtn, placeholderArt, plural } from './ui.js';
 
 const EASE = 'cubic-bezier(.2,.8,.2,1)';
 const LADDER = ['rare', 'epique', 'legendaire', 'unique'];
-const TONE = { commune: '#A9C3C7', rare: '#4CC3D3', epique: '#A98BFF', legendaire: '#FF8A65', unique: '#F5C451', echo: '#C9E2E6' };
+const TONE = { commune: '#A9C3C7', rare: '#4CC3D3', epique: '#A98BFF', legendaire: '#FF8A65', unique: '#F5C451', replica: '#C9E2E6' };
 const SPARKS = {
   commune: ['#EAF6F7', '#A9C3C7'],
   rare: ['#B4F3F9', '#4CC3D3', '#EAF6F7'],
   epique: ['#C9B6FF', '#A98BFF', '#8FEAF3'],
   legendaire: ['#FF8A65', '#FFB86B', '#FF4D9D', '#FFE8A3', '#A98BFF'],
   unique: ['#F5C451', '#FFE8A3', '#FFF6CF', '#FFFFFF'],
-  echo: ['#DDE7E9', '#B8C9CC', '#FFFFFF'],
+  replica: ['#DDE7E9', '#B8C9CC', '#FFFFFF'],
 };
 // Vibrations : seulement après un geste de l'utilisateur (sinon le navigateur refuse et le signale).
 const buzz = (pattern) => navigator.userActivation?.hasBeenActive !== false && navigator.vibrate?.(pattern);
@@ -148,7 +150,7 @@ const sound = (() => {
         if (r === 'unique') for (let i = 0; i < 6; i++) note(2093 + i * 120, { at: 0.4 + i * 0.09, dur: 0.18, type: 'sine', gain: 0.02 });
       } else note(660, { dur: 0.1, type: 'sine', gain: 0.03 });
     },
-    echo: () => [0, 0.2, 0.4].forEach((at, i) => note(880, { at, dur: 0.35, type: 'sine', gain: 0.045 / (i + 1), slide: 0.75 })),
+    replica: () => [0, 0.2, 0.4].forEach((at, i) => note(880, { at, dur: 0.35, type: 'sine', gain: 0.045 / (i + 1), slide: 0.75 })),
   };
 })();
 
@@ -200,9 +202,30 @@ function implode(fx, colors, { n = 48, x, y, duration = 900 } = {}) {
   }
 }
 
+/** Pluie de confettis qui tombe du haut de l'écran (Légendaire, Unique) : douce, sans explosion. */
+function rain(fx, colors, { n = 40 } = {}) {
+  if (!motionOK()) return;
+  for (let i = 0; i < n; i++) {
+    const p = h(`span.tfx${i % 3 ? '.tfx--conf' : '.tfx--star'}`);
+    p.style.setProperty('--c', colors[i % colors.length]);
+    p.style.setProperty('--s', `${5 + Math.random() * 5}px`);
+    p.style.setProperty('left', `${Math.random() * innerWidth}px`);
+    p.style.setProperty('top', '-24px');
+    fx.append(p);
+    p.animate(
+      [
+        { transform: 'translate(0, 0) rotate(0deg)', opacity: 0 },
+        { opacity: 1, offset: 0.08 },
+        { transform: `translate(${(Math.random() - 0.5) * 120}px, ${innerHeight + 48}px) rotate(${Math.random() * 540 - 270}deg)`, opacity: 0.85 },
+      ],
+      { duration: 2400 + Math.random() * 1600, delay: Math.random() * 800, easing: 'cubic-bezier(.3,.1,.6,1)', fill: 'backwards' },
+    ).onfinish = () => p.remove();
+  }
+}
+
 /**
  * Ouvre l'écran d'ouverture.
- * o : { pulls, cardOf(id), ownedCount, totalCount, onClose(goCollection), onCard(card, serial, echo), bonus, season, kicker, trial }
+ * o : { pulls, cardOf(id), ownedCount, totalCount, onClose(goCollection), onCard(card, serial, replica), bonus, season, kicker, trial }
  */
 export function openBooster(o) {
   const root = document.querySelector('.app');
@@ -215,7 +238,6 @@ export function openBooster(o) {
   const banner = h('div.op-banner');
   const tierLabel = h('div.op-tier', { attrs: { 'aria-live': 'polite' } });
   const count = h('p.op-count');
-  const skip = h('button.op-skip', { type: 'button', hidden: true }, ic('spark'), h('span', { text: 'Tout révéler' }));
   const quit = h('button.op-quit', { type: 'button', attrs: { 'aria-label': 'Fermer' } }, ic('x'));
   const soundBtn = h('button.op-quit.op-sound', { type: 'button' });
   const paintSound = () => {
@@ -234,9 +256,9 @@ export function openBooster(o) {
   const slots = reveal.map(() => h('span.op-slot'));
   const tray = h('div.op-tray', {}, ...slots);
   const pack = packEl({ size: reveal.length, bonus: Boolean(o.bonus), season: o.season });
-  // Le booster trahit sa meilleure vraie carte (pas un écho) : lueur et tremblement dès Légendaire,
+  // Le booster trahit sa meilleure vraie carte (pas une réplique) : lueur et tremblement dès Légendaire,
   // couleur de la déchirure dès Rare.
-  const best = reveal.reduce((m, p) => (p.echo ? m : Math.max(m, tier(p.card.rarity))), 0);
+  const best = reveal.reduce((m, p) => (p.replica ? m : Math.max(m, tier(p.card.rarity))), 0);
   if (best >= 1) {
     pack.classList.add(`is-tease-${LADDER[best - 1]}`);
     pack.style.setProperty('--tease', TONE[LADDER[best - 1]]);
@@ -272,7 +294,7 @@ export function openBooster(o) {
     fx,
     tierLabel,
     banner,
-    h('div.op-top', {}, count, h('span.spacer'), skip, soundBtn, quit),
+    h('div.op-top', {}, count, h('span.spacer'), soundBtn, quit),
     hint,
     tray,
   );
@@ -286,24 +308,11 @@ export function openBooster(o) {
   let deck = [];
   let busy = false;
   let closed = false;
-  let hurry = null; // touche pendant la charge : palier suivant tout de suite
-
-  /** Attente, que le joueur peut abréger d'un toucher. */
-  const wait = (ms) =>
-    new Promise((resolve) => {
-      const done = () => {
-        clearTimeout(timer);
-        hurry = null;
-        resolve();
-      };
-      const timer = setTimeout(done, ms);
-      hurry = done;
-    });
+  const wait = (ms) => sleep(ms); // aucun toucher ne l'abrège
 
   function close(goCollection = false) {
     if (closed) return;
     closed = true;
-    hurry?.();
     document.removeEventListener('keydown', onKey, true);
     const done = () => {
       layer.remove();
@@ -341,7 +350,7 @@ export function openBooster(o) {
       ring.style.setProperty('--tone', packTone);
       fx.append(ring);
       ring.animate([{ opacity: 0.9, transform: 'translate(-50%, -50%) scale(.3, .12)' }, { opacity: 0, transform: 'translate(-50%, -50%) scale(3.4, 1)' }], { duration: 700, easing: 'cubic-bezier(.1,.7,.3,1)' }).onfinish = () => ring.remove();
-      burst(fx, best >= 1 ? SPARKS[LADDER[best - 1]] : SPARKS.rare, { n: 22, x, y, spread: 140, fall: -70 });
+      burst(fx, best >= 1 ? SPARKS[LADDER[best - 1]] : SPARKS.rare, { n: 10, x, y, spread: 110, fall: -50 });
       layer.animate([{ transform: 'none' }, { transform: 'translateY(5px)' }, { transform: 'translateY(-2px)' }, { transform: 'none' }], { duration: 260, easing: 'ease-out' });
       sound.thump();
       buzz(20);
@@ -359,10 +368,10 @@ export function openBooster(o) {
     if (!motionOK()) return;
     // Le booster vibre de plus en plus, des étincelles suivent la déchirure.
     body.style.translate = p > 0 && p < 1 ? `${((Math.random() - 0.5) * p * 7).toFixed(1)}px ${((Math.random() - 0.5) * p * 4).toFixed(1)}px` : '';
-    if (p - lastSpark > 0.07 || p < lastSpark) {
+    if (p - lastSpark > 0.12 || p < lastSpark) {
       lastSpark = p;
       const r = tear.getBoundingClientRect();
-      if (p > 0) burst(fx, best >= 1 ? SPARKS[LADDER[best - 1]] : ['#FFFFFF', '#8FEAF3'], { n: 5, x: r.left + r.width * p, y: r.top, spread: 46, fall: 34 });
+      if (p > 0) burst(fx, best >= 1 ? SPARKS[LADDER[best - 1]] : ['#FFFFFF', '#8FEAF3'], { n: 3, x: r.left + r.width * p, y: r.top, spread: 36, fall: 30 });
     }
   };
   let drag = null;
@@ -442,7 +451,7 @@ export function openBooster(o) {
       beam.style.setProperty('width', `${r.width * 1.7}px`);
       fx.append(beam);
       beam.animate([{ opacity: 0, transform: 'translate(-50%, -100%) scaleY(0)' }, { opacity: 1, transform: 'translate(-50%, -100%) scaleY(1)', offset: 0.35 }, { opacity: 0, transform: 'translate(-50%, -100%) scaleY(1.1) scaleX(1.5)' }], { duration: 820, easing: 'ease-out' }).onfinish = () => beam.remove();
-      burst(fx, best >= 1 ? SPARKS[LADDER[best - 1]] : SPARKS.rare, { n: 30 + best * 12, x, y: top, spread: 200 + best * 30, fall: -60 });
+      burst(fx, best >= 1 ? SPARKS[LADDER[best - 1]] : SPARKS.rare, { n: 12 + best * 4, x, y: top, spread: 150, fall: -40 });
       sun.animate([{ opacity: 1 }, { opacity: 0, transform: 'scale(1.6)' }], { duration: 600, fill: 'forwards' });
       motes.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400, fill: 'forwards' });
       // Le booster retombe pendant que les cartes en sortent : il quitte la mise en page (position
@@ -470,7 +479,7 @@ export function openBooster(o) {
   function showDeck() {
     const holder = h('div.op-deck');
     deck = reveal.map((p, i) => {
-      const el = cardEl(p.card, { size: 'xl', serial: p.serial, back: true, isNew: false, echo: p.echo });
+      const el = cardEl(p.card, { size: 'xl', serial: p.serial, back: true, isNew: false, replica: p.replica });
       el.classList.add('op-card', `di-${reveal.length - 1 - i}`);
       return el;
     });
@@ -478,7 +487,6 @@ export function openBooster(o) {
     for (let i = deck.length - 1; i >= 0; i--) holder.append(deck[i]);
     stage.append(holder);
     holder.addEventListener('click', advance);
-    skip.hidden = false;
     if (motionOK()) {
       // Les cartes sortent du booster une à une, montent en tournoyant, puis retombent en pile.
       const n = deck.length;
@@ -509,7 +517,7 @@ export function openBooster(o) {
     el.classList.add('is-top');
     count.textContent = `${k + 1} / ${reveal.length}`;
     const r = reveal[k].card.rarity;
-    // Le dos luit avant une Épique ou mieux, écho compris : rien ne trahit un écho avant le
+    // Le dos luit avant une Épique ou mieux, réplique comprise : rien ne trahit une réplique avant le
     // retournement.
     if (tier(r) >= 2 && !reveal[k].card.removed) el.classList.add(`is-hint-${r}`);
     hint.textContent = k === 0 ? 'Touche la carte pour la retourner' : tier(r) >= 2 ? 'Celle-ci brille… touche pour la retourner' : 'Touche pour retourner';
@@ -520,59 +528,90 @@ export function openBooster(o) {
     return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
   };
 
-  /** Montée en tension avant le retournement : un palier par rareté, jusqu'à celle de la carte. */
+  /** Anneau de lumière autour de la carte pendant la charge (une traînée qui tourne). */
+  function orbitOf(el) {
+    const ring = h('span.op-orbit-r', {}, ...Array.from({ length: 12 }, (_, k) => {
+      const dot = h('i');
+      dot.style.setProperty('--k', String(k));
+      return dot;
+    }));
+    const orbit = h('span.op-orbit', { attrs: { 'aria-hidden': 'true' } }, ring);
+    el.append(orbit);
+    const spin = motionOK() ? ring.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 2600, iterations: Infinity }) : null;
+    return { orbit, speed: (r) => spin?.updatePlaybackRate(r) };
+  }
+
+  /**
+   * Montée en tension avant le retournement : un souffle, puis un palier par rareté jusqu'à celle
+   * de la carte, puis (Légendaire, Unique) une longue attente et un silence. Rien ne l'abrège.
+   */
   async function charge(el, p) {
     const t = tier(p.card.rarity);
     if (t === 0 || !motionOK() || p.card.removed) return;
     phase = 'charge';
-    hint.textContent = 'Touche pour accélérer';
+    hint.textContent = '';
     el.classList.remove(...LADDER.map((x) => `is-hint-${x}`));
     const c = centerOf(el);
+    const LIFT = 'translateY(-12px) scale(1.03)';
+    // Le souffle : la carte se soulève, le fond s'assombrit, tout se tait.
+    el._lift = el.animate([{ transform: 'none' }, { transform: LIFT }], { duration: 750, easing: 'ease-in-out', fill: 'forwards' });
+    dim.animate([{ opacity: getComputedStyle(dim).opacity }, { opacity: 0.3 }], { duration: 750, fill: 'forwards' });
     glow.classList.add('is-on');
+    layer.style.setProperty('--tone', '#5E7F86');
+    const ring = orbitOf(el);
+    sound.thump();
+    await wait(800);
     for (let i = 0; i < t && !closed; i++) {
       const s = LADDER[i];
-      const last = i === t - 1;
       el.dataset.charge = s;
       layer.style.setProperty('--tone', TONE[s]);
-      const label = h(`b.op-tier-k.is-${s}`, { text: last ? `${RLABEL[s]}${t >= 3 ? ' !!' : ' !'}` : `${RLABEL[s]}…` });
+      ring.orbit.classList.add('is-on');
+      ring.speed(1 + i * 0.75);
+      const label = h(`b.op-tier-k.is-${s}`, { text: i === t - 1 && t >= 3 ? `${RLABEL[s]} !` : RLABEL[s] });
       tierLabel.replaceChildren(label);
-      label.animate([{ opacity: 0, transform: 'scale(1.8)' }, { opacity: 1, transform: 'scale(.94)', offset: 0.6 }, { opacity: 1, transform: 'scale(1)' }], { duration: 360, easing: EASE });
-      const amp = 3 + i * 3;
+      label.animate([{ opacity: 0, transform: 'scale(.86)', filter: 'blur(6px)' }, { opacity: 1, transform: 'scale(1)', filter: 'blur(0)' }], { duration: 480, easing: EASE });
+      // Battement de cœur : deux pulsations, de plus en plus fortes.
+      const beat = 1.06 + i * 0.015;
       el.animate(
-        [
-          { transform: 'scale(1)' },
-          { transform: `scale(${1.06 + i * 0.03}) translateX(${amp}px) rotate(${amp / 3}deg)`, offset: 0.25 },
-          { transform: `scale(${1.04 + i * 0.03}) translateX(${-amp}px) rotate(${-amp / 3}deg)`, offset: 0.5 },
-          { transform: `scale(${1.02 + i * 0.02}) translateX(${amp / 2}px)`, offset: 0.75 },
-          { transform: 'scale(1)' },
-        ],
-        { duration: 380, easing: 'ease-out' },
+        [{ transform: LIFT }, { transform: `translateY(-12px) scale(${beat})`, offset: 0.18 }, { transform: LIFT, offset: 0.4 }, { transform: `translateY(-12px) scale(${beat - 0.015})`, offset: 0.58 }, { transform: LIFT }],
+        { duration: 700, easing: 'ease-in-out' },
       );
-      burst(fx, SPARKS[s], { n: 10 + i * 9, x: c.x, y: c.y, spread: 110 + i * 50, fall: 20 });
-      if (i >= 1) dim.animate([{ opacity: getComputedStyle(dim).opacity }, { opacity: Math.min(0.75, 0.18 + i * 0.18) }], { duration: 300, fill: 'forwards' });
+      dim.animate([{ opacity: getComputedStyle(dim).opacity }, { opacity: Math.min(0.72, 0.36 + i * 0.13) }], { duration: 500, fill: 'forwards' });
       sound.step(i);
-      buzz(14 + i * 14);
-      await wait(last ? 300 : [560, 640, 760][i]);
+      buzz(16 + i * 10);
+      await wait([1000, 1100, 1200, 1250][i]);
     }
     if (closed) return;
     if (t >= 3) {
-      // Le temps d'attente : la carte tremble, plus rien ne bouge autour.
+      // La longue attente : la carte tremble, l'anneau s'emballe ; pour une Unique, l'or converge.
       el.classList.add('is-tremble');
+      ring.speed(4);
       hint.textContent = '…';
+      dim.animate([{ opacity: getComputedStyle(dim).opacity }, { opacity: t === 4 ? 0.9 : 0.8 }], { duration: 700, fill: 'forwards' });
       if (t === 4) {
-        dim.animate([{ opacity: getComputedStyle(dim).opacity }, { opacity: 0.9 }], { duration: 500, fill: 'forwards' });
-        implode(fx, SPARKS.unique, { n: 56, x: c.x, y: c.y, duration: 1000 });
+        implode(fx, SPARKS.unique, { n: 26, x: c.x, y: c.y, duration: 1400 });
         sound.rise();
-        buzz([20, 60, 20, 60, 20]);
+        buzz([20, 80, 20, 80, 20]);
       }
-      await wait(t === 4 ? 1150 : 700);
+      await wait(t === 4 ? 1800 : 1300);
       el.classList.remove('is-tremble');
     }
+    // Le silence : l'anneau se referme sur la carte, plus rien ne bouge.
+    ring.orbit.animate([{ opacity: 1, transform: 'scaleY(1.28) scale(1)' }, { opacity: 0, transform: 'scaleY(1.28) scale(.55)' }], { duration: 280, fill: 'forwards' });
+    await wait(t >= 3 ? 380 : 260);
+    ring.orbit.remove();
   }
 
+  // Après le retournement, la célébration va au bout avant qu'on puisse passer à la suite.
+  const holdFor = (p) => {
+    const t = tier(p.card.rarity);
+    if (!motionOK()) return 0;
+    if (p.replica && t >= 1) return 1300;
+    return [450, 1100, 1400, 2400, 2700][t];
+  };
+
   async function advance() {
-    if (phase === 'charge') return hurry?.();
-    if (busy || phase !== 'deck') return;
+    if (busy || phase !== 'deck') return; // pendant une charge ou une célébration : ignoré
     const el = deck[k];
     const p = reveal[k];
     if (!el) return;
@@ -582,8 +621,10 @@ export function openBooster(o) {
       if (closed) return;
       phase = 'deck';
       flip(el, p);
+      hint.textContent = '';
+      await sleep(holdFor(p));
+      if (closed) return;
       hint.textContent = k === reveal.length - 1 ? 'Touche pour voir ton tirage' : 'Touche pour la carte suivante';
-      await sleep(motionOK() ? 520 : 0);
       busy = false;
       return;
     }
@@ -599,7 +640,7 @@ export function openBooster(o) {
     }
     el.remove();
     slot.classList.add(`is-${p.card.rarity}`);
-    if (p.echo) slot.classList.add('is-echo');
+    if (p.replica) slot.classList.add('is-replica');
     slot.append(h('img', { alt: '', src: p.card.thumb || p.card.img || placeholderArt(p.card.id) }));
     if (motionOK()) slot.animate([{ transform: 'scale(1.25)' }, { transform: 'none' }], { duration: 300, easing: EASE });
     k++;
@@ -614,6 +655,7 @@ export function openBooster(o) {
     const t = tier(r);
     el.classList.remove('is-back', ...LADDER.map((x) => `is-hint-${x}`));
     delete el.dataset.charge;
+    el._lift?.cancel();
     // L'annonce du palier laisse la place à la bannière.
     const lbl = tierLabel.firstChild;
     if (lbl && motionOK()) lbl.animate([{ opacity: 1 }, { opacity: 0, transform: 'scale(.8) translateY(-12px)' }], { duration: 180, fill: 'forwards' }).onfinish = () => tierLabel.replaceChildren();
@@ -622,14 +664,14 @@ export function openBooster(o) {
     if (el.dataset.label) el.setAttribute('aria-label', el.dataset.label);
     if (p.new) el.append(h('span.tc-new', { text: 'Nouvelle' }));
     if (motionOK()) {
-      if (t >= 3 && !p.echo) {
+      if (t >= 3 && !p.replica) {
         // Légendaire, Unique : la carte tourne sur elle-même en grandissant.
         el.animate([{ transform: 'perspective(1200px) rotateY(0) scale(.9)' }, { transform: 'perspective(1200px) rotateY(360deg) scale(1.16)', offset: 0.72 }, { transform: 'perspective(1200px) rotateY(360deg) scale(1)' }], { duration: 1050, easing: 'cubic-bezier(.2,.7,.2,1)' });
       } else if (t >= 1) {
         el.animate([{ transform: 'scale(.94)' }, { transform: 'scale(1.07)', offset: 0.55 }, { transform: 'scale(1)' }], { duration: 520, easing: EASE });
       }
     }
-    if (p.echo && t >= 1) return echoed(p, el);
+    if (p.replica && t >= 1) return replicated(p, el);
     if (t === 0) {
       sound.flip();
       glow.classList.remove('is-on');
@@ -653,7 +695,7 @@ export function openBooster(o) {
 
   function showBanner(kind, title, sub, small) {
     banner.className = small ? 'op-banner is-small' : 'op-banner';
-    banner.replaceChildren(h(`span.op-banner-k.is-${kind}${kind === 'unique' ? '.op-banner--unique' : ''}${kind === 'echo' ? '.op-banner--echo' : ''}`, { text: title }), sub ? h('span.op-banner-s', { text: sub }) : null);
+    banner.replaceChildren(h(`span.op-banner-k.is-${kind}${kind === 'unique' ? '.op-banner--unique' : ''}${kind === 'replica' ? '.op-banner--replica' : ''}`, { text: title }), sub ? h('span.op-banner-s', { text: sub }) : null);
     banner.classList.remove('is-on');
     void banner.offsetWidth;
     banner.classList.add('is-on');
@@ -669,7 +711,7 @@ export function openBooster(o) {
     if (t <= 2) {
       // Rare, Épique : onde de choc, éclat, bannière.
       shock(el, TONE[r], t === 2);
-      burst(fx, SPARKS[r], { n: t === 2 ? 44 : 22, x: c.x, y: c.y, spread: t === 2 ? 230 : 150 });
+      burst(fx, SPARKS[r], { n: t === 2 ? 14 : 8, x: c.x, y: c.y, spread: t === 2 ? 150 : 100, fall: 20 });
       if (t === 2 && motionOK()) {
         rays.className = 'op-rays is-epique';
         rays.animate([{ opacity: 0 }, { opacity: 0.8 }], { duration: 500, fill: 'forwards' });
@@ -688,35 +730,33 @@ export function openBooster(o) {
       flash.style.setProperty('--flash', '#FFFFFF');
       flash.animate([{ opacity: 0 }, { opacity: r === 'unique' ? 1 : 0.75 }, { opacity: 0 }], { duration: 750 });
       layer.animate(
-        [{ transform: 'none' }, { transform: 'translate(6px, -4px)' }, { transform: 'translate(-7px, 5px)' }, { transform: 'translate(5px, 3px)' }, { transform: 'translate(-3px, -2px)' }, { transform: 'none' }],
-        { duration: 420, easing: 'ease-out' },
+        [{ transform: 'none' }, { transform: 'translate(4px, -3px)' }, { transform: 'translate(-4px, 3px)' }, { transform: 'translate(2px, 1px)' }, { transform: 'none' }],
+        { duration: 360, easing: 'ease-out' },
       );
     }
     shock(el, TONE[r], true);
     showBanner(r, RLABEL[r], r === 'unique' ? 'Seul exemplaire au monde · 1 / 1' : `${run} exemplaires au monde · n° ${p.serial}`);
-    burst(fx, SPARKS[r], { n: 80, x: c.x, y: c.y, spread: 320, fall: 140, conf: true });
-    setTimeout(() => !closed && burst(fx, SPARKS[r], { n: 40, x: c.x, y: c.y - 40, spread: 260, fall: 180, conf: true }), 380);
+    rain(fx, SPARKS[r], { n: r === 'unique' ? 56 : 38 });
     buzz(r === 'unique' ? [60, 40, 60, 40, 140] : [40, 30, 90]);
   }
 
-  // Écho : il s'est chargé comme sa rareté, il se révèle sobrement : une onde, une bannière grise.
-  function echoed(p, el) {
+  // Réplique : elle s'est chargée comme sa rareté, elle se révèle sobrement : une onde, une bannière grise.
+  function replicated(p, el) {
     const r = p.card.rarity;
-    layer.style.setProperty('--tone', TONE.echo);
+    layer.style.setProperty('--tone', TONE.replica);
     glow.classList.add('is-on');
-    showBanner('echo', `${ECHO} · ${RLABEL[r]}`, `${r === 'unique' ? 'Exemplaire unique déjà tiré' : `${p.card.run} exemplaires déjà tirés`} · ne s’échange pas`, true);
-    sound.echo();
+    showBanner('replica', `${REPLICA} · ${RLABEL[r]}`, `${r === 'unique' ? 'Exemplaire unique déjà tiré' : `${p.card.run} exemplaires déjà tirés`} · ne s’échange pas`, true);
+    sound.replica();
     buzz(30);
     if (!motionOK()) return;
     const c = centerOf(el);
     for (let i = 0; i < 3; i++) {
-      const ring = h('span.op-echo');
+      const ring = h('span.op-replica');
       ring.style.setProperty('left', `${c.x}px`);
       ring.style.setProperty('top', `${c.y}px`);
       fx.append(ring);
       ring.animate([{ opacity: 0.9, transform: 'translate(-50%, -50%) scale(.6)' }, { opacity: 0, transform: 'translate(-50%, -50%) scale(4.2)' }], { duration: 1500, delay: 260 * i, easing: 'cubic-bezier(.2,.6,.3,1)', fill: 'backwards' }).onfinish = () => ring.remove();
     }
-    burst(fx, SPARKS.echo, { n: 14, x: c.x, y: c.y, spread: 120, fall: 30 });
   }
 
   function calm() {
@@ -737,7 +777,6 @@ export function openBooster(o) {
     showRecap(o, reveal);
   }
 
-  skip.addEventListener('click', recap);
   quit.addEventListener('click', () => (phase === 'pack' ? close(false) : recap()));
   const onKey = (e) => {
     if (e.key === 'Escape') {
@@ -757,11 +796,11 @@ export function openBooster(o) {
 /** Récapitulatif d'un tirage (après l'ouverture, ou « Revoir mon tirage »). */
 export function showRecap(o, reveal = o.pulls.map((p) => ({ ...p, card: o.cardOf(p.card) })).filter((p) => p.card)) {
   const fresh = reveal.filter((p) => p.new).length;
-  const echoes = reveal.filter((p) => p.echo).length;
+  const replicas = reveal.filter((p) => p.replica).length;
   const row = h('div.rc-row');
   for (const p of reveal) {
-    const btn = h('button.rc-cardbtn', { type: 'button', attrs: { 'aria-label': `${p.card.title}, ${RLABEL[p.card.rarity]}${p.echo ? `, ${ECHO}` : ''}` } }, cardEl(p.card, { size: 'md', serial: p.serial, live: true, isNew: p.new, echo: p.echo }));
-    btn.addEventListener('click', () => o.onCard?.(p.card, p.serial, p.echo));
+    const btn = h('button.rc-cardbtn', { type: 'button', attrs: { 'aria-label': `${p.card.title}, ${RLABEL[p.card.rarity]}${p.replica ? `, ${REPLICA}` : ''}` } }, cardEl(p.card, { size: 'md', serial: p.serial, live: true, isNew: p.new, replica: p.replica }));
+    btn.addEventListener('click', () => o.onCard?.(p.card, p.serial, p.replica));
     row.append(btn);
   }
   let s;
@@ -771,8 +810,8 @@ export function showRecap(o, reveal = o.pulls.map((p) => ({ ...p, card: o.cardOf
     o.onClose?.(true);
   });
   const title = fresh === 0 ? 'Que des doubles : parfait pour échanger' : fresh === 1 ? '1 nouvelle carte !' : `${fresh} nouvelles cartes !`;
-  const echoNote = echoes ? ` ${echoes > 1 ? `Les ${echoes} échos comptent` : 'L’écho compte'} pour ta collection, sans s’échanger.` : '';
-  const line = o.trial ? 'Essai : ces cartes n’entrent dans aucune collection, rien n’est enregistré.' : `Ta collection : ${o.ownedCount()} / ${o.totalCount()} cartes. Les doubles servent aux échanges.${echoNote}`;
+  const replicaNote = replicas ? ` ${replicas > 1 ? `Les ${replicas} répliques comptent` : 'La réplique compte'} pour ta collection, sans s’échanger.` : '';
+  const line = o.trial ? 'Essai : ces cartes n’entrent dans aucune collection, rien n’est enregistré.' : `Ta collection : ${o.ownedCount()} / ${o.totalCount()} cartes. Les doubles servent aux échanges.${replicaNote}`;
   s = sheet('recap', 'Ton tirage', h('div.rc', {}, h('p.tk', { text: o.kicker ?? 'Ton tirage' }), h('h2.rc-h', { text: title }), row, h('p.rc-p', { text: line }), h('div.rc-acts', {}, done, o.trial ? null : coll)));
   if (motionOK()) [...row.children].forEach((c, i) => c.animate([{ opacity: 0, transform: 'translateY(24px) rotate(-3deg)' }, { opacity: 1, transform: 'none' }], { duration: 420, delay: 80 * i, easing: EASE, fill: 'backwards' }));
   return s;

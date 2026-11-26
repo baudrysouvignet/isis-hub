@@ -216,9 +216,9 @@ func TestJuryPrintAndBoosters(t *testing.T) {
 		t.Fatalf("candidates restantes : %d", left)
 	}
 	// 40 jours de boosters pour tout le monde (deux par jour, à 3 h d'écart) : jamais plus
-	// d'exemplaires que le tirage, et un écho seulement quand tous les exemplaires sont partis.
+	// d'exemplaires que le tirage, et une réplique seulement quand tous les exemplaires sont partis.
 	seen := map[Copy]bool{}
-	echoes := 0
+	replicas := 0
 	for day := 0; day < 40; day++ {
 		for k := 0; k < boostersPerCycle; k++ {
 			for _, pid := range players {
@@ -234,10 +234,10 @@ func TestJuryPrintAndBoosters(t *testing.T) {
 				}
 				for _, p := range pulls {
 					c := g.st.Cards[p.Card]
-					if p.Echo {
-						echoes++
+					if p.Replica {
+						replicas++
 						if c.Run == 0 || c.Issued < c.Run || p.Serial != 0 {
-							t.Fatalf("écho de %s alors que %d / %d exemplaires sont tirés", c.Title, c.Issued, c.Run)
+							t.Fatalf("réplique de %s alors que %d / %d exemplaires sont tirés", c.Title, c.Issued, c.Run)
 						}
 						continue
 					}
@@ -254,8 +254,8 @@ func TestJuryPrintAndBoosters(t *testing.T) {
 		}
 		clk.add(24*time.Hour - boostersPerCycle*boosterGap)
 	}
-	if echoes == 0 {
-		t.Fatal("aucun écho en 40 jours")
+	if replicas == 0 {
+		t.Fatal("aucune réplique en 40 jours")
 	}
 	for _, id := range w.Cards {
 		c := g.st.Cards[id]

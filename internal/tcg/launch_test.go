@@ -104,7 +104,7 @@ func TestJuryPenaltyBottomQuarter(t *testing.T) {
 	}
 }
 
-// Les échos : seulement quand tous les exemplaires numérotés sont tirés, hors de Owned (jamais
+// Les répliques : seulement quand tous les exemplaires numérotés sont tirés, hors de Owned (jamais
 // échangés, ni doubles, ni correspondances), et ils comptent pour la collection.
 func TestEchoes(t *testing.T) {
 	g, clk, ps := liveGame(t)
@@ -122,32 +122,32 @@ func TestEchoes(t *testing.T) {
 	pa := g.st.Players[a]
 	pulls := []Pull{{Card: rare.ID}}
 	g.give(pa, pulls, clk.now())
-	if pulls[0].Echo || pulls[0].Serial != 1 {
+	if pulls[0].Replica || pulls[0].Serial != 1 {
 		t.Fatalf("premier tirage : %+v", pulls[0])
 	}
 	rare.Issued = rare.Run // tous les exemplaires partis
 	for i := 0; i < 2; i++ {
 		pulls = []Pull{{Card: rare.ID}}
 		g.give(pa, pulls, clk.now())
-		if !pulls[0].Echo || pulls[0].Serial != 0 || pulls[0].New {
-			t.Fatalf("écho : %+v", pulls[0])
+		if !pulls[0].Replica || pulls[0].Serial != 0 || pulls[0].New {
+			t.Fatalf("réplique : %+v", pulls[0])
 		}
 	}
-	if len(pa.Owned[rare.ID]) != 1 || pa.Echoes[rare.ID] != 2 || rare.Echoes != 2 || rare.Issued != rare.Run {
-		t.Fatalf("collection : %v, échos %d, carte %d/%d", pa.Owned[rare.ID], pa.Echoes[rare.ID], rare.Issued, rare.Run)
+	if len(pa.Owned[rare.ID]) != 1 || pa.Replicas[rare.ID] != 2 || rare.Replicas != 2 || rare.Issued != rare.Run {
+		t.Fatalf("collection : %v, répliques %d, carte %d/%d", pa.Owned[rare.ID], pa.Replicas[rare.ID], rare.Issued, rare.Run)
 	}
-	// Échange : l'écho ne se pose pas sur la table (seul l'exemplaire n° 1 existe dans Owned).
+	// Échange : la réplique ne se pose pas sur la table (seul l'exemplaire n° 1 existe dans Owned).
 	code, _, _ := g.NewTrade(a, "")
 	if err := g.JoinTrade(b, code); err != nil {
 		t.Fatal(err)
 	}
 	if err := g.SetOffer(a, code, []Copy{{rare.ID, 1}, {rare.ID, 0}}); err == nil {
-		t.Fatal("écho posé sur la table")
+		t.Fatal("réplique posé sur la table")
 	}
 	if err := g.SetOffer(a, code, []Copy{{rare.ID, 1}}); err != nil {
 		t.Fatal(err)
 	}
-	// Un joueur qui n'a que des échos n'apparaît pas dans les correspondances, et ses échos ne
+	// Un joueur qui n'a que des répliques n'apparaît pas dans les correspondances, et ses répliques ne
 	// sont pas des doubles.
 	delete(pa.Owned, rare.ID)
 	if err := g.SetWish(b, rare.ID, true); err != nil {
@@ -156,33 +156,33 @@ func TestEchoes(t *testing.T) {
 	vb, _ := g.PlayerView(b)
 	for _, m := range vb.Matches {
 		if m.ID == a {
-			t.Fatalf("échos vus comme une carte à échanger : %+v", m)
+			t.Fatalf("répliques vus comme une carte à échanger : %+v", m)
 		}
 	}
 	va, _ := g.PlayerView(a)
-	if va.Echoes[rare.ID] != 2 || len(va.Owned[rare.ID]) != 0 {
-		t.Fatalf("vue : échos %v, owned %v", va.Echoes, va.Owned[rare.ID])
+	if va.Replicas[rare.ID] != 2 || len(va.Owned[rare.ID]) != 0 {
+		t.Fatalf("vue : répliques %v, owned %v", va.Replicas, va.Owned[rare.ID])
 	}
-	// Au tirage, une carte épuisée sort en écho (au rythme de la vraie), jamais avec un numéro.
+	// Au tirage, une carte épuisée sort en réplique (au rythme de la vraie), jamais avec un numéro.
 	for _, c := range g.st.Cards {
 		if c.Run > 0 {
 			c.Issued = c.Run
 		}
 	}
 	g.rnd = rand.New(rand.NewSource(3)).Intn
-	echoes := 0
+	replicas := 0
 	for i := 0; i < 300; i++ {
 		for _, p := range g.draw(clk.now(), boosterSize) {
 			if c := g.st.Cards[p.Card]; c.Run > 0 {
-				if !p.Echo {
-					t.Fatal("carte épuisée tirée sans être un écho")
+				if !p.Replica {
+					t.Fatal("carte épuisée tirée sans être une réplique")
 				}
-				echoes++
+				replicas++
 			}
 		}
 	}
-	if echoes == 0 {
-		t.Fatal("aucun écho tiré")
+	if replicas == 0 {
+		t.Fatal("aucune réplique tirée")
 	}
 }
 
@@ -233,8 +233,15 @@ func TestLaunchRewards(t *testing.T) {
 	if v, _ := g.PlayerView(creators[0]); v.Rewards == nil || !v.Rewards.Preview || len(v.Rewards.Nights) != 1 || v.Rewards.Cards != allPackSize+5 {
 		t.Fatalf("aperçu : %+v", v.Rewards)
 	}
+	// Podium de chaque soir (administration) : celui qui s'affichait à minuit.
+	if pd := g.AdminRewards().Podiums; len(pd) != 1 || pd[0].Day != "2026-11-25" || fmt.Sprint(pd[0].Top) != "[CréaA C. CréaB C. CréaC C.]" {
+		t.Fatalf("podiums : %+v", pd)
+	}
 	clk.t = day(5, 6).Add(time.Minute)
 	g.Tick()
+	if pd := g.AdminRewards().Podiums; len(pd) != 2 || pd[1].Top[0] != "CréaO C." {
+		t.Fatalf("podiums après la sortie : %+v", pd)
+	}
 	if !g.st.Waves[0].Printed || !g.st.Waves[0].Rewarded {
 		t.Fatal("vague 1 pas imprimée ou pas récompensée")
 	}
@@ -348,12 +355,12 @@ func TestTryBooster(t *testing.T) {
 		if err != nil || len(try.Pulls) != n || len(try.Cards) != n {
 			t.Fatalf("essai %q : %+v %v", kind, try, err)
 		}
-		echo := false
+		replica := false
 		for _, p := range try.Pulls {
-			echo = echo || p.Echo
+			replica = replica || p.Replica
 		}
-		if !echo {
-			t.Fatal("pas d'écho dans l'essai")
+		if !replica {
+			t.Fatal("pas de réplique dans l'essai")
 		}
 	}
 	if len(g.st.Players[admin].Owned) != 0 {
@@ -450,5 +457,17 @@ func TestLaunchRewardsRetroactive(t *testing.T) {
 	}
 	if n := nights[a]; len(n) != 1 || n[0].Rank != 2 {
 		t.Fatalf("Alice au soir 1 : %+v", n)
+	}
+}
+
+// ADMIN_USERS appliqué au démarrage, sans attendre que l'administrateur rejoigne le jeu à nouveau.
+func TestSyncAdmins(t *testing.T) {
+	g, _, _ := newGame(t)
+	a := mustJoin(t, g, "bsouvign", "Baudry S.")
+	b := mustJoin(t, g, "autre", "Autre A.")
+	g.st.Players[b].Admin = true
+	g.SyncAdmins([]string{" BSouvign "})
+	if !g.st.Players[a].Admin || g.st.Players[b].Admin {
+		t.Fatalf("admin : a=%v b=%v", g.st.Players[a].Admin, g.st.Players[b].Admin)
 	}
 }

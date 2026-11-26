@@ -48,7 +48,7 @@ type simGroup struct {
 	n                          float64
 	bonus, day1Cards, day1Num  float64 // cartes bonus, cartes ouvertes le jour 1, exemplaires numérotés le jour 1
 	day1Top                    float64 // légendaires + uniques le jour 1
-	distinct7, distinct14, d20 float64 // cartes différentes (échos compris) aux jours 7, 14, 20
+	distinct7, distinct14, d20 float64 // cartes différentes (répliques compris) aux jours 7, 14, 20
 	num14                      float64 // exemplaires numérotés au jour 14
 }
 
@@ -231,7 +231,7 @@ func runLaunchSim(t *testing.T, seed int64, capNights int) simResult {
 			p := g.st.Players[pid]
 			distinct := 0
 			for _, id := range w.Cards {
-				if len(p.Owned[id]) > 0 || p.Echoes[id] > 0 {
+				if len(p.Owned[id]) > 0 || p.Replicas[id] > 0 {
 					distinct++
 				}
 			}

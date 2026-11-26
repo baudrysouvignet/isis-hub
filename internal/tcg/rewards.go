@@ -232,21 +232,41 @@ type RewardRow struct {
 	Opened      int           `json:"opened"` // cartes bonus déjà ouvertes
 }
 
+// NightPodium : le podium d'un soir de jury, tel qu'il est reconstitué (pour le vérifier).
+type NightPodium struct {
+	Day string   `json:"day"`
+	Top []string `json:"top"` // pseudos, du 1er au 3e
+}
+
 type RewardsAdmin struct {
-	Granted bool        `json:"granted"`
-	Nights  int         `json:"nights"` // soirs comptés
-	Rows    []RewardRow `json:"rows"`
-	Cards   int         `json:"cards"` // cartes bonus en tout
-	Players int         `json:"players"`
-	Max     int         `json:"maxNights"`
+	Granted bool          `json:"granted"`
+	Podiums []NightPodium `json:"podiums"` // chaque soir compté, du premier au dernier
+	Nights  int           `json:"nights"`  // soirs comptés
+	Rows    []RewardRow   `json:"rows"`
+	Cards   int           `json:"cards"` // cartes bonus en tout
+	Players int           `json:"players"`
+	Max     int           `json:"maxNights"`
 }
 
 func (g *Game) AdminRewards() RewardsAdmin {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := g.now()
-	out := RewardsAdmin{Rows: []RewardRow{}, Players: len(g.st.Players), Max: maxNights}
+	out := RewardsAdmin{Rows: []RewardRow{}, Players: len(g.st.Players), Max: maxNights, Podiums: []NightPodium{}}
+	podiums := func(w *Wave, until time.Time, atRelease bool) {
+		for _, mid := range g.launchNights(w, until, atRelease) {
+			np := NightPodium{Day: calendarDay(mid.Add(-time.Minute)), Top: []string{}}
+			for i, cr := range g.rankingAt(mid) {
+				if i >= podiumSize {
+					break
+				}
+				np.Top = append(np.Top, g.pseudo(cr.id))
+			}
+			out.Podiums = append(out.Podiums, np)
+		}
+	}
 	if lw := g.launchWave(); lw != nil {
+		podiums(lw, now, false)
 		nights, part := g.launchRewards(lw, now, false)
 		out.Nights = len(g.launchNights(lw, now, false))
 		for id, p := range g.st.Players {
@@ -261,6 +281,12 @@ func (g *Game) AdminRewards() RewardsAdmin {
 		}
 	} else {
 		out.Granted = true
+		for _, w := range g.st.Waves { // la vague 1 : première imprimée
+			if w.Printed {
+				podiums(w, w.PrintedAt, true)
+				break
+			}
+		}
 		nightDays := map[string]bool{}
 		for _, p := range g.st.Players {
 			if len(p.Packs) == 0 {

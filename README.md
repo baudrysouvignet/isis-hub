@@ -273,11 +273,11 @@ connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
    premiers à ouvrir raflent les cartes numérotées. Collection, « Je cherche », signalements,
    échanges en face à face (QR code ou code à 4 caractères, table en direct, échange atomique côté
    serveur).
-   **Échos** : quand tous les exemplaires numérotés d'une carte sont tirés, elle sort encore en
-   « Écho », au même rythme moyen que ses vrais exemplaires (Run ÷ (boosters par jour × 14)) : même
+   **Répliques** : quand tous les exemplaires numérotés d'une carte sont tirés, elle sort encore en
+   « Réplique », au même rythme moyen que ses vrais exemplaires (Run ÷ (boosters par jour × 14)) : même
    carte et même photo, finition mate (cadre désaturé et immobile, liseré pointillé, onde au lieu de
-   l'holographie), étiquette « Écho », sans numéro. Un écho compte pour compléter la collection mais
-   est rangé à part (`Player.Echoes`, jamais dans `Owned`) : aucun échange, double ni correspondance
+   l'holographie), étiquette « Réplique », sans numéro. Une réplique compte pour compléter la collection mais
+   est rangé à part (`Player.Replicas`, jamais dans `Owned`) : aucun échange, double ni correspondance
    ne peut le voir.
 7. **Meilleurs créateurs** : podium des 3 premiers et place de chacun (accueil du jeu, page
    d'attente). Score calculé par le serveur (`internal/tcg/leaderboard.go`) et jamais envoyé : carte
@@ -297,7 +297,7 @@ connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
    l'administration le tableau complet. Équilibrage simulé avec le vrai code :
    `TCG_SIM=1 go test ./internal/tcg/ -run TestLaunchSimulation -v`.
    Avant le lancement, l'administration peut **essayer une ouverture** (booster du jour ou bonus,
-   avec un écho) depuis la page d'attente : raretés inventées, rien n'est enregistré.
+   avec une réplique) depuis la page d'attente : raretés inventées, rien n'est enregistré.
 
 **Ce que le serveur garde** (`tcg.json` du volume `/data`, droits 600, copie quotidienne dans
 `tcg-backups/`, 14 jours) : pseudo, collection, propositions, votes, signalements et échanges de
@@ -310,7 +310,7 @@ reprise ; sans copie, le serveur refuse de démarrer plutôt que d'écraser le j
 **Statistiques** (`/admin` → *Cartes TCG* → *Statistiques*) : joueurs inscrits et venus (aujourd'hui,
 7 et 30 jours), jurés et séries classées, boosters ouverts, échanges, créateurs ; une courbe sur 30
 jours (venus, boosters, séries, propositions, inscriptions, échanges) et un tableau par vague
-(cartes, jurés, séries, boosters ouverts pendant la vague, exemplaires tirés, échos, découvertes,
+(cartes, jurés, séries, boosters ouverts pendant la vague, exemplaires tirés, répliques, découvertes,
 collectionneurs). Pour cela, le serveur ne garde que des **compteurs par jour** (400 jours) et un
 compteur de boosters par vague : aucun pseudo, rien qui dise qui est venu ou a voté.
 
@@ -343,6 +343,23 @@ docker compose -f compose.prod.yaml run --rm isis-hub r2check
 La ligne de démarrage du serveur indique `images du TCG : r2` (ou `local`).
 
 ### Tester le TCG en local
+
+**Données de démo (essai local `compose.test.yaml` seulement, jamais en production)** : 24 joueurs
+fictifs (identifiants `demo-NN`, qu'aucune connexion universitaire n'ouvre), 48 cartes avec des
+photos générées (40 validées, 6 à valider pour le mode file, 2 bloquées), le jury de la vague 1
+ouvert depuis 3 soirs (podiums et récompenses de lancement visibles) et des exemplaires réduits
+(Rare 2, Épique 1, Légendaire 1) pour voir vite des répliques une fois la vague imprimée
+(`internal/tcg/demo_test.go`, compilé seulement par `go test`). Le générateur refuse un jeu déjà
+lancé, un jeu de plus de 30 joueurs, ou un second passage. Serveur de test arrêté :
+
+```bash
+docker compose -f compose.test.yaml stop
+CGO_ENABLED=0 GOOS=linux GOARCH=$(docker image inspect isis-hub:test --format '{{.Architecture}}') go test -c -o tcgdemo.test ./internal/tcg/
+docker run --rm --user 65532:65532 -v isis-hub-test_isis-hub-test-data:/data -v "$PWD/tcgdemo.test:/tcgdemo.test:ro" --env-file .env.test -e TCG_DEMO_DIR=/data --entrypoint /tcgdemo.test isis-hub:test -test.run '^TestDemoSeed$' -test.v
+rm tcgdemo.test && docker compose -f compose.test.yaml start
+```
+
+Pour tout recommencer : `docker compose -f compose.test.yaml down -v` (efface les données de test).
 
 Faux CAS (accepte tout ticket `ST-<identifiant>-…`, jamais en production) et serveur de
 développement. Dans la page, le jeu se rejoint avec un vrai ticket CAS ; en local, rejoindre depuis

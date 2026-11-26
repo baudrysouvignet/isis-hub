@@ -190,7 +190,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       ['Séries', (w) => n0(w.series)],
       ['Boosters', (w) => (w.printed ? n0(w.boosters) : '–')],
       ['Exemplaires tirés', (w) => (w.printed ? n0(w.copies) : '–')],
-      ['Échos', (w) => (w.printed ? n0(w.echoes) : '–')],
+      ['Répliques', (w) => (w.printed ? n0(w.replicas) : '–')],
       ['Découvertes', (w) => (w.printed ? `${n0(w.discovered)}/${n0(w.cards)}` : '–')],
       ['Collectionneurs', (w) => (w.printed ? n0(w.collectors) : '–')],
     ];
@@ -353,9 +353,19 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
           ),
         )
       : h('p.tad-help', { text: 'Aucune récompense pour l’instant : elles commencent au premier soir de jury.' });
+    // Le podium de chaque soir, tel que le serveur le reconstitue : pour vérifier « le podium d'hier soir ».
+    const nights = (r.podiums ?? []).length
+      ? h(
+          'ol.tad-nights',
+          {},
+          ...[...r.podiums].reverse().map((n) => h('li', {}, h('b', { text: `Soir du ${dayDate(n.day).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}` }), h('span', { text: n.top.length ? n.top.map((p, i) => `${place(i + 1)} ${p}`).join(' · ') : 'personne au classement' }))),
+        )
+      : null;
     rewardsBox.replaceChildren(
       h('h3.tad-sub', { text: r.granted ? 'Récompenses de lancement · attribuées' : 'Récompenses de lancement · à ce jour' }),
       h('p.tad-help', { text: `${plural(r.nights, 'soir de jury compté', 'soirs de jury comptés')} · ${plural(r.cards, 'carte bonus', 'cartes bonus')} pour ${plural(rows.length, 'joueur')} sur ${n0(r.players)}. Chaque soir où la promo a voté, à minuit : 1er 5 cartes, 2e 4, 3e 3, du 4e au 13e 1 ; 4 cartes par participant (carte validée ou série du jury). ${r.maxNights} meilleurs soirs au plus par joueur. Attribuées d’elles-mêmes à la sortie de la vague 1, valables 24 h.` }),
+      nights ? h('h4.tad-sub.tad-sub--sm', { text: 'Podium de chaque soir (classement à minuit)' }) : null,
+      nights,
       list,
     );
   }

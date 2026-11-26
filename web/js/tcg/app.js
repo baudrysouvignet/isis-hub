@@ -9,7 +9,7 @@ import { $, h, toast, motionOK } from '../core/dom.js';
 import { prefs } from '../core/store.js';
 import { seen, markSeen } from '../core/seen.js';
 import { api, adminApi, TcgError } from './api.js';
-import { cardEl, ic, mark, rchip, RLABEL, CATS, ECHO, tier, sheet, sheetOpen, tbtn, meter, dayLong, dateShort, hourText, ago, untilText, plural, placeholderArt, pips } from './ui.js';
+import { cardEl, ic, mark, rchip, RLABEL, CATS, REPLICA, tier, sheet, sheetOpen, tbtn, meter, dayLong, dateShort, hourText, ago, untilText, plural, placeholderArt, pips } from './ui.js';
 import { shield } from './shield.js';
 import { openBooster, showRecap, packEl } from './open.js';
 import { renderCreate, createForm, proposalsList } from './create.js';
@@ -548,7 +548,7 @@ export function createTCG(o) {
     const propose = tbtn('Proposer une carte', 'pen', juryCta ? 'tbtn--ghost tbtn--lg' : 'tbtn--primary tbtn--xl', () => $('#tsoon-form', wrap)?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' }));
     // Administration, avant l'ouverture du jury : essayer les duels (rien n'est enregistré).
     const tryDuels = !juryCta && st?.me?.admin ? tbtn('Essayer « Tu préfères ? »', 'jury', 'tbtn--ghost tbtn--lg', () => go('jury')) : null;
-    // Administration : essayer l'ouverture (booster du jour, booster bonus, échos) avant le lancement.
+    // Administration : essayer l'ouverture (booster du jour, booster bonus, répliques) avant le lancement.
     const tryOpen = st?.me?.admin ? h('div.tsoon-ctas.tsoon-ctas--more', {}, tbtn('Essayer un booster', 'booster', 'tbtn--ghost tbtn--sm', () => tryBooster('')), tbtn('Essayer un booster bonus', 'gift', 'tbtn--ghost tbtn--sm', () => tryBooster('pack'))) : null;
     const how = tbtn('Comment ça marche', 'info', 'tbtn--ghost tbtn--lg', () => $('#tsoon-steps', wrap)?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' }));
     const hero = h(
@@ -713,8 +713,8 @@ export function createTCG(o) {
     return h('section.th.th--simple', {}, stage, h('div.th-below', {}, ...below));
   }
 
-  // Cartes différentes de ma collection (échos compris : ils la complètent).
-  const collected = () => new Set([...Object.keys(st?.owned ?? {}), ...Object.keys(st?.echoes ?? {})]).size;
+  // Cartes différentes de ma collection (répliques comprises : elles la complètent).
+  const collected = () => new Set([...Object.keys(st?.owned ?? {}), ...Object.keys(st?.replicas ?? {})]).size;
 
   async function openToday(e) {
     const btn = e?.currentTarget;
@@ -754,13 +754,13 @@ export function createTCG(o) {
       cardOf,
       ownedCount: trial ? () => 0 : collected,
       totalCount: () => (trial ? pulls.length : cards.size),
-      onCard: (c, serial, echo) => openCard(c, serial, echo),
+      onCard: (c, serial, replica) => openCard(c, serial, replica),
       onClose: (toCollection) => (toCollection && !trial ? go('collection') : render()),
     });
   }
 
   // Administration, avant le lancement : une ouverture d'essai avec les vraies cartes proposées
-  // (raretés et numéros inventés, un écho), sans rien enregistrer.
+  // (raretés et numéros inventés, une réplique), sans rien enregistrer.
   async function tryBooster(kind) {
     try {
       const t = await api.tryBooster(kind);
@@ -773,7 +773,7 @@ export function createTCG(o) {
 
   function replay() {
     if (!st.lastDraw?.length) return;
-    showRecap({ pulls: st.lastDraw, cardOf: (id) => cards.get(id), ownedCount: collected, totalCount: () => cards.size, onCard: (c, s, echo) => openCard(c, s, echo), onClose: (toCollection) => toCollection && go('collection') });
+    showRecap({ pulls: st.lastDraw, cardOf: (id) => cards.get(id), ownedCount: collected, totalCount: () => cards.size, onCard: (c, s, replica) => openCard(c, s, replica), onClose: (toCollection) => toCollection && go('collection') });
   }
 
   // ---------------------------------------------------------------- récompenses de lancement
@@ -825,23 +825,23 @@ export function createTCG(o) {
   const allPackSizeOf = (rw) => (rw.packs ?? []).find((p) => p.kind === 'all')?.size ?? 4;
 
   // ---------------------------------------------------------------- fiche d'une carte
-  function openCard(card, serial, echoView) {
+  function openCard(card, serial, replicaView) {
     const mine = st?.owned?.[card.id] ?? [];
-    const echoes = st?.echoes?.[card.id] ?? 0;
+    const replicas = st?.replicas?.[card.id] ?? 0;
     const ser = serial || mine.find((x) => x > 0) || 0;
-    const asEcho = Boolean(echoView || (!mine.length && echoes));
+    const asReplica = Boolean(replicaView || (!mine.length && replicas));
     const c = cards.get(card.id) ?? card;
-    const el = cardEl(c, { size: 'xl', serial: ser, live: true, echo: asEcho });
+    const el = cardEl(c, { size: 'xl', serial: ser, live: true, replica: asReplica });
     const dl = h('dl.tdet-dl');
     const row = (dt, dd) => dl.append(h('dt', { text: dt }), h('dd', {}, dd));
-    row('Rareté', asEcho ? h('span', {}, rchip(c.rarity), ' ', h('span.trchip.trchip--echo', {}, ic('echo', 'ic ic--xs'), h('span', { text: ECHO }))) : rchip(c.rarity));
-    if (c.run > 0) row('Tirage', `${plural(c.run, 'exemplaire numéroté', 'exemplaires numérotés')}${ser && !asEcho ? ` · le tien : n° ${ser}` : ''}${c.issued >= c.run ? ' · tous tirés' : ''}`);
+    row('Rareté', asReplica ? h('span', {}, rchip(c.rarity), ' ', h('span.trchip.trchip--replica', {}, ic('replica', 'ic ic--xs'), h('span', { text: REPLICA }))) : rchip(c.rarity));
+    if (c.run > 0) row('Tirage', `${plural(c.run, 'exemplaire numéroté', 'exemplaires numérotés')}${ser && !asReplica ? ` · le tien : n° ${ser}` : ''}${c.issued >= c.run ? ' · tous tirés' : ''}`);
     else row('Tirage', 'Illimité');
     row('Proposée par', c.author || '—');
     if (c.firstBy) row('Tirée en premier par', c.firstBy);
     const w = (data()?.waves ?? []).find((x) => x.n === c.wave);
     row('Vague', `Vague ${c.wave}${w?.releaseAt ? ` · ${dateShort(w.releaseAt)}` : ''} · n° ${String(c.no).padStart(3, '0')}`);
-    const inColl = [mine.length ? plural(mine.length, 'exemplaire') : '', echoes ? plural(echoes, 'écho') : ''].filter(Boolean).join(' · ');
+    const inColl = [mine.length ? plural(mine.length, 'exemplaire') : '', replicas ? plural(replicas, 'réplique') : ''].filter(Boolean).join(' · ');
     row('Dans ta collection', inColl || 'Pas encore');
     const acts = h('div.tdet-acts');
     if (!mine.length && st) {
@@ -860,8 +860,8 @@ export function createTCG(o) {
       acts.append(wishBtn);
     }
     if (st && !c.mine && !c.removed) acts.append(tbtn('Signaler', 'flag', 'tbtn--ghost tbtn--sm', () => reportSheet(c)));
-    const echoNote = asEcho ? h('p.tdet-echo', {}, ic('echo', 'ic ic--sm'), h('span', { text: `${ECHO} : ${c.run === 1 ? 'l’exemplaire unique' : `les ${c.run} exemplaires numérotés`} étaient déjà tirés. Il complète ta collection mais ne s’échange pas ; « Je la cherche » reste possible pour un vrai exemplaire.` })) : null;
-    const info = h('div.tdet-info', {}, h('p.tk', { text: CATS[c.cat] ?? '' }), h('h2.tdet-h', { text: c.title }), c.desc ? h('p.tdet-desc', { text: c.desc }) : null, dl, echoNote, acts);
+    const replicaNote = asReplica ? h('p.tdet-replica', {}, ic('replica', 'ic ic--sm'), h('span', { text: `${REPLICA} : ${c.run === 1 ? 'l’exemplaire unique' : `les ${c.run} exemplaires numérotés`} étaient déjà tirés. Elle complète ta collection mais ne s’échange pas ; « Je la cherche » reste possible pour un vrai exemplaire.` })) : null;
+    const info = h('div.tdet-info', {}, h('p.tk', { text: CATS[c.cat] ?? '' }), h('h2.tdet-h', { text: c.title }), c.desc ? h('p.tdet-desc', { text: c.desc }) : null, dl, replicaNote, acts);
     const s = sheet('detail', c.title, h(`div.tdet.tdet--${c.rarity}`, {}, h('div.tdet-stage', {}, h('span.tdet-glow'), el), info));
     return s;
   }
@@ -912,7 +912,7 @@ export function createTCG(o) {
     cards,
     card: (id) => cards.get(id),
     owned: (id) => st?.owned?.[id] ?? [],
-    echoes: (id) => st?.echoes?.[id] ?? 0,
+    replicas: (id) => st?.replicas?.[id] ?? 0,
     ownedCount: () => collected(),
     go,
     render,

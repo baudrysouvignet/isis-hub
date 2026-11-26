@@ -12,16 +12,16 @@ export const CHANGELOG = [
   {
     version: '2.3.0',
     date: '2026-11-26',
-    title: 'TCG : deux boosters par jour, les échos et les récompenses de lancement',
+    title: 'TCG : deux boosters par jour, les répliques et les récompenses de lancement',
     quiet: true, // au journal seulement, sans pop-up « Nouveautés »
     short: [
       'TCG : deux boosters de 4 cartes par jour, le second 3 h après le premier.',
-      'Échos : une carte dont tous les exemplaires numérotés sont tirés sort encore, en version mate ; elle complète ta collection sans s’échanger.',
+      'Répliques : une carte dont tous les exemplaires numérotés sont tirés sort encore, en version mate ; elle complète ta collection sans s’échanger.',
       'Récompenses de lancement : chaque soir du jury, ta place au classement des créateurs te rapporte des boosters bonus.',
     ],
     details: [
       'Boosters : deux par jour, de 4 cartes. Le premier quand tu veux, le second 3 h après ; le cycle suivant reprend 24 h après ton premier booster. Un second booster pas ouvert à temps ne se garde pas.',
-      'Échos : quand tous les exemplaires numérotés d’une carte sont tirés, elle sort encore en « Écho », aussi rarement que la vraie. Même carte, même photo, mais finition mate, liseré pointillé et pas de numéro : tu la reconnais tout de suite, et tu vois au premier coup d’œil que ce n’est pas un exemplaire numéroté. Un écho compte pour compléter ta collection mais ne s’échange pas : il n’entre ni dans les échanges, ni dans les doubles, ni dans les propositions d’échange des autres.',
+      'Répliques : quand tous les exemplaires numérotés d’une carte sont tirés, elle sort encore en « Réplique », aussi rarement que la vraie. Même carte, même photo, mais finition mate, liseré pointillé et pas de numéro : tu la reconnais tout de suite, et tu vois au premier coup d’œil que ce n’est pas un exemplaire numéroté. Une réplique compte pour compléter ta collection mais ne s’échange pas : il n’entre ni dans les échanges, ni dans les doubles, ni dans les propositions d’échange des autres.',
       'Récompenses de lancement : chaque soir du jury de lancement où la promo a voté, à minuit, le classement des créateurs compte. 1er : un booster bonus de 5 cartes ; 2e : 4 cartes ; 3e : 3 cartes ; du 4e au 13e : 1 carte. Et chaque participant (une carte validée ou une série du jury) reçoit un booster bonus de 4 cartes. Tes 3 meilleurs soirs comptent. Tu vois sur la page d’attente ce que tu as gagné à ce jour ; les boosters bonus s’ouvrent le jour du lancement (24 h), en plus de tes deux boosters du jour, au même taux de tirage.',
       'Cartes numérotées : le jour du lancement, leur rythme compte d’avance tous les joueurs et tous les boosters bonus. Ouvrir son booster le premier ne donne pas plus de chances d’avoir une carte rare.',
       'Meilleurs créateurs : les points ne font plus que monter. Une carte bloquée ou retirée ne compte plus, ni en plus ni en moins. Seule exception : une carte validée que le jury de la vague a placée tout en bas (son dernier quart) et qui n’a pas été retenue coûte un peu ; au jury suivant, elle a une nouvelle chance.',

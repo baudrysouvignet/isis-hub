@@ -1,11 +1,11 @@
 // ISIS · TCG : la collection. Par vague, cartes possédées et emplacements manquants (numéro et
-// rareté seulement), filtres par vague, rareté, doubles, manquantes et « Je cherche ». Un écho
+// rareté seulement), filtres par vague, rareté, doubles, manquantes et « Je cherche ». Une réplique
 // (copie de substitution) compte pour compléter la collection, jamais comme un double : il ne
 // s'échange pas.
 
 import { h, toast } from '../core/dom.js';
 import { api } from './api.js';
-import { cardEl, ghostEl, meter, pips, rchip, sheet, tbtn, RLABEL, RARITIES, ECHO, dateShort, plural } from './ui.js';
+import { cardEl, ghostEl, meter, pips, rchip, sheet, tbtn, RLABEL, RARITIES, REPLICA, dateShort, plural } from './ui.js';
 
 const filters = { wave: 0, rarities: new Set(), show: 'all' };
 const SHOW = [
@@ -21,7 +21,7 @@ export function renderCollection(ctx) {
   const printed = st.waves.filter((w) => w.printed).sort((a, b) => b.n - a.n);
   const all = [...ctx.cards.values()];
   const total = all.filter((c) => !c.removed).length;
-  const has = (c) => ctx.owned(c.id).length > 0 || ctx.echoes(c.id) > 0;
+  const has = (c) => ctx.owned(c.id).length > 0 || ctx.replicas(c.id) > 0;
   const mineN = all.filter(has).length;
   const wish = new Set(st.wish);
   if (filters.wave && !printed.some((w) => w.n === filters.wave)) filters.wave = 0;
@@ -107,7 +107,7 @@ export function renderCollection(ctx) {
     const grid = h('div.tco-grid');
     for (const c of list) {
       const mine = ctx.owned(c.id);
-      const echoes = ctx.echoes(c.id);
+      const replicas = ctx.replicas(c.id);
       if (filters.rarities.size && !filters.rarities.has(c.rarity)) continue;
       if (filters.show === 'mine' && !has(c)) continue;
       if (filters.show === 'doubles' && mine.length < 2) continue;
@@ -116,12 +116,12 @@ export function renderCollection(ctx) {
       if (c.removed && !has(c)) continue;
       if (mine.length) {
         const serial = mine.find((s) => s > 0) || 0;
-        const cell = h('button.tco-cell', { type: 'button', attrs: { 'aria-label': `${c.title}, ${RLABEL[c.rarity]}${echoes ? `, et ${plural(echoes, 'écho')}` : ''}` } }, cardEl(c, { size: 'sm', serial, count: mine.length }));
+        const cell = h('button.tco-cell', { type: 'button', attrs: { 'aria-label': `${c.title}, ${RLABEL[c.rarity]}${replicas ? `, et ${plural(replicas, 'réplique')}` : ''}` } }, cardEl(c, { size: 'sm', serial, count: mine.length }));
         cell.addEventListener('click', () => ctx.openCard(c, serial));
         grid.append(cell);
-      } else if (echoes) {
-        // Seulement des échos : la carte s'affiche en écho (finition mate, étiquette « Écho »).
-        const cell = h('button.tco-cell', { type: 'button', attrs: { 'aria-label': `${c.title}, ${RLABEL[c.rarity]}, ${ECHO}` } }, cardEl(c, { size: 'sm', echo: true, count: echoes }));
+      } else if (replicas) {
+        // Seulement des répliques : la carte s'affiche en réplique (finition mate, étiquette « Réplique »).
+        const cell = h('button.tco-cell', { type: 'button', attrs: { 'aria-label': `${c.title}, ${RLABEL[c.rarity]}, ${REPLICA}` } }, cardEl(c, { size: 'sm', replica: true, count: replicas }));
         cell.addEventListener('click', () => ctx.openCard(c, 0, true));
         grid.append(cell);
       } else {
@@ -167,7 +167,7 @@ function ghostSheet(ctx, c) {
     h('p.tk', { text: `Vague ${c.wave} · n° ${String(c.no).padStart(3, '0')}` }),
     h('h2.tdet-h', { text: 'Pas encore dans ta collection' }),
     rchip(c.rarity),
-    h('p.tdet-desc', { text: c.run > 0 ? (c.issued >= c.run ? `Les ${plural(c.run, 'exemplaire numéroté', 'exemplaires numérotés')} sont tous tirés : elle sort désormais en ${ECHO}, aussi rarement que la vraie. Un écho complète ta collection ; seuls les exemplaires numérotés s’échangent.` : `${plural(c.run, 'exemplaire numéroté', 'exemplaires numérotés')}, ${plural(Math.max(0, c.run - c.issued), 'encore à tirer', 'encore à tirer')}. Deux boosters par jour, ou un échange.`) : 'Tirage illimité : elle finira par sortir d’un booster, ou échange-la.' }),
+    h('p.tdet-desc', { text: c.run > 0 ? (c.issued >= c.run ? `Les ${plural(c.run, 'exemplaire numéroté', 'exemplaires numérotés')} sont tous tirés : elle sort désormais en ${REPLICA}, aussi rarement que la vraie. Une réplique complète ta collection ; seuls les exemplaires numérotés s’échangent.` : `${plural(c.run, 'exemplaire numéroté', 'exemplaires numérotés')}, ${plural(Math.max(0, c.run - c.issued), 'encore à tirer', 'encore à tirer')}. Deux boosters par jour, ou un échange.`) : 'Tirage illimité : elle finira par sortir d’un booster, ou échange-la.' }),
     holders.length ? h('p.thelp', { text: `${holders.map((m) => m.pseudo).join(', ')} ${holders.length > 1 ? 'l’ont' : 'l’a'} : propose un échange.` }) : null,
     h('div.tdet-acts', {}, toggle),
   );

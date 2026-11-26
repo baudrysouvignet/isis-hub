@@ -12,7 +12,7 @@
 //
 // Chaque joueur ouvre deux boosters de 4 cartes par jour (le second 3 h après le premier) et échange
 // ses cartes en face à face. Quand tous les exemplaires numérotés d'une carte sont tirés, elle sort
-// encore en « Écho » : même carte, finition mate, non numérotée et non échangeable, qui compte pour
+// encore en « Réplique » : même carte, finition mate, non numérotée et non échangeable, qui compte pour
 // compléter la collection.
 //
 // Ce que le serveur garde (fichier tcg.json du volume /data) : le pseudo de chaque joueur, sa
@@ -98,14 +98,14 @@ type Card struct {
 	JuryShown int `json:"juryShown,omitempty"`
 
 	// Impression.
-	Wave    int       `json:"wave,omitempty"`
-	No      int       `json:"no,omitempty"` // numéro dans la vague (#017)
-	Rarity  Rarity    `json:"rarity,omitempty"`
-	Run     int       `json:"run,omitempty"`    // exemplaires numérotés (0 = commune, illimitée)
-	Issued  int       `json:"issued,omitempty"` // exemplaires déjà tirés
-	FirstBy string    `json:"firstBy,omitempty"`
-	FirstAt time.Time `json:"firstAt,omitzero"`
-	Echoes  int       `json:"echoes,omitempty"` // échos tirés (tous les exemplaires numérotés partis)
+	Wave     int       `json:"wave,omitempty"`
+	No       int       `json:"no,omitempty"` // numéro dans la vague (#017)
+	Rarity   Rarity    `json:"rarity,omitempty"`
+	Run      int       `json:"run,omitempty"`    // exemplaires numérotés (0 = commune, illimitée)
+	Issued   int       `json:"issued,omitempty"` // exemplaires déjà tirés
+	FirstBy  string    `json:"firstBy,omitempty"`
+	FirstAt  time.Time `json:"firstAt,omitzero"`
+	Replicas int       `json:"replicas,omitempty"` // répliques tirées (tous les exemplaires numérotés partis)
 
 	// Première validation par l'administration (Decided change ensuite : accords, impression). Sert
 	// à reconstituer le classement des créateurs de chaque soir (rewards.go).
@@ -129,10 +129,10 @@ type Report struct {
 
 // Pull : une carte tirée d'un booster.
 type Pull struct {
-	Card   string `json:"card"`
-	Serial int    `json:"serial"`         // numéro d'exemplaire (0 = commune ou écho)
-	New    bool   `json:"new"`            // première fois dans la collection
-	Echo   bool   `json:"echo,omitempty"` // écho : copie de substitution, non numérotée, non échangeable
+	Card    string `json:"card"`
+	Serial  int    `json:"serial"`            // numéro d'exemplaire (0 = commune ou réplique)
+	New     bool   `json:"new"`               // première fois dans la collection
+	Replica bool   `json:"replica,omitempty"` // réplique : copie de substitution, non numérotée, non échangeable
 }
 
 // Pack : un booster bonus (récompenses de lancement, rewards.go), à ouvrir avant Until.
@@ -175,7 +175,7 @@ type Player struct {
 	Pseudo    string           `json:"pseudo"`
 	Created   time.Time        `json:"created"`
 	Owned     map[string][]int `json:"owned,omitempty"`    // carte → numéros d'exemplaires (0 = commune)
-	Echoes    map[string]int   `json:"echoes,omitempty"`   // carte → échos : jamais dans Owned, donc rien ne peut les échanger
+	Replicas  map[string]int   `json:"replicas,omitempty"` // carte → répliques : jamais dans Owned, donc rien ne peut les échanger
 	Wish      []string         `json:"wish,omitempty"`     // « Je cherche »
 	Booster   string           `json:"booster,omitempty"`  // jour du dernier booster (statistiques)
 	BoosterAt time.Time        `json:"boosterAt,omitzero"` // dernier booster ouvert
@@ -229,7 +229,7 @@ type Activity struct {
 	Series    int `json:"series,omitempty"`    // séries du jury classées (une série refaite ne compte pas deux fois)
 	Trades    int `json:"trades,omitempty"`    // échanges conclus
 	Packs     int `json:"packs,omitempty"`     // boosters bonus ouverts (hors rythme des raretés)
-	Echoes    int `json:"echoes,omitempty"`    // échos tirés
+	Replicas  int `json:"replicas,omitempty"`  // répliques tirées
 }
 
 // Season : réglages du jeu.

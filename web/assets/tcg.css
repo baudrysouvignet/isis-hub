@@ -1743,40 +1743,40 @@ html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
 @keyframes tcrPulse { from { background-position: 100% 0; } to { background-position: 60% 0; } }
 
 /* ==========================================================================
-   2.3.0 · Écho : la copie de substitution d'une carte dont tous les exemplaires numérotés sont
+   2.3.0 · Réplique : la copie de substitution d'une carte dont tous les exemplaires numérotés sont
    tirés. Même carte et même photo (on la reconnaît tout de suite), mais finition mate : cadre
    désaturé et immobile, liseré pointillé, photo tramée, ni holographie ni reflet arc-en-ciel ; à la
-   place, une onde lente part des pastilles de rareté. Étiquette « Écho », pas de numéro.
+   place, une onde lente part des pastilles de rareté. Étiquette « Réplique », pas de numéro.
    ========================================================================== */
-.tc.is-echo { --echo-line: rgba(27, 26, 23, .32); }
-.tc--rare.is-echo { --tc-frame: linear-gradient(150deg, #E3ECEE, #A3BABE 45%, #CFDCDE 72%, #93AEB3); --tc-ring: rgba(28, 143, 160, .12); }
-.tc--epique.is-echo { --tc-frame: linear-gradient(150deg, #ECE8F4, #ADA4C6 38%, #A9C6CB 66%, #D9D3E6); --tc-ring: rgba(107, 75, 214, .14); }
-.tc--legendaire.is-echo { --tc-frame: linear-gradient(150deg, #EBDCD5, #BE9A90 36%, #B49FBF 64%, #DCC8C1); --echo-line: rgba(255, 244, 236, .36); --tc-serial-bg: transparent; }
-.tc--unique.is-echo { --tc-frame: linear-gradient(150deg, #F1EAD3, #BFAE85 40%, #8E7C55 58%, #E6DBBB); --echo-line: rgba(255, 243, 207, .4); --tc-serial-bg: transparent; }
-.tc.is-echo .tc-front { animation: none; }
-.tc.is-echo:not(.is-hover) { animation: none; }
-.tc.is-echo .tc-holo, .tc.is-echo .tc-shine { display: none; }
-.tc.is-echo.is-hover .tc-glare { opacity: .45; }
-.tc--unique.is-echo .tc-title { background: none; color: var(--tc-ink); }
-.tc--unique.is-echo .tc-serial { color: var(--tc-ink); }
-.tc.is-echo .tc-frame::before {
+.tc.is-replica { --replica-line: rgba(27, 26, 23, .32); }
+.tc--rare.is-replica { --tc-frame: linear-gradient(150deg, #E3ECEE, #A3BABE 45%, #CFDCDE 72%, #93AEB3); --tc-ring: rgba(28, 143, 160, .12); }
+.tc--epique.is-replica { --tc-frame: linear-gradient(150deg, #ECE8F4, #ADA4C6 38%, #A9C6CB 66%, #D9D3E6); --tc-ring: rgba(107, 75, 214, .14); }
+.tc--legendaire.is-replica { --tc-frame: linear-gradient(150deg, #EBDCD5, #BE9A90 36%, #B49FBF 64%, #DCC8C1); --replica-line: rgba(255, 244, 236, .36); --tc-serial-bg: transparent; }
+.tc--unique.is-replica { --tc-frame: linear-gradient(150deg, #F1EAD3, #BFAE85 40%, #8E7C55 58%, #E6DBBB); --replica-line: rgba(255, 243, 207, .4); --tc-serial-bg: transparent; }
+.tc.is-replica .tc-front { animation: none; }
+.tc.is-replica:not(.is-hover) { animation: none; }
+.tc.is-replica .tc-holo, .tc.is-replica .tc-shine { display: none; }
+.tc.is-replica.is-hover .tc-glare { opacity: .45; }
+.tc--unique.is-replica .tc-title { background: none; color: var(--tc-ink); }
+.tc--unique.is-replica .tc-serial { color: var(--tc-ink); }
+.tc.is-replica .tc-frame::before {
   content: ""; position: absolute; inset: 1.3cqw; z-index: 2; pointer-events: none;
-  border: .45cqw dashed var(--echo-line); border-radius: 2.6cqw;
+  border: .45cqw dashed var(--replica-line); border-radius: 2.6cqw;
 }
-.tc.is-echo .tc-art img { filter: saturate(.78) contrast(.96); }
-.tc.is-echo .tc-art::after {
+.tc.is-replica .tc-art img { filter: saturate(.78) contrast(.96); }
+.tc.is-replica .tc-art::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: repeating-linear-gradient(0deg, rgba(255, 255, 255, .09) 0 .45cqw, transparent .45cqw 1.3cqw); mix-blend-mode: overlay;
 }
-.tc.is-echo .tc-serial { background: transparent; box-shadow: inset 0 0 0 .3cqw var(--echo-line); }
-.tc-echo {
+.tc.is-replica .tc-serial { background: transparent; box-shadow: inset 0 0 0 .3cqw var(--replica-line); }
+.tc-replica {
   position: absolute; right: 2.2cqw; top: 2.2cqw; z-index: 1; display: inline-flex; align-items: center; gap: 1cqw;
   padding: 1.2cqw 2.4cqw 1.2cqw 1.8cqw; border-radius: 99px; background: rgba(250, 250, 247, .9); color: #233036;
   font: 850 3.1cqw/1 var(--font); letter-spacing: .1em; text-transform: uppercase; box-shadow: 0 1cqw 3cqw -1cqw rgba(0, 0, 0, .5);
 }
-.tc-echo-ic { width: 3.8cqw; height: 3.8cqw; stroke-width: 2.4; }
-.tc--sm .tc-echo { font-size: 5.2cqw; padding: 1.6cqw 3cqw 1.6cqw 2.2cqw; gap: 1.4cqw; }
-.tc--sm .tc-echo-ic { width: 5.6cqw; height: 5.6cqw; }
+.tc-replica-ic { width: 3.8cqw; height: 3.8cqw; stroke-width: 2.4; }
+.tc--sm .tc-replica { font-size: 5.2cqw; padding: 1.6cqw 3cqw 1.6cqw 2.2cqw; gap: 1.4cqw; }
+.tc--sm .tc-replica-ic { width: 5.6cqw; height: 5.6cqw; }
 .tc-ripple { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; border-radius: inherit; }
 .tc-ripple::before, .tc-ripple::after {
   content: ""; position: absolute; right: 12%; top: 8%; width: 26cqw; aspect-ratio: 1; border-radius: 50%;
@@ -1792,12 +1792,12 @@ html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
   12% { opacity: .9; }
   100% { opacity: 0; transform: translate(50%, -50%) scale(5.2); }
 }
-/* Ouverture : un écho ne déclenche ni rayons ni confettis, seulement une onde. */
-.op-echo { position: absolute; left: 50%; top: 45%; width: 120px; aspect-ratio: 1; border-radius: 50%; border: 3px solid rgba(201, 226, 230, .8); pointer-events: none; transform: translate(-50%, -50%); }
-.op-banner-k.op-banner--echo { background: linear-gradient(90deg, #DDE7E9, #B8C9CC); color: #1A2A2F; }
-.tdet-echo { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(201, 226, 230, .08); border: 1px dashed rgba(201, 226, 230, .35); color: var(--text-2); font-size: 13px; line-height: 1.4; }
-.tdet-echo .ic { flex: none; margin-top: 1px; color: #C9E2E6; }
-.trchip--echo { background: rgba(201, 226, 230, .12); color: #C9E2E6; box-shadow: inset 0 0 0 1px rgba(201, 226, 230, .35); }
+/* Ouverture : une réplique ne déclenche ni rayons ni confettis, seulement une onde. */
+.op-replica { position: absolute; left: 50%; top: 45%; width: 120px; aspect-ratio: 1; border-radius: 50%; border: 3px solid rgba(201, 226, 230, .8); pointer-events: none; transform: translate(-50%, -50%); }
+.op-banner-k.op-banner--replica { background: linear-gradient(90deg, #DDE7E9, #B8C9CC); color: #1A2A2F; }
+.tdet-replica { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(201, 226, 230, .08); border: 1px dashed rgba(201, 226, 230, .35); color: var(--text-2); font-size: 13px; line-height: 1.4; }
+.tdet-replica .ic { flex: none; margin-top: 1px; color: #C9E2E6; }
+.trchip--replica { background: rgba(201, 226, 230, .12); color: #C9E2E6; box-shadow: inset 0 0 0 1px rgba(201, 226, 230, .35); }
 
 /* ==========================================================================
    2.3.0 · Deux boosters par jour, boosters bonus, récompenses de lancement
@@ -1847,8 +1847,8 @@ html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
 .trw-acts { display: flex; flex-wrap: wrap; gap: 10px; }
 .tsoon .trw { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .tc-ripple::before, .tc-ripple::after { animation: none; } }
-.op-slot.is-echo { border-style: dashed; border-color: #C9E2E6; box-shadow: none; }
-.op-slot.is-echo img { filter: saturate(.7); }
+.op-slot.is-replica { border-style: dashed; border-color: #C9E2E6; box-shadow: none; }
+.op-slot.is-replica img { filter: saturate(.7); }
 
 /* ==========================================================================
    2.3.0 · Administration : mode file (une carte à la fois, plein écran)
@@ -1920,12 +1920,12 @@ html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
 .tad-rewards .tad-sub, .tad-rewards .tad-help { margin: 0; }
 
 /* ==========================================================================
-   2.3.0 · Ouverture : montée en tension par rareté (paliers), retournement, écho caché
+   2.3.0 · Ouverture : montée en tension par rareté (paliers), retournement, réplique cachée
    ========================================================================== */
-/* Rien d'un écho ne se voit sur une carte face cachée, même pendant le retournement (certains
+/* Rien d'une réplique ne se voit sur une carte face cachée, même pendant le retournement (certains
    navigateurs mobiles laissent voir les calques animés à travers le dos). */
-.tc.is-back .tc-echo, .tc.is-back .tc-ripple, .tc.is-back.is-echo .tc-frame::before { visibility: hidden; transition: none; }
-.tc .tc-echo, .tc .tc-ripple { transition: visibility 0s linear .32s; }
+.tc.is-back .tc-replica, .tc.is-back .tc-ripple, .tc.is-back.is-replica .tc-frame::before { visibility: hidden; transition: none; }
+.tc .tc-replica, .tc .tc-ripple { transition: visibility 0s linear .32s; }
 /* Lueur du fond, à la couleur du palier en cours */
 .op-glow {
   position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: 0; transition: opacity .4s ease;
@@ -1960,7 +1960,7 @@ html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
 .op-banner.is-small .op-banner-k { font-size: clamp(24px, 5.4vw, 40px); }
 .op-banner-k.is-rare { background: linear-gradient(90deg, #B4F3F9, #4CC3D3, #B4F3F9); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 4px 22px rgba(76, 195, 211, .6)); }
 .op-banner-k.is-epique { background: linear-gradient(90deg, #E6DCFF, #A98BFF, #8FEAF3); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 4px 24px rgba(169, 139, 255, .65)); }
-.op-banner-k.op-banner--echo { background: linear-gradient(90deg, #EEF4F5, #B8C9CC); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 4px 18px rgba(201, 226, 230, .35)); }
+.op-banner-k.op-banner--replica { background: linear-gradient(90deg, #EEF4F5, #B8C9CC); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 4px 18px rgba(201, 226, 230, .35)); }
 .op-banner.is-small .op-banner-s { color: #DDEFF2; }
 /* Le booster trahit sa meilleure carte : déchirure colorée, et dès Légendaire, il tremble et luit */
 .pack[class*="is-tease-"] .pack-tear i { background: linear-gradient(90deg, #FFFFFF, var(--tease)); box-shadow: 0 0 16px 4px var(--tease); }
@@ -2004,3 +2004,18 @@ html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
   .op-sun, .op-sun::after, .op-motes i { animation: none !important; }
   .op-motes { display: none; }
 }
+/* Ouverture · anneau de lumière autour de la carte pendant la charge (une traînée qui tourne de
+   plus en plus vite à chaque palier, à la couleur du palier). */
+.op-orbit { position: absolute; left: 50%; top: 50%; z-index: 4; width: 0; height: 0; pointer-events: none; transform: scaleY(1.28); opacity: 0; transition: opacity .5s ease; }
+.op-orbit.is-on { opacity: 1; }
+.op-orbit-r { position: absolute; inset: 0; }
+.op-orbit i {
+  position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--tone, #4CC3D3); box-shadow: 0 0 14px 3px var(--tone, #4CC3D3);
+  transform: rotate(calc(var(--k) * 30deg)) translateY(-61cqw); opacity: calc(.1 + var(--k) / 13);
+  transition: background .4s, box-shadow .4s;
+}
+.tad-nights { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.tad-nights li { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 8px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-size: 13px; }
+.tad-nights li b { min-width: 120px; }
+.tad-nights li span { color: var(--text-2); }

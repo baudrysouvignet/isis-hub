@@ -54,6 +54,29 @@ func (g *Game) Join(login, pseudo string) (tok string, created bool, err error) 
 	return tok, created, nil
 }
 
+// SyncAdmins : drapeau « administration » de chaque joueur d'après ADMIN_USERS, au démarrage, sans
+// attendre sa prochaine connexion au jeu (Join le recalcule aussi). On compare des empreintes
+// (loginKey) : aucun identifiant n'est écrit.
+func (g *Game) SyncAdmins(logins []string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	want := map[string]bool{}
+	for _, l := range logins {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		if id, ok := g.st.Keys[g.loginKey(l)]; ok {
+			want[id] = true
+		}
+	}
+	for id, p := range g.st.Players {
+		if p.Admin != want[id] {
+			p.Admin = want[id]
+			g.dirty = true
+		}
+	}
+}
+
 // PlayerID : joueur de la session (jeton du cookie), "" sinon.
 func (g *Game) PlayerID(tok string) string {
 	if len(tok) < 32 {
@@ -194,7 +217,7 @@ const (
 	boostersPerCycle = 2
 	boosterGap       = 3 * time.Hour
 	boosterCycle     = 24 * time.Hour
-	maxLimited       = 3 // exemplaires numérotés (ou échos) au plus dans un booster de 4 cartes
+	maxLimited       = 3 // exemplaires numérotés (ou répliques) au plus dans un booster de 4 cartes
 )
 
 // cycleOf : début du cycle en cours et boosters déjà ouverts dedans (0 : un nouveau cycle peut
@@ -302,23 +325,23 @@ func (g *Game) OpenPack(pid, id string) ([]Pull, error) {
 	return pulls, nil
 }
 
-// give : les cartes tirées entrent dans la collection (numéro d'exemplaire, ou écho à part).
+// give : les cartes tirées entrent dans la collection (numéro d'exemplaire, ou réplique à part).
 func (g *Game) give(p *Player, pulls []Pull, now time.Time) {
 	for i := range pulls {
 		c := g.st.Cards[pulls[i].Card]
-		pulls[i].New = len(p.Owned[c.ID]) == 0 && p.Echoes[c.ID] == 0
+		pulls[i].New = len(p.Owned[c.ID]) == 0 && p.Replicas[c.ID] == 0
 		if c.Run > 0 && c.Issued >= c.Run {
-			pulls[i].Echo = true
+			pulls[i].Replica = true
 		}
-		if pulls[i].Echo {
-			// Tous les exemplaires numérotés sont partis : un écho, rangé hors de Owned (aucun
+		if pulls[i].Replica {
+			// Tous les exemplaires numérotés sont partis : une réplique, rangée hors de Owned (aucun
 			// échange, « doubles » ni correspondance ne le voit).
-			if p.Echoes == nil {
-				p.Echoes = map[string]int{}
+			if p.Replicas == nil {
+				p.Replicas = map[string]int{}
 			}
-			p.Echoes[c.ID]++
-			c.Echoes++
-			g.activity(now).Echoes++
+			p.Replicas[c.ID]++
+			c.Replicas++
+			g.activity(now).Replicas++
 			continue
 		}
 		first := c.Issued == 0
@@ -344,7 +367,7 @@ func (g *Game) give(p *Player, pulls []Pull, now time.Time) {
 // chance proportionnée au temps qui reste pour le distribuer (PaceDays après la sortie de sa vague)
 // et au nombre de boosters ouverts chaque jour : les cartes numérotées se répartissent sur toute la
 // période au lieu de partir le premier jour. Une carte dont tous les exemplaires sont tirés sort en
-// écho au même rythme moyen que ses vrais exemplaires (Run / (boosters par jour × PaceDays)). Le
+// réplique au même rythme moyen que ses vrais exemplaires (Run / (boosters par jour × PaceDays)). Le
 // reste est fait de cartes communes. Un booster plus petit ou plus grand (bonus) garde le même taux
 // par carte : les chances sont multipliées par size / 4, comme le plafond de cartes numérotées.
 func (g *Game) draw(now time.Time, size int) []Pull {
@@ -387,7 +410,7 @@ func (g *Game) draw(now time.Time, size int) []Pull {
 		c := g.st.Cards[id]
 		var p float64
 		if c.Issued >= c.Run {
-			p = float64(c.Run) / (perDay * pace) // écho : le rythme moyen de la vraie
+			p = float64(c.Run) / (perDay * pace) // réplique : le rythme moyen de la vraie
 		} else {
 			deadline := now
 			if w := g.wave(c.Wave); w != nil {
@@ -400,7 +423,7 @@ func (g *Game) draw(now time.Time, size int) []Pull {
 			p = min(float64(c.Run-c.Issued)/(perDay*days), 0.6)
 		}
 		if g.chance(p * scale) {
-			pulls = append(pulls, Pull{Card: id, Echo: c.Issued >= c.Run})
+			pulls = append(pulls, Pull{Card: id, Replica: c.Issued >= c.Run})
 			taken[id] = true
 		}
 	}
@@ -410,7 +433,7 @@ func (g *Game) draw(now time.Time, size int) []Pull {
 			pool = latestCommunes
 		}
 		if len(pool) == 0 {
-			// Plus de communes : les cartes numérotées restantes (ou leurs échos) complètent le booster.
+			// Plus de communes : les cartes numérotées restantes (ou leurs répliques) complètent le booster.
 			var rest []string
 			for _, id := range limited {
 				if !taken[id] {
@@ -422,7 +445,7 @@ func (g *Game) draw(now time.Time, size int) []Pull {
 			}
 			id := rest[g.rnd(len(rest))]
 			c := g.st.Cards[id]
-			pulls = append(pulls, Pull{Card: id, Echo: c.Issued >= c.Run})
+			pulls = append(pulls, Pull{Card: id, Replica: c.Issued >= c.Run})
 			taken[id] = true
 			continue
 		}
@@ -433,11 +456,11 @@ func (g *Game) draw(now time.Time, size int) []Pull {
 		pulls = append(pulls, Pull{Card: id})
 		taken[id] = true
 	}
-	// Révélation : de la plus courante à la plus rare, la meilleure en dernier (un écho avant une
+	// Révélation : de la plus courante à la plus rare, la meilleure en dernier (une réplique avant une
 	// vraie carte de même rareté).
 	rank := func(p Pull) int {
 		r := 2 * g.st.Cards[p.Card].Rarity.tier()
-		if !p.Echo {
+		if !p.Replica {
 			r++
 		}
 		return r
@@ -900,7 +923,7 @@ func (g *Game) TryCards(pid string) ([]CardView, error) {
 }
 
 // TryOpen : un booster d'essai pour l'administration (avant le lancement notamment), pour voir
-// l'ouverture, les raretés, les échos et le style des boosters bonus avec les vraies cartes.
+// l'ouverture, les raretés, les répliques et le style des boosters bonus avec les vraies cartes.
 // Raretés et numéros sont inventés ; rien n'est enregistré, rien n'entre dans une collection.
 type TryOpen struct {
 	Cards []CardView `json:"cards"`
@@ -916,10 +939,10 @@ func (g *Game) TryBooster(pid, kind string) (TryOpen, error) {
 		return TryOpen{}, userErr(http.StatusForbidden, "Réservé à l’administration.")
 	}
 	type demo struct {
-		r      Rarity
-		run    int
-		serial int
-		echo   bool
+		r       Rarity
+		run     int
+		serial  int
+		replica bool
 	}
 	plan := []demo{{Commune, 0, 0, false}, {Rare, 25, 12, false}, {Epique, 10, 0, true}, {Legendaire, 3, 2, false}}
 	if kind == "pack" {
@@ -947,11 +970,11 @@ func (g *Game) TryBooster(pid, kind string) (TryOpen, error) {
 		}
 		v.ID = "try" + itoa(i+1)
 		v.Rarity, v.Run, v.Wave, v.No, v.Total = d.r, d.run, 1, 140+i, 150
-		if d.echo {
+		if d.replica {
 			v.Issued = d.run
 		}
 		out.Cards = append(out.Cards, v)
-		out.Pulls = append(out.Pulls, Pull{Card: v.ID, Serial: d.serial, New: i%2 == 0, Echo: d.echo})
+		out.Pulls = append(out.Pulls, Pull{Card: v.ID, Serial: d.serial, New: i%2 == 0, Replica: d.replica})
 	}
 	return out, nil
 }

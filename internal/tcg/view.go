@@ -245,7 +245,7 @@ type View struct {
 	Me        Me               `json:"me"`
 	Cards     []CardView       `json:"cards"`
 	Owned     map[string][]int `json:"owned"`
-	Echoes    map[string]int   `json:"echoes"` // échos : comptent pour la collection, ne s'échangent pas
+	Replicas  map[string]int   `json:"replicas"` // répliques : comptent pour la collection, ne s'échangent pas
 	Wish      []string         `json:"wish"`
 	LastDraw  []Pull           `json:"lastDraw,omitempty"`
 	Proposals []ProposalView   `json:"proposals"`
@@ -303,7 +303,7 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 			MailLinked: p.MailKey != "", Admin: p.Admin,
 			ProposalsLeft: g.proposalsLeft(pid, now), NextBooster: g.boosterNext(p, now),
 		},
-		Owned: map[string][]int{}, Echoes: map[string]int{}, Wish: append([]string{}, p.Wish...), Feed: []FeedView{}, Matches: []MatchView{},
+		Owned: map[string][]int{}, Replicas: map[string]int{}, Wish: append([]string{}, p.Wish...), Feed: []FeedView{}, Matches: []MatchView{},
 		Trades: []TradeView{}, Invites: []InviteView{}, Proposals: []ProposalView{}, Cards: []CardView{},
 		Appear:  g.appearances(p),
 		Leaders: g.leaderboard(pid),
@@ -325,7 +325,7 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 		}
 		for _, id := range w.Cards {
 			c := g.st.Cards[id]
-			if c == nil || (c.Status == StatusRemoved && len(p.Owned[id]) == 0 && p.Echoes[id] == 0) {
+			if c == nil || (c.Status == StatusRemoved && len(p.Owned[id]) == 0 && p.Replicas[id] == 0) {
 				continue
 			}
 			v.Cards = append(v.Cards, g.cardView(c, pid))
@@ -336,9 +336,9 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 			v.Owned[id] = serials
 		}
 	}
-	for id, n := range p.Echoes {
+	for id, n := range p.Replicas {
 		if n > 0 {
-			v.Echoes[id] = n
+			v.Replicas[id] = n
 		}
 	}
 	// Mes propositions : le titre et l'avancement seulement (voir ProposalView), la plus récente
