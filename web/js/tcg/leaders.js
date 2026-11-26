@@ -2,7 +2,8 @@
 //
 // Le serveur calcule tout (leaderboard.go) et n'envoie que des places : ni score, ni rareté. La
 // page dit ce qui fait gagner ou perdre des points, et à quel point (une jauge), sans chiffre : un
-// score affiché laisserait deviner la rareté de ses propres cartes.
+// score affiché laisserait deviner la rareté de ses propres cartes. Les points ne font que monter,
+// sauf pour une carte que le jury de la vague a placée tout en bas.
 
 import { h } from '../core/dom.js';
 import { ic, pips, plural } from './ui.js';
@@ -66,9 +67,8 @@ export function leaderboard(lb, { onCreate } = {}) {
 const RULES = [
   ['plus', 'Carte en jeu', 'Selon ce que la promo en a pensé au jury : plus elle est rare, plus elle rapporte. Une seule carte très attendue vaut bien plus que beaucoup de cartes communes.', 2, 5],
   ['plus', 'Carte validée', 'Acceptée par la modération, en attente du jury ou de l’impression.', 1],
-  ['minus', 'Carte bloquée', 'Refusée par la modération (insulte, dénigrement, photo floue, doublon…), même si tu la retires ensuite.', 1],
-  ['minus', 'Carte retirée du jeu', 'Après des signalements de joueurs.', 2],
-  ['zero', 'Ne comptent pas', 'Les propositions en attente, et les cartes qu’une personne sur la photo a refusées.', 0],
+  ['minus', 'Carte tout en bas du jury', 'Validée mais pas retenue, et placée par le jury de la vague dans son dernier quart : elle coûte un peu plus qu’elle ne rapporte. Seul compte le jury de la vague en jeu : au jury suivant, elle a une nouvelle chance.', 2],
+  ['zero', 'Ne comptent pas', 'Les propositions en attente, les cartes bloquées (même retirées ensuite) ou retirées du jeu, et celles qu’une personne sur la photo a refusées. Aucune ne fait perdre de points.', 0],
 ];
 const SIGN = { plus: '+', minus: '−', zero: '=' };
 

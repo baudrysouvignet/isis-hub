@@ -373,18 +373,29 @@ func TestFullLaunchFlow(t *testing.T) {
 		t.Fatalf("uniques : %d", uniques)
 	}
 
-	// 6. Boosters : 1 par jour, 5 cartes, cartes « Nouvelle ».
+	// 6. Boosters : 2 par cycle de 24 h (le second 3 h après le premier), 4 cartes.
 	for _, name := range names {
 		out := players[name].must("POST", "/api/tcg/booster", nil, 200)
-		if len(out["pulls"].([]any)) != 5 {
+		if len(out["pulls"].([]any)) != boosterSize {
 			t.Fatal("booster incomplet")
 		}
 		players[name].must("POST", "/api/tcg/booster", nil, 409)
 	}
-	clk.t = clk.t.Add(24 * time.Hour)
+	clk.t = clk.t.Add(boosterGap)
+	for _, name := range names {
+		players[name].must("POST", "/api/tcg/booster", nil, 200)
+		players[name].must("POST", "/api/tcg/booster", nil, 409)
+	}
+	clk.t = clk.t.Add(boosterCycle - boosterGap)
 	for _, name := range names {
 		players[name].must("POST", "/api/tcg/booster", nil, 200)
 	}
+	// Récompenses de lancement : chaque juré a son booster bonus de participation, à ouvrir le
+	// premier jour seulement (il est passé).
+	if rw := ines.state().Rewards; rw == nil || !rw.Participant || len(rw.Packs) == 0 {
+		t.Fatalf("récompenses de lancement : %+v", rw)
+	}
+	ines.must("POST", "/api/tcg/booster", map[string]any{"pack": "b1"}, 409)
 
 	// 7. Signalement → retrait : la carte sort du tirage, ceux qui l'ont la gardent.
 	hugo := players["hugo"]

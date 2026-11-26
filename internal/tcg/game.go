@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -183,23 +184,45 @@ func (g *Game) latestPrinted() *Wave {
 	return last
 }
 
-// ------------------------------------------------------------ booster du jour
+// ------------------------------------------------------------ boosters du jour
 
-// boosterEvery : un booster toutes les 24 heures, comptées depuis le dernier ouvert.
-const boosterEvery = 24 * time.Hour
+// Deux boosters de 4 cartes par cycle : le premier quand on veut, le second 3 h après le premier, et
+// le cycle suivant 24 h après le premier booster du précédent (un second booster pas ouvert à
+// temps ne se garde pas). Soit 8 cartes par jour pour qui passe deux fois.
+const (
+	boosterSize      = 4
+	boostersPerCycle = 2
+	boosterGap       = 3 * time.Hour
+	boosterCycle     = 24 * time.Hour
+	maxLimited       = 3 // exemplaires numérotés (ou échos) au plus dans un booster de 4 cartes
+)
 
-// boosterNext : quand le prochain booster du joueur est prêt.
-func (g *Game) boosterNext(p *Player, now time.Time) time.Time {
-	if !p.BoosterAt.IsZero() {
-		return p.BoosterAt.Add(boosterEvery)
+// cycleOf : début du cycle en cours et boosters déjà ouverts dedans (0 : un nouveau cycle peut
+// commencer maintenant).
+func cycleOf(p *Player, now time.Time) (time.Time, int) {
+	start, n := p.CycleAt, p.CycleN
+	if start.IsZero() && !p.BoosterAt.IsZero() { // fichier d'avant les deux boosters : un déjà ouvert
+		start, n = p.BoosterAt, 1
 	}
-	if p.Booster == DayKey(now) { // ouvert avant la règle des 24 h : prochain le lendemain matin
-		return nextBooster(now)
+	if start.IsZero() || !now.Before(start.Add(boosterCycle)) {
+		return time.Time{}, 0
 	}
-	return time.Time{}
+	return start, n
 }
 
-// OpenBooster ouvre le booster du jour : 5 cartes, plus rares au fil de leur rythme.
+// boosterNext : quand le prochain booster du joueur est prêt (zéro : maintenant).
+func (g *Game) boosterNext(p *Player, now time.Time) time.Time {
+	start, n := cycleOf(p, now)
+	switch {
+	case n == 0:
+		return time.Time{}
+	case n < boostersPerCycle:
+		return start.Add(time.Duration(n) * boosterGap)
+	}
+	return start.Add(boosterCycle)
+}
+
+// OpenBooster ouvre le booster suivant du cycle : 4 cartes, plus rares au fil de leur rythme.
 func (g *Game) OpenBooster(pid string) ([]Pull, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -211,37 +234,25 @@ func (g *Game) OpenBooster(pid string) ([]Pull, error) {
 	if g.phase() != "live" {
 		return nil, userErr(http.StatusConflict, "Le jeu n’a pas encore commencé.")
 	}
-	day := DayKey(now)
+	start, n := cycleOf(p, now)
 	if next := g.boosterNext(p, now); now.Before(next) {
-		return nil, userErr(http.StatusConflict, "Booster déjà ouvert : le prochain arrive le %s.", next.In(Paris).Format("02/01 à 15h04"))
+		if n < boostersPerCycle {
+			return nil, userErr(http.StatusConflict, "Ton second booster arrive à %s.", next.In(Paris).Format("15h04"))
+		}
+		return nil, userErr(http.StatusConflict, "Boosters du jour ouverts : le prochain arrive le %s.", next.In(Paris).Format("02/01 à 15h04"))
 	}
-	pulls := g.draw(now)
+	pulls := g.draw(now, boosterSize)
 	if len(pulls) == 0 {
 		return nil, userErr(http.StatusConflict, "Aucune carte à tirer pour l’instant.")
 	}
-	for i := range pulls {
-		c := g.st.Cards[pulls[i].Card]
-		pulls[i].New = len(p.Owned[c.ID]) == 0
-		first := c.Issued == 0
-		c.Issued++
-		if c.Run > 0 {
-			pulls[i].Serial = c.Issued
-		}
-		if first {
-			c.FirstBy, c.FirstAt = pid, now
-		}
-		p.Owned[c.ID] = append(p.Owned[c.ID], pulls[i].Serial)
-		if c.Rarity.tier() >= 2 {
-			kind := "pull"
-			if first {
-				kind = "first"
-			}
-			g.addFeed(FeedItem{Kind: kind, Player: pid, Card: c.ID, At: now})
-		}
+	g.give(p, pulls, now)
+	if n == 0 {
+		start, n = now, 0
 	}
-	p.Booster, p.BoosterAt = day, now
+	p.CycleAt, p.CycleN = start, n+1
+	p.Booster, p.BoosterAt = DayKey(now), now
 	p.LastDraw = pulls
-	g.st.Boosters[day]++
+	g.st.Boosters[DayKey(now)]++
 	for i := len(g.st.Waves) - 1; i >= 0; i-- { // vague en cours : la dernière sortie
 		if g.st.Waves[i].Printed {
 			g.st.Waves[i].Opened++
@@ -252,12 +263,96 @@ func (g *Game) OpenBooster(pid string) ([]Pull, error) {
 	return pulls, nil
 }
 
-// draw : tirage de 5 cartes (sans les attribuer). Chaque exemplaire numéroté encore libre a une
-// chance proportionnée au temps qui reste pour le distribuer (PaceDays après la sortie de sa
-// vague) et au nombre de boosters ouverts chaque jour : les cartes rares se répartissent sur
-// toute la période au lieu de partir le premier jour. Le reste est fait de cartes communes.
-func (g *Game) draw(now time.Time) []Pull {
-	const size, maxLimited = 5, 3
+// OpenPack ouvre un booster bonus (récompenses de lancement), au même taux de tirage qu'un booster
+// du jour : seule sa taille change.
+func (g *Game) OpenPack(pid, id string) ([]Pull, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	p := g.st.Players[pid]
+	if p == nil {
+		return nil, ErrNotFound
+	}
+	now := g.now()
+	if g.phase() != "live" {
+		return nil, userErr(http.StatusConflict, "Le jeu n’a pas encore commencé.")
+	}
+	var pk *Pack
+	for i := range p.Packs {
+		if p.Packs[i].ID == id {
+			pk = &p.Packs[i]
+		}
+	}
+	switch {
+	case pk == nil:
+		return nil, ErrNotFound
+	case !pk.Opened.IsZero():
+		return nil, userErr(http.StatusConflict, "Ce booster bonus est déjà ouvert.")
+	case !now.Before(pk.Until):
+		return nil, userErr(http.StatusConflict, "Ce booster bonus a expiré.")
+	}
+	pulls := g.draw(now, pk.Size)
+	if len(pulls) == 0 {
+		return nil, userErr(http.StatusConflict, "Aucune carte à tirer pour l’instant.")
+	}
+	g.give(p, pulls, now)
+	pk.Opened = now
+	p.LastDraw = pulls
+	g.activity(now).Packs++
+	g.dirty = true
+	return pulls, nil
+}
+
+// give : les cartes tirées entrent dans la collection (numéro d'exemplaire, ou écho à part).
+func (g *Game) give(p *Player, pulls []Pull, now time.Time) {
+	for i := range pulls {
+		c := g.st.Cards[pulls[i].Card]
+		pulls[i].New = len(p.Owned[c.ID]) == 0 && p.Echoes[c.ID] == 0
+		if c.Run > 0 && c.Issued >= c.Run {
+			pulls[i].Echo = true
+		}
+		if pulls[i].Echo {
+			// Tous les exemplaires numérotés sont partis : un écho, rangé hors de Owned (aucun
+			// échange, « doubles » ni correspondance ne le voit).
+			if p.Echoes == nil {
+				p.Echoes = map[string]int{}
+			}
+			p.Echoes[c.ID]++
+			c.Echoes++
+			g.activity(now).Echoes++
+			continue
+		}
+		first := c.Issued == 0
+		c.Issued++
+		if c.Run > 0 {
+			pulls[i].Serial = c.Issued
+		}
+		if first {
+			c.FirstBy, c.FirstAt = p.ID, now
+		}
+		p.Owned[c.ID] = append(p.Owned[c.ID], pulls[i].Serial)
+		if c.Rarity.tier() >= 2 {
+			kind := "pull"
+			if first {
+				kind = "first"
+			}
+			g.addFeed(FeedItem{Kind: kind, Player: p.ID, Card: c.ID, At: now})
+		}
+	}
+}
+
+// draw : tirage de `size` cartes (sans les attribuer). Chaque exemplaire numéroté encore libre a une
+// chance proportionnée au temps qui reste pour le distribuer (PaceDays après la sortie de sa vague)
+// et au nombre de boosters ouverts chaque jour : les cartes numérotées se répartissent sur toute la
+// période au lieu de partir le premier jour. Une carte dont tous les exemplaires sont tirés sort en
+// écho au même rythme moyen que ses vrais exemplaires (Run / (boosters par jour × PaceDays)). Le
+// reste est fait de cartes communes. Un booster plus petit ou plus grand (bonus) garde le même taux
+// par carte : les chances sont multipliées par size / 4, comme le plafond de cartes numérotées.
+func (g *Game) draw(now time.Time, size int) []Pull {
+	if size <= 0 {
+		return nil
+	}
+	scale := float64(size) / boosterSize
+	capLimited := max(1, int(math.Round(maxLimited*scale)))
 	var limited, communes []string
 	latest := g.latestPrinted()
 	var latestCommunes []string
@@ -271,9 +366,7 @@ func (g *Game) draw(now time.Time) []Pull {
 				continue
 			}
 			if c.Run > 0 {
-				if c.Issued < c.Run {
-					limited = append(limited, id)
-				}
+				limited = append(limited, id)
 				continue
 			}
 			communes = append(communes, id)
@@ -283,29 +376,31 @@ func (g *Game) draw(now time.Time) []Pull {
 		}
 	}
 	perDay := g.boostersPerDay(now)
+	pace := float64(max(g.st.Season.PaceDays, 1))
 	g.shuffle(limited)
 	var pulls []Pull
 	taken := map[string]bool{}
 	for _, id := range limited {
-		if len(pulls) >= maxLimited {
+		if len(pulls) >= capLimited {
 			break
 		}
 		c := g.st.Cards[id]
-		w := g.wave(c.Wave)
-		deadline := now
-		if w != nil {
-			deadline = w.PrintedAt.Add(time.Duration(g.st.Season.PaceDays) * 24 * time.Hour)
+		var p float64
+		if c.Issued >= c.Run {
+			p = float64(c.Run) / (perDay * pace) // écho : le rythme moyen de la vraie
+		} else {
+			deadline := now
+			if w := g.wave(c.Wave); w != nil {
+				deadline = w.PrintedAt.Add(time.Duration(pace) * 24 * time.Hour)
+			}
+			days := deadline.Sub(now).Hours() / 24
+			if days < 0.5 {
+				days = 0.5
+			}
+			p = min(float64(c.Run-c.Issued)/(perDay*days), 0.6)
 		}
-		days := deadline.Sub(now).Hours() / 24
-		if days < 0.5 {
-			days = 0.5
-		}
-		p := float64(c.Run-c.Issued) / (perDay * days)
-		if p > 0.6 {
-			p = 0.6
-		}
-		if g.chance(p) {
-			pulls = append(pulls, Pull{Card: id})
+		if g.chance(p * scale) {
+			pulls = append(pulls, Pull{Card: id, Echo: c.Issued >= c.Run})
 			taken[id] = true
 		}
 	}
@@ -315,7 +410,7 @@ func (g *Game) draw(now time.Time) []Pull {
 			pool = latestCommunes
 		}
 		if len(pool) == 0 {
-			// Plus de communes : les exemplaires numérotés restants complètent le booster.
+			// Plus de communes : les cartes numérotées restantes (ou leurs échos) complètent le booster.
 			var rest []string
 			for _, id := range limited {
 				if !taken[id] {
@@ -326,7 +421,8 @@ func (g *Game) draw(now time.Time) []Pull {
 				break
 			}
 			id := rest[g.rnd(len(rest))]
-			pulls = append(pulls, Pull{Card: id})
+			c := g.st.Cards[id]
+			pulls = append(pulls, Pull{Card: id, Echo: c.Issued >= c.Run})
 			taken[id] = true
 			continue
 		}
@@ -337,15 +433,25 @@ func (g *Game) draw(now time.Time) []Pull {
 		pulls = append(pulls, Pull{Card: id})
 		taken[id] = true
 	}
-	// Révélation : de la plus courante à la plus rare, la meilleure en dernier.
-	sort.SliceStable(pulls, func(i, j int) bool {
-		return g.st.Cards[pulls[i].Card].Rarity.tier() < g.st.Cards[pulls[j].Card].Rarity.tier()
-	})
+	// Révélation : de la plus courante à la plus rare, la meilleure en dernier (un écho avant une
+	// vraie carte de même rareté).
+	rank := func(p Pull) int {
+		r := 2 * g.st.Cards[p.Card].Rarity.tier()
+		if !p.Echo {
+			r++
+		}
+		return r
+	}
+	sort.SliceStable(pulls, func(i, j int) bool { return rank(pulls[i]) < rank(pulls[j]) })
 	return pulls
 }
 
-// boostersPerDay : boosters ouverts par jour ces derniers jours (au moins 10, et au moins le
-// rythme du jour en cours).
+// boostersPerDay : boosters attendus par jour, pour le rythme des cartes numérotées. Le plus grand
+// de : 10 ; la moyenne des 7 derniers jours ; ceux déjà ouverts aujourd'hui ; 1,5 par joueur venu
+// ces 7 derniers jours (deux boosters par jour, pas toujours ouverts tous les deux), plus les
+// boosters bonus valables maintenant (en boosters de 4 cartes). Ce plancher compte d'avance tout le
+// monde le jour du lancement : sans lui, les premiers à ouvrir leur booster ce jour-là (aucun
+// historique) tireraient l'essentiel des cartes numérotées.
 func (g *Game) boostersPerDay(now time.Time) float64 {
 	today := DayKey(now)
 	total, days := 0, 0
@@ -357,13 +463,22 @@ func (g *Game) boostersPerDay(now time.Time) float64 {
 		}
 	}
 	est := 10.0
-	if days > 0 && float64(total)/float64(days) > est {
-		est = float64(total) / float64(days)
+	if days > 0 {
+		est = max(est, float64(total)/float64(days))
 	}
-	if n := float64(g.st.Boosters[today]); n > est {
-		est = n
+	est = max(est, float64(g.st.Boosters[today]))
+	active, bonus := 0, 0
+	for _, p := range g.st.Players {
+		if now.Sub(p.Seen) < 7*24*time.Hour || now.Sub(p.BoosterAt) < 7*24*time.Hour {
+			active++
+		}
+		for _, pk := range p.Packs {
+			if now.Before(pk.Until) {
+				bonus += pk.Size
+			}
+		}
 	}
-	return est
+	return max(est, 0.75*boostersPerCycle*float64(active)+float64(bonus)/boosterSize)
 }
 
 func (g *Game) addFeed(f FeedItem) {
@@ -410,18 +525,20 @@ func (g *Game) keyOf(pid string) string {
 }
 
 // proposalsLeft : propositions encore possibles aujourd'hui, PAR COMPTE (tous appareils). On compte
-// les envois du jour (State.Sent, retraits compris et même après « Quitter le jeu »), et au moins
-// les cartes encore présentes créées aujourd'hui (fichiers d'avant ce compteur).
+// les envois du jour (State.Sent : retraits d'une carte en attente compris, et même après « Quitter
+// le jeu » ; moins les cartes bloquées retirées aujourd'hui). Sans compteur du jour (fichier d'avant
+// ce compteur), les cartes encore présentes créées aujourd'hui.
 func (g *Game) proposalsLeft(pid string, now time.Time) int {
 	today := calendarDay(now)
 	n := 0
-	for _, c := range g.st.Cards {
-		if c.Author == pid && calendarDay(c.Created) == today {
-			n++
-		}
-	}
-	if s, ok := g.st.Sent[g.keyOf(pid)]; ok && s.Day == today && s.N > n {
+	if s, ok := g.st.Sent[g.keyOf(pid)]; ok && s.Day == today {
 		n = s.N
+	} else {
+		for _, c := range g.st.Cards {
+			if c.Author == pid && calendarDay(c.Created) == today {
+				n++
+			}
+		}
 	}
 	if left := g.perDay(now) - n; left > 0 {
 		return left
@@ -528,28 +645,34 @@ func (g *Game) ImageShown(name string) bool {
 	return false
 }
 
-// Withdraw : l'auteur retire une proposition pas encore validée (en attente ou bloquée).
-func (g *Game) Withdraw(pid, id string) error {
+// Withdraw : l'auteur retire une proposition pas encore validée (en attente ou bloquée). Une carte
+// bloquée par la modération rend une proposition le jour même (le compteur du jour baisse d'un, sans
+// passer sous 0) ; une carte en attente ne rend rien. Rend vrai si une proposition est rendue.
+func (g *Game) Withdraw(pid, id string) (bool, error) {
 	g.mu.Lock()
 	c := g.st.Cards[id]
 	if c == nil || c.Author != pid {
 		g.mu.Unlock()
-		return ErrNotFound
+		return false, ErrNotFound
 	}
 	switch c.Status {
 	case StatusPrinted, StatusRemoved:
 		g.mu.Unlock()
-		return userErr(http.StatusConflict, "Cette carte est déjà imprimée.")
+		return false, userErr(http.StatusConflict, "Cette carte est déjà imprimée.")
 	case StatusConsent, StatusAccepted:
 		// Validée : elle est dans le jeu (jury, impression), son auteur ne la retire plus.
 		g.mu.Unlock()
-		return userErr(http.StatusConflict, "Ta carte est validée : elle est dans le jeu et ne peut plus être retirée.")
+		return false, userErr(http.StatusConflict, "Ta carte est validée : elle est dans le jeu et ne peut plus être retirée.")
 	}
-	// Bloquée par la modération puis retirée : la carte part, sa pénalité reste au classement
-	// (on garde seulement le nombre). Un refus d'une personne sur la photo ne pénalise pas.
-	if c.Status == StatusBlocked && c.Reason != "personne" {
-		if p := g.st.Players[pid]; p != nil {
-			p.Withdrawn++
+	credited := false
+	if c.Status == StatusBlocked {
+		today := calendarDay(g.now())
+		if k := g.keyOf(pid); k != "" {
+			if s, ok := g.st.Sent[k]; ok && s.Day == today && s.N > 0 {
+				s.N--
+				g.st.Sent[k] = s
+				credited = true
+			}
 		}
 	}
 	imgs := []string{c.Img, c.Thumb}
@@ -571,7 +694,7 @@ func (g *Game) Withdraw(pid, id string) error {
 			g.Blobs.Delete(n)
 		}
 	}
-	return nil
+	return credited, nil
 }
 
 func without(ids []string, id string) []string {
@@ -772,6 +895,57 @@ func (g *Game) TryCards(pid string) ([]CardView, error) {
 	}
 	if len(out) < 2 {
 		return nil, userErr(http.StatusConflict, "Il faut au moins 2 cartes proposées pour essayer.")
+	}
+	return out, nil
+}
+
+// TryOpen : un booster d'essai pour l'administration (avant le lancement notamment), pour voir
+// l'ouverture, les raretés, les échos et le style des boosters bonus avec les vraies cartes.
+// Raretés et numéros sont inventés ; rien n'est enregistré, rien n'entre dans une collection.
+type TryOpen struct {
+	Cards []CardView `json:"cards"`
+	Pulls []Pull     `json:"pulls"`
+	Pack  bool       `json:"pack,omitempty"` // booster bonus
+}
+
+func (g *Game) TryBooster(pid, kind string) (TryOpen, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	p := g.st.Players[pid]
+	if p == nil || !p.Admin {
+		return TryOpen{}, userErr(http.StatusForbidden, "Réservé à l’administration.")
+	}
+	type demo struct {
+		r      Rarity
+		run    int
+		serial int
+		echo   bool
+	}
+	plan := []demo{{Commune, 0, 0, false}, {Rare, 25, 12, false}, {Epique, 10, 0, true}, {Legendaire, 3, 2, false}}
+	if kind == "pack" {
+		plan = []demo{{Commune, 0, 0, false}, {Rare, 25, 0, true}, {Epique, 10, 4, false}, {Legendaire, 3, 0, true}, {Unique, 1, 1, false}}
+	}
+	var ids []string
+	for _, c := range g.st.Cards {
+		if c.Status != StatusBlocked && c.Status != StatusRemoved && !c.Purged && c.Img != "" {
+			ids = append(ids, c.ID)
+		}
+	}
+	if len(ids) < len(plan) {
+		return TryOpen{}, userErr(http.StatusConflict, "Il faut au moins %d cartes proposées pour essayer.", len(plan))
+	}
+	g.shuffle(ids)
+	out := TryOpen{Pack: kind == "pack"}
+	for i, d := range plan {
+		c := g.st.Cards[ids[i]]
+		v := g.candidateView(c)
+		v.ID = "try" + itoa(i+1)
+		v.Author, v.Rarity, v.Run, v.Wave, v.No, v.Total = g.pseudo(c.Author), d.r, d.run, 1, 140+i, 150
+		if d.echo {
+			v.Issued = d.run
+		}
+		out.Cards = append(out.Cards, v)
+		out.Pulls = append(out.Pulls, Pull{Card: v.ID, Serial: d.serial, New: i%2 == 0, Echo: d.echo})
 	}
 	return out, nil
 }

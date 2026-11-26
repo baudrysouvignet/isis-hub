@@ -38,6 +38,8 @@ export const api = {
   logout: () => post('logout'),
   leave: () => post('leave'),
   booster: () => post('booster'),
+  openPack: (pack) => post('booster', { pack }),
+  tryBooster: (kind = '') => call(`booster/try?kind=${encodeURIComponent(kind)}`),
   propose: (form) => call('propose', { method: 'POST', form }),
   withdraw: (id) => post(`proposal/${encodeURIComponent(id)}/withdraw`),
   vote: (wave, ballot, rank) => post('jury', { wave, ballot, rank }),

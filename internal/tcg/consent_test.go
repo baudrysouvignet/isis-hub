@@ -243,26 +243,46 @@ func TestConsentWithdrawnOnPrintedCard(t *testing.T) {
 	}
 }
 
-// Un booster toutes les 24 heures, comptées depuis le dernier ouvert (pas à heure fixe).
-func TestBoosterEvery24h(t *testing.T) {
+// Deux boosters par cycle : le second 3 h après le premier, le cycle suivant 24 h après le premier
+// booster du précédent (un second booster pas ouvert à temps ne se garde pas).
+func TestTwoBoostersPerCycle(t *testing.T) {
 	g, clk, players := liveGame(t)
 	clk.add(2 * time.Hour) // après la sortie de la vague
 	a := players[0]
-	if _, err := g.OpenBooster(a); err != nil {
-		t.Fatal(err)
+	start := clk.now()
+	open := func(want bool, why string) {
+		t.Helper()
+		v, _ := g.PlayerView(a)
+		if v.Me.BoosterReady != want {
+			t.Fatalf("%s : prêt=%v", why, v.Me.BoosterReady)
+		}
+		_, err := g.OpenBooster(a)
+		if (err == nil) != want {
+			t.Fatalf("%s : %v", why, err)
+		}
 	}
-	clk.add(23*time.Hour + 59*time.Minute)
-	if v, _ := g.PlayerView(a); v.Me.BoosterReady {
-		t.Fatal("booster prêt avant 24 h")
+	open(true, "premier booster")
+	if v, _ := g.PlayerView(a); v.Me.Cycle != 1 || !v.Me.NextBooster.Equal(start.Add(3*time.Hour)) || !v.Me.CycleEnd.Equal(start.Add(24*time.Hour)) || len(v.LastDraw) != boosterSize {
+		t.Fatalf("après le premier : %+v", v.Me)
 	}
-	if _, err := g.OpenBooster(a); err == nil {
-		t.Fatal("deuxième booster avant 24 h")
-	}
+	clk.add(2*time.Hour + 59*time.Minute)
+	open(false, "second avant 3 h")
 	clk.add(time.Minute)
-	if v, _ := g.PlayerView(a); !v.Me.BoosterReady {
-		t.Fatal("booster pas prêt après 24 h")
+	open(true, "second à 3 h")
+	clk.add(time.Hour)
+	open(false, "troisième dans le cycle")
+	if v, _ := g.PlayerView(a); v.Me.Cycle != 2 || !v.Me.NextBooster.Equal(start.Add(24*time.Hour)) {
+		t.Fatalf("cycle plein : %+v", v.Me)
 	}
-	if _, err := g.OpenBooster(a); err != nil {
-		t.Fatal(err)
+	// Le cycle suivant : 24 h après le premier booster, même si le second a été ouvert tard.
+	clk.t = start.Add(24*time.Hour - time.Minute)
+	open(false, "avant 24 h")
+	clk.t = start.Add(24 * time.Hour)
+	open(true, "nouveau cycle")
+	// Second booster jamais ouvert : au bout de 24 h, il est perdu et un nouveau cycle commence.
+	clk.t = start.Add(48*time.Hour + time.Minute)
+	open(true, "cycle après un second oublié")
+	if v, _ := g.PlayerView(a); v.Me.Cycle != 1 {
+		t.Fatalf("cycle : %d", v.Me.Cycle)
 	}
 }

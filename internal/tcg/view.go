@@ -228,6 +228,10 @@ type Me struct {
 	Initials      string    `json:"initials"`
 	BoosterReady  bool      `json:"boosterReady"`
 	NextBooster   time.Time `json:"nextBooster"`
+	Cycle         int       `json:"cycle"`             // boosters déjà ouverts dans le cycle en cours (0 à 2)
+	CycleEnd      time.Time `json:"cycleEnd,omitzero"` // début du cycle suivant (24 h après le premier booster)
+	BoosterSize   int       `json:"boosterSize"`       // cartes par booster du jour
+	PerCycle      int       `json:"perCycle"`          // boosters par cycle
 	ProposalsLeft int       `json:"proposalsLeft"`
 	Muted         bool      `json:"muted,omitempty"`
 	Created       time.Time `json:"created"`
@@ -241,6 +245,7 @@ type View struct {
 	Me        Me               `json:"me"`
 	Cards     []CardView       `json:"cards"`
 	Owned     map[string][]int `json:"owned"`
+	Echoes    map[string]int   `json:"echoes"` // échos : comptent pour la collection, ne s'échangent pas
 	Wish      []string         `json:"wish"`
 	LastDraw  []Pull           `json:"lastDraw,omitempty"`
 	Proposals []ProposalView   `json:"proposals"`
@@ -251,6 +256,7 @@ type View struct {
 	Invites   []InviteView     `json:"invites"`
 	Appear    []AppearView     `json:"appear"`  // cartes où je suis indiqué (accord à donner)
 	Leaders   Leaderboard      `json:"leaders"` // classement des créateurs : podium et ma place
+	Rewards   *RewardsView     `json:"rewards,omitempty"`
 }
 
 // Initials : deux lettres pour l'avatar (« Léa M. » → LM).
@@ -297,18 +303,21 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 			MailLinked: p.MailKey != "", Admin: p.Admin,
 			ProposalsLeft: g.proposalsLeft(pid, now), NextBooster: g.boosterNext(p, now),
 		},
-		Owned: map[string][]int{}, Wish: append([]string{}, p.Wish...), Feed: []FeedView{}, Matches: []MatchView{},
+		Owned: map[string][]int{}, Echoes: map[string]int{}, Wish: append([]string{}, p.Wish...), Feed: []FeedView{}, Matches: []MatchView{},
 		Trades: []TradeView{}, Invites: []InviteView{}, Proposals: []ProposalView{}, Cards: []CardView{},
 		Appear:  g.appearances(p),
 		Leaders: g.leaderboard(pid),
 	}
 	v.Me.BoosterReady = v.Phase == "live" && !now.Before(v.Me.NextBooster)
-	if !v.Me.BoosterReady {
-		v.LastDraw = p.LastDraw // tirage des dernières 24 h (« Revoir mon tirage »)
+	v.Me.BoosterSize, v.Me.PerCycle = boosterSize, boostersPerCycle
+	if start, n := cycleOf(p, now); n > 0 {
+		v.Me.Cycle, v.Me.CycleEnd = n, start.Add(boosterCycle)
+		v.LastDraw = p.LastDraw // dernier tirage du cycle (« Revoir mon tirage »)
 	}
 	if v.Me.NextBooster.IsZero() {
 		v.Me.NextBooster = now
 	}
+	v.Rewards = g.rewardsView(p, now)
 	// Cartes en jeu (et celles retirées que le joueur possède encore).
 	for _, w := range g.st.Waves {
 		if !w.Printed {
@@ -316,7 +325,7 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 		}
 		for _, id := range w.Cards {
 			c := g.st.Cards[id]
-			if c == nil || (c.Status == StatusRemoved && len(p.Owned[id]) == 0) {
+			if c == nil || (c.Status == StatusRemoved && len(p.Owned[id]) == 0 && p.Echoes[id] == 0) {
 				continue
 			}
 			v.Cards = append(v.Cards, g.cardView(c, pid))
@@ -325,6 +334,11 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 	for id, serials := range p.Owned {
 		if len(serials) > 0 {
 			v.Owned[id] = serials
+		}
+	}
+	for id, n := range p.Echoes {
+		if n > 0 {
+			v.Echoes[id] = n
 		}
 	}
 	// Mes propositions : le titre et l'avancement seulement (voir ProposalView), la plus récente

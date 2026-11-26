@@ -215,32 +215,47 @@ func TestJuryPrintAndBoosters(t *testing.T) {
 	if left != 4 {
 		t.Fatalf("candidates restantes : %d", left)
 	}
-	// 40 jours de boosters pour tout le monde : jamais plus d'exemplaires que le tirage.
+	// 40 jours de boosters pour tout le monde (deux par jour, à 3 h d'écart) : jamais plus
+	// d'exemplaires que le tirage, et un écho seulement quand tous les exemplaires sont partis.
 	seen := map[Copy]bool{}
+	echoes := 0
 	for day := 0; day < 40; day++ {
-		for _, pid := range players {
-			pulls, err := g.OpenBooster(pid)
-			if err != nil {
-				t.Fatalf("jour %d : %v", day, err)
-			}
-			if len(pulls) != 5 {
-				t.Fatalf("booster de %d cartes", len(pulls))
-			}
-			if _, err := g.OpenBooster(pid); err == nil {
-				t.Fatal("deux boosters le même jour")
-			}
-			for _, p := range pulls {
-				c := g.st.Cards[p.Card]
-				if c.Run > 0 {
-					k := Copy{p.Card, p.Serial}
-					if seen[k] || p.Serial < 1 || p.Serial > c.Run {
-						t.Fatalf("exemplaire %v invalide ou en double", k)
+		for k := 0; k < boostersPerCycle; k++ {
+			for _, pid := range players {
+				pulls, err := g.OpenBooster(pid)
+				if err != nil {
+					t.Fatalf("jour %d, booster %d : %v", day, k+1, err)
+				}
+				if len(pulls) != boosterSize {
+					t.Fatalf("booster de %d cartes", len(pulls))
+				}
+				if _, err := g.OpenBooster(pid); err == nil {
+					t.Fatal("booster de plus avant l'heure")
+				}
+				for _, p := range pulls {
+					c := g.st.Cards[p.Card]
+					if p.Echo {
+						echoes++
+						if c.Run == 0 || c.Issued < c.Run || p.Serial != 0 {
+							t.Fatalf("écho de %s alors que %d / %d exemplaires sont tirés", c.Title, c.Issued, c.Run)
+						}
+						continue
 					}
-					seen[k] = true
+					if c.Run > 0 {
+						k := Copy{p.Card, p.Serial}
+						if seen[k] || p.Serial < 1 || p.Serial > c.Run {
+							t.Fatalf("exemplaire %v invalide ou en double", k)
+						}
+						seen[k] = true
+					}
 				}
 			}
+			clk.add(boosterGap)
 		}
-		clk.add(24 * time.Hour)
+		clk.add(24*time.Hour - boostersPerCycle*boosterGap)
+	}
+	if echoes == 0 {
+		t.Fatal("aucun écho en 40 jours")
 	}
 	for _, id := range w.Cards {
 		c := g.st.Cards[id]

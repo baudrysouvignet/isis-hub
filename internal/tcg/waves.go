@@ -377,6 +377,12 @@ func (g *Game) printWave(w *Wave, now time.Time) bool {
 		}
 		return strings.ToLower(a.Title) < strings.ToLower(b.Title)
 	})
+	first := true // première vague imprimée : récompenses de lancement
+	for _, x := range g.st.Waves {
+		if x.Printed {
+			first = false
+		}
+	}
 	w.Cards = w.Cards[:0]
 	for i, c := range picked {
 		c.Status = StatusPrinted
@@ -393,6 +399,9 @@ func (g *Game) printWave(w *Wave, now time.Time) bool {
 	}
 	w.Overrides = nil
 	g.dirty = true
+	if first {
+		g.grantLaunch(w, now)
+	}
 	if g.st.Season.AutoWeekly {
 		g.scheduleNext(w)
 	}

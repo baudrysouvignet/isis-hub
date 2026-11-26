@@ -88,10 +88,10 @@ func TestValidatedCardLockedAndRaritySecret(t *testing.T) {
 	if err := g.ModerateCard(kept, Moderate{Action: "validate"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.Withdraw(a, kept); err == nil {
+	if _, err := g.Withdraw(a, kept); err == nil {
 		t.Fatal("carte validée retirée par son auteur")
 	}
-	if err := g.Withdraw(a, pending); err != nil {
+	if _, err := g.Withdraw(a, pending); err != nil {
 		t.Fatalf("carte en attente : %v", err)
 	}
 	if err := g.PrintNow(1); err != nil {

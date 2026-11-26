@@ -485,11 +485,13 @@ export function proposalsList(ctx, launch) {
     if (p.status === 'pending' || p.status === 'blocked') {
       const rm = h('button.tcr-rm', { type: 'button', text: 'Retirer' });
       rm.addEventListener('click', async () => {
-        if (!confirm(`Retirer « ${p.title} » ? Elle ne sera pas imprimée, et ne te rend pas de proposition aujourd’hui.`)) return;
+        // Une carte bloquée retirée rend une proposition aujourd'hui ; une carte en attente, non.
+        const ask = p.status === 'blocked' ? `Retirer « ${p.title} » ? Elle est supprimée et te rend une proposition aujourd’hui, pour en envoyer une autre version.` : `Retirer « ${p.title} » ? Elle ne sera pas imprimée, et ne te rend pas de proposition aujourd’hui.`;
+        if (!confirm(ask)) return;
         try {
-          await api.withdraw(p.id);
+          const res = await api.withdraw(p.id);
           await ctx.reload();
-          toast('Carte retirée.', 'check');
+          toast(res?.credited ? 'Carte retirée : une proposition de plus aujourd’hui.' : 'Carte retirée.', 'check');
         } catch (e) {
           toast(e.message, 'alert');
         }

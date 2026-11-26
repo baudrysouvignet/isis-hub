@@ -28,7 +28,7 @@ var Paris = func() *time.Location {
 	return time.FixedZone("CET", 3600)
 }()
 
-// BoosterHour : heure (Paris) à laquelle un nouveau booster est disponible chaque jour.
+// BoosterHour : heure (Paris) à laquelle commence un jour de jeu (statistiques, rythme des raretés).
 const BoosterHour = 6
 
 const (
@@ -234,6 +234,12 @@ func (g *Game) normalize() {
 	}
 	if st.Sent == nil {
 		st.Sent = map[string]Sent{}
+	}
+	for _, c := range st.Cards {
+		// Fichier d'avant Card.Validated : la décision tient lieu de date de validation.
+		if c.Validated.IsZero() && (c.Status == StatusAccepted || c.Status == StatusConsent) {
+			c.Validated = c.Decided
+		}
 	}
 	for _, p := range st.Players {
 		if p.Owned == nil {
@@ -458,16 +464,6 @@ func (g *Game) activity(t time.Time) *Activity {
 }
 
 func calendarDay(t time.Time) string { return t.In(Paris).Format("2006-01-02") }
-
-// nextBooster : prochaine heure de booster après t.
-func nextBooster(t time.Time) time.Time {
-	p := t.In(Paris)
-	next := time.Date(p.Year(), p.Month(), p.Day(), BoosterHour, 0, 0, 0, Paris)
-	if !next.After(p) {
-		next = time.Date(p.Year(), p.Month(), p.Day()+1, BoosterHour, 0, 0, 0, Paris)
-	}
-	return next
-}
 
 // cleanText : texte d'une ligne ou d'un paragraphe, sans caractères de contrôle, espaces réduits.
 func cleanText(s string, multiline bool) string {

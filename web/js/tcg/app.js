@@ -9,9 +9,9 @@ import { $, h, toast, motionOK } from '../core/dom.js';
 import { prefs } from '../core/store.js';
 import { seen, markSeen } from '../core/seen.js';
 import { api, adminApi, TcgError } from './api.js';
-import { cardEl, ic, mark, rchip, RLABEL, CATS, tier, sheet, sheetOpen, tbtn, meter, dayLong, dateShort, hourText, ago, untilText, plural, placeholderArt, pips } from './ui.js';
+import { cardEl, ic, mark, rchip, RLABEL, CATS, ECHO, tier, sheet, sheetOpen, tbtn, meter, dayLong, dateShort, hourText, ago, untilText, plural, placeholderArt, pips } from './ui.js';
 import { shield } from './shield.js';
-import { openBooster, showRecap } from './open.js';
+import { openBooster, showRecap, packEl } from './open.js';
 import { renderCreate, createForm, proposalsList } from './create.js';
 import { renderCollection } from './collection.js';
 import { renderJury } from './jury.js';
@@ -220,7 +220,7 @@ export function createTCG(o) {
           h(
             'ul.twel-list',
             {},
-            li('booster', '1 booster toutes les 24 h', ', 5 cartes, de Commune à Unique (un seul exemplaire au monde).'),
+            li('booster', '2 boosters par jour', ', 4 cartes chacun (le second 3 h après le premier), de Commune à Unique (un seul exemplaire au monde).'),
             li('pen', 'Crée tes cartes', ` : une photo, un titre, deux phrases. ${data()?.perDay ?? 3} par jour.`),
             li('jury', 'Le jury de la semaine', ' choisit les cartes qui entrent dans le jeu.'),
             li('trade', 'Échange en face à face', ' avec un QR code.'),
@@ -499,7 +499,7 @@ export function createTCG(o) {
           h('div.pack-cap', {}, h('span.pack-teeth')),
           h('div.pack-top', {}, mark('pack-mark'), h('span.pack-brand', {}, 'ISIS', h('b', { text: 'TCG' }))),
           h('div.pack-window', {}, h('img', { alt: '', draggable: false, src: placeholderArt('booster-isis') })),
-          h('div.pack-meta', {}, h('span.pack-season', { text: data()?.season ?? 'Saison 1' }), h('span.pack-n', { text: '5 cartes' })),
+          h('div.pack-meta', {}, h('span.pack-season', { text: data()?.season ?? 'Saison 1' }), h('span.pack-n', { text: `${st?.me?.boosterSize ?? 4} cartes` })),
           h('span.pack-sheen'),
         ),
       ),
@@ -548,6 +548,8 @@ export function createTCG(o) {
     const propose = tbtn('Proposer une carte', 'pen', juryCta ? 'tbtn--ghost tbtn--lg' : 'tbtn--primary tbtn--xl', () => $('#tsoon-form', wrap)?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' }));
     // Administration, avant l'ouverture du jury : essayer les duels (rien n'est enregistré).
     const tryDuels = !juryCta && st?.me?.admin ? tbtn('Essayer « Tu préfères ? »', 'jury', 'tbtn--ghost tbtn--lg', () => go('jury')) : null;
+    // Administration : essayer l'ouverture (booster du jour, booster bonus, échos) avant le lancement.
+    const tryOpen = st?.me?.admin ? h('div.tsoon-ctas.tsoon-ctas--more', {}, tbtn('Essayer un booster', 'booster', 'tbtn--ghost tbtn--sm', () => tryBooster('')), tbtn('Essayer un booster bonus', 'gift', 'tbtn--ghost tbtn--sm', () => tryBooster('pack'))) : null;
     const how = tbtn('Comment ça marche', 'info', 'tbtn--ghost tbtn--lg', () => $('#tsoon-steps', wrap)?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' }));
     const hero = h(
       'div.tsoon-hero',
@@ -557,10 +559,11 @@ export function createTCG(o) {
         {},
         h('p.tk.tsoon-kick', {}, h('span.tsoon-live'), 'Bientôt · TCG de la promo'),
         h('h1.tsoon-h1', { tabIndex: -1 }, 'Le TCG arrive le ', h('em', { text: relDay }), '.'),
-        h('p.tsoon-lead', { text: 'Un booster par jour, des cartes rares, des échanges en face à face. Et toutes les cartes viennent de vous : propose les tiennes dès maintenant, les plus attendues formeront la première vague.' }),
+        h('p.tsoon-lead', { text: 'Deux boosters par jour, des cartes rares, des échanges en face à face. Et toutes les cartes viennent de vous : propose les tiennes dès maintenant, les plus attendues formeront la première vague.' }),
         count,
         h('div.tsoon-ctas', {}, ...(juryCta ? [juryCta, propose] : [propose, how, tryDuels].filter(Boolean))),
         consentCtas(),
+        tryOpen,
       ),
       h('div.tsoon-visual', {}, h('span.th-halo'), mysteryFan(), lockedPack(rel ? dateShort(rel).replace('.', '') : 'Bientôt')),
     );
@@ -581,7 +584,7 @@ export function createTCG(o) {
     const steps = [
       ['pen', 'Propositions', w?.proposalsUntil ? `Jusqu’au ${dayLong(w.proposalsUntil)}. ${perDay} cartes par jour et par personne.` : `${perDay} cartes par jour et par personne, validées par un admin.`],
       ['jury', 'Jury de lancement', w?.juryFrom ? `Du ${dateShort(w.juryFrom).replace('.', '')} au ${dateShort(w.juryUntil).replace('.', '')} : chaque jour, une série de « Tu préfères ? », les cartes préférées entrent dans le jeu.` : 'Chaque jour, une série de « Tu préfères ? » : les cartes préférées entrent dans le jeu.'],
-      ['booster', 'Lancement', rel ? `${relDay.charAt(0).toUpperCase() + relDay.slice(1)}, ${hourText(rel)} : la Vague 1 et ton premier booster.` : 'La Vague 1 et ton premier booster.'],
+      ['booster', 'Lancement', rel ? `${relDay.charAt(0).toUpperCase() + relDay.slice(1)}, ${hourText(rel)} : la Vague 1, tes premiers boosters et tes boosters bonus.` : 'La Vague 1, tes premiers boosters et tes boosters bonus.'],
       ['loop', 'Ensuite', 'Une nouvelle vague chaque semaine, avec les cartes proposées entre-temps.'],
     ];
     const ol = h(
@@ -609,7 +612,7 @@ export function createTCG(o) {
     const note = h('p.tsoon-note', {}, ic('info'), 'Avant le lancement, le jeu n’enregistre que tes propositions et ton pseudo. Les photos où quelqu’un est reconnaissable demandent son accord.');
     // Classement des créateurs (joueurs inscrits) : avant le lancement, les cartes validées comptent.
     const lb = st ? leaderboard(st.leaders, { onCreate: () => $('#tsoon-form', wrap)?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' }) }) : null;
-    return h('section.tsoon', {}, hero, stats, lb, ol, form, tiers, note);
+    return h('section.tsoon', {}, hero, stats, rewardsPanel(st?.rewards), lb, ol, form, tiers, note);
   }
 
   // ---------------------------------------------------------------- jeu lancé, sans session
@@ -637,17 +640,31 @@ export function createTCG(o) {
   }
 
   // ---------------------------------------------------------------- accueil (booster du jour)
+  // Deux boosters par cycle : ●● à ouvrir, ●○ le second arrive, ○○ prochain cycle.
+  function cycleDots(me) {
+    const per = me.perCycle || 2;
+    const left = Math.max(0, per - (me.cycle || 0));
+    const dots = h('span.th-cycle', { attrs: { role: 'img', 'aria-label': `${left} booster${left > 1 ? 's' : ''} sur ${per} pour ce cycle` } });
+    for (let i = 0; i < per; i++) dots.append(h(`i${i < left ? '.is-on' : ''}`));
+    dots.append(h('span', { text: left ? `${left} sur ${per} à ouvrir` : 'Boosters du jour ouverts' }));
+    return dots;
+  }
+
   function renderHome() {
     const me = st.me;
     const ready = me.boosterReady;
+    const second = (me.cycle || 0) >= 1 && (me.cycle || 0) < (me.perCycle || 2);
     const pack = lockedPack(null);
     pack.className = `pack ${ready ? 'is-ready' : 'is-spent'}`;
-    const packBtn = h('button.th-packbtn', { type: 'button', attrs: { 'aria-label': ready ? 'Ouvrir le booster du jour' : 'Revoir mon tirage' } }, pack);
+    const packBtn = h('button.th-packbtn', { type: 'button', attrs: { 'aria-label': ready ? (second ? 'Ouvrir le second booster' : 'Ouvrir le booster du jour') : 'Revoir mon tirage' } }, pack);
     packBtn.addEventListener('click', ready ? openToday : replay);
+    // Second booster pas ouvert avant la fin du cycle : il ne se garde pas.
+    const keep = ready && second && me.cycleEnd ? h('p.th-hint', { text: `À ouvrir avant ${dayLong(me.cycleEnd).split(' ')[0]} ${hourText(me.cycleEnd)} : il ne se garde pas au-delà.` }) : null;
     const cta = ready
-      ? h('div.th-cta', {}, tbtn('Ouvrir le booster', 'booster', 'tbtn--primary tbtn--xl', openToday))
-      : h('div.th-cta', {}, h('p.th-timer', {}, ic('clock'), 'Prochain booster dans ', h('b', { data: { until: me.nextBooster }, text: untilText(me.nextBooster) })), st.lastDraw?.length ? tbtn('Revoir mon tirage', 'loop', 'tbtn--ghost', replay) : null);
-    const stage = h('div.th-stage', {}, h('h1.th-h1', { tabIndex: -1, text: ready ? 'Ton booster du jour' : 'Prochain booster bientôt' }), h('div.th-pack', {}, h('span.th-halo'), packBtn), cta);
+      ? h('div.th-cta', {}, tbtn(second ? 'Ouvrir le second booster' : 'Ouvrir le booster', 'booster', 'tbtn--primary tbtn--xl', openToday), cycleDots(me), keep)
+      : h('div.th-cta', {}, h('p.th-timer', {}, ic('clock'), second ? 'Second booster dans ' : 'Prochain booster dans ', h('b', { data: { until: me.nextBooster }, text: untilText(me.nextBooster) })), cycleDots(me), st.lastDraw?.length ? tbtn('Revoir mon tirage', 'loop', 'tbtn--ghost', replay) : null);
+    const title = ready ? (second ? 'Ton second booster' : 'Ton booster du jour') : second ? 'Second booster bientôt' : 'Prochain booster bientôt';
+    const stage = h('div.th-stage', {}, h('h1.th-h1', { tabIndex: -1, text: title }), h('div.th-pack', {}, h('span.th-halo'), packBtn), cta);
 
     // À faire
     const todo = [];
@@ -673,6 +690,8 @@ export function createTCG(o) {
       if (doubles) item('trade', 'trade', `${plural(doubles, 'double')} à échanger`, 'Échange en face à face, avec un QR code', () => go('trade'));
     }
     const below = [];
+    const rw = rewardsPanel(st.rewards);
+    if (rw) below.push(rw);
     if (todo.length) below.push(h('section.th-todo', {}, h('h2.th-h2', { text: 'À faire' }), h('div.tnext-list', {}, ...todo)));
     below.push(leaderboard(st.leaders, { onCreate: me.proposalsLeft > 0 && !me.muted ? () => go('create') : null }));
 
@@ -694,20 +713,16 @@ export function createTCG(o) {
     return h('section.th.th--simple', {}, stage, h('div.th-below', {}, ...below));
   }
 
+  // Cartes différentes de ma collection (échos compris : ils la complètent).
+  const collected = () => new Set([...Object.keys(st?.owned ?? {}), ...Object.keys(st?.echoes ?? {})]).size;
+
   async function openToday(e) {
     const btn = e?.currentTarget;
     if (btn) btn.disabled = true;
     try {
       const res = await api.booster();
       setState(res.state);
-      openBooster({
-        pulls: res.pulls,
-        cardOf: (id) => cards.get(id),
-        ownedCount: () => Object.keys(st.owned).length,
-        totalCount: () => cards.size,
-        onCard: (c, serial) => openCard(c, serial),
-        onClose: (toCollection) => (toCollection ? go('collection') : render()),
-      });
+      showOpening(res.pulls, { kicker: 'Ton tirage du jour' });
     } catch (err) {
       toast(err.message, 'alert');
       refresh();
@@ -716,27 +731,117 @@ export function createTCG(o) {
     }
   }
 
-  function replay() {
-    if (!st.lastDraw?.length) return;
-    showRecap({ pulls: st.lastDraw, cardOf: (id) => cards.get(id), ownedCount: () => Object.keys(st.owned).length, totalCount: () => cards.size, onCard: (c, s) => openCard(c, s), onClose: (toCollection) => toCollection && go('collection') });
+  async function openPack(pk, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      const res = await api.openPack(pk.id);
+      setState(res.state);
+      showOpening(res.pulls, { bonus: true, kicker: 'Ton booster bonus' });
+    } catch (err) {
+      toast(err.message, 'alert');
+      refresh();
+      if (btn) btn.disabled = false;
+    }
   }
 
+  function showOpening(pulls, { bonus = false, kicker, cardOf = (id) => cards.get(id), trial = false } = {}) {
+    openBooster({
+      pulls,
+      bonus,
+      kicker,
+      season: data()?.season,
+      cardOf,
+      ownedCount: trial ? () => 0 : collected,
+      totalCount: () => (trial ? pulls.length : cards.size),
+      onCard: (c, serial, echo) => openCard(c, serial, echo),
+      onClose: (toCollection) => (toCollection && !trial ? go('collection') : render()),
+    });
+  }
+
+  // Administration, avant le lancement : une ouverture d'essai avec les vraies cartes proposées
+  // (raretés et numéros inventés, un écho), sans rien enregistrer.
+  async function tryBooster(kind) {
+    try {
+      const t = await api.tryBooster(kind);
+      const local = new Map(t.cards.map((c) => [c.id, c]));
+      showOpening(t.pulls, { bonus: t.pack, kicker: 'Essai · rien n’est enregistré', cardOf: (id) => local.get(id), trial: true });
+    } catch (err) {
+      toast(err.message, 'alert');
+    }
+  }
+
+  function replay() {
+    if (!st.lastDraw?.length) return;
+    showRecap({ pulls: st.lastDraw, cardOf: (id) => cards.get(id), ownedCount: collected, totalCount: () => cards.size, onCard: (c, s, echo) => openCard(c, s, echo), onClose: (toCollection) => toCollection && go('collection') });
+  }
+
+  // ---------------------------------------------------------------- récompenses de lancement
+  const placeTxt = (n) => (n === 1 ? '1er' : `${n}e`);
+  /**
+   * Ce que j'ai gagné au lancement, et pourquoi : chaque soir du jury où j'étais classé (à
+   * minuit), et ma participation. Avant la sortie : à ce jour. Après : les boosters à ouvrir.
+   */
+  function rewardsPanel(rw) {
+    if (!rw || (!rw.participant && !rw.nights?.length && !rw.packs?.length)) {
+      if (!rw?.preview) return null;
+      return h('section.trw', {}, h('div.trw-head', {}, h('div', {}, h('h2', { text: 'Récompenses de lancement' }), h('p', { text: 'Chaque soir de jury, à minuit, le classement des créateurs compte : 1er → booster bonus de 5 cartes, 2e → 4, 3e → 3, du 4e au 13e → 1. Et un booster de 4 cartes pour chaque participant (une carte validée ou une série du jury). Tu les ouvriras le jour du lancement.' }))), h('p.trw-note', { text: 'Rien pour l’instant : propose une carte ou joue une série du jury pour participer.' }));
+    }
+    const live = !rw.preview;
+    const left = live && rw.until ? Math.max(0, new Date(rw.until) - Date.now()) : 0;
+    const open = (rw.packs ?? []).filter((p) => !p.opened && new Date(p.until) > Date.now());
+    const head = h(
+      'div.trw-head',
+      {},
+      h(
+        'div',
+        {},
+        h('h2', { text: live ? 'Tes boosters bonus de lancement' : 'Tes récompenses de lancement, à ce jour' }),
+        h('p', { text: live ? `${plural(rw.cards, 'carte bonus', 'cartes bonus')}, en plus de tes deux boosters du jour, au même taux de tirage.` : `${plural(rw.cards, 'carte bonus', 'cartes bonus')} gagnées jusqu’ici, à ouvrir le jour du lancement.` }),
+      ),
+      live && open.length && left ? h('span.trw-left', {}, 'Encore ', h('b', { data: { until: rw.until }, text: untilText(rw.until) })) : null,
+    );
+    const sec = h('section.trw', { attrs: { 'aria-label': 'Récompenses de lancement' } }, head);
+    if (live && rw.packs?.length) {
+      const row = h('div.trw-packs', { attrs: { role: 'list' } });
+      for (const pk of rw.packs) {
+        const gone = Boolean(pk.opened) || new Date(pk.until) <= Date.now();
+        const why = pk.kind === 'all' ? 'Participation' : `${placeTxt(pk.rank)} · ${dateShort(pk.day + 'T12:00:00').replace('.', '')}`;
+        const b = h('button.trw-pack', { type: 'button', disabled: gone, attrs: { role: 'listitem', 'aria-label': `Booster bonus de ${plural(pk.size, 'carte')}, ${why}${pk.opened ? ', ouvert' : gone ? ', expiré' : ''}` } }, packEl({ size: pk.size, bonus: true, big: false, mini: true }), h('b', { text: pk.opened ? 'Ouvert' : gone ? 'Expiré' : `+${plural(pk.size, 'carte')}` }), h('small', { text: why }));
+        if (!gone) b.addEventListener('click', () => openPack(pk, b));
+        row.append(b);
+      }
+      sec.append(row);
+    }
+    const why = h('ul.trw-why');
+    if (rw.participant) why.append(h('li', {}, h('span.trw-rank', {}, ic('check', 'ic ic--xs')), h('span', {}, h('b', { text: 'Participation' }), ' au lancement'), h('span.trw-n', { text: `+${allPackSizeOf(rw)}` })));
+    for (const n of rw.nights ?? []) why.append(h('li', {}, h('span.trw-rank', { text: placeTxt(n.rank) }), h('span', {}, 'Soir du ', h('b', { text: dayLong(n.day + 'T12:00:00') }), ' (classement à minuit)'), h('span.trw-n', { text: `+${n.size}` })));
+    sec.append(why);
+    const counted = rw.maxNights ? ` Seuls tes ${rw.maxNights} meilleurs soirs comptent.` : '';
+    sec.append(h('p.trw-note', { text: live ? `Valables jusqu’au ${dayLong(rw.until)} à ${hourText(rw.until)}, puis ils expirent.${counted}` : `Chaque soir de jury, à minuit : 1er → 5 cartes, 2e → 4, 3e → 3, du 4e au 13e → 1 ; et 4 cartes pour chaque participant.${counted} Le classement ne montre que des places, jamais de score.` }));
+    if (live && open.length) sec.append(h('div.trw-acts', {}, tbtn(open.length > 1 ? `Ouvrir un booster bonus (${open.length})` : 'Ouvrir le booster bonus', 'gift', 'tbtn--primary', (e) => openPack(open[0], e.currentTarget))));
+    return sec;
+  }
+  const allPackSizeOf = (rw) => (rw.packs ?? []).find((p) => p.kind === 'all')?.size ?? 4;
+
   // ---------------------------------------------------------------- fiche d'une carte
-  function openCard(card, serial) {
+  function openCard(card, serial, echoView) {
     const mine = st?.owned?.[card.id] ?? [];
+    const echoes = st?.echoes?.[card.id] ?? 0;
     const ser = serial || mine.find((x) => x > 0) || 0;
+    const asEcho = Boolean(echoView || (!mine.length && echoes));
     const c = cards.get(card.id) ?? card;
-    const el = cardEl(c, { size: 'xl', serial: ser, live: true });
+    const el = cardEl(c, { size: 'xl', serial: ser, live: true, echo: asEcho });
     const dl = h('dl.tdet-dl');
     const row = (dt, dd) => dl.append(h('dt', { text: dt }), h('dd', {}, dd));
-    row('Rareté', rchip(c.rarity));
-    if (c.run > 0) row('Tirage', `${plural(c.run, 'exemplaire numéroté', 'exemplaires numérotés')}${ser ? ` · le tien : n° ${ser}` : ''}`);
+    row('Rareté', asEcho ? h('span', {}, rchip(c.rarity), ' ', h('span.trchip.trchip--echo', {}, ic('echo', 'ic ic--xs'), h('span', { text: ECHO }))) : rchip(c.rarity));
+    if (c.run > 0) row('Tirage', `${plural(c.run, 'exemplaire numéroté', 'exemplaires numérotés')}${ser && !asEcho ? ` · le tien : n° ${ser}` : ''}${c.issued >= c.run ? ' · tous tirés' : ''}`);
     else row('Tirage', 'Illimité');
     row('Proposée par', c.author || '—');
     if (c.firstBy) row('Tirée en premier par', c.firstBy);
     const w = (data()?.waves ?? []).find((x) => x.n === c.wave);
     row('Vague', `Vague ${c.wave}${w?.releaseAt ? ` · ${dateShort(w.releaseAt)}` : ''} · n° ${String(c.no).padStart(3, '0')}`);
-    row('Dans ta collection', mine.length ? plural(mine.length, 'exemplaire') : 'Pas encore');
+    const inColl = [mine.length ? plural(mine.length, 'exemplaire') : '', echoes ? plural(echoes, 'écho') : ''].filter(Boolean).join(' · ');
+    row('Dans ta collection', inColl || 'Pas encore');
     const acts = h('div.tdet-acts');
     if (!mine.length && st) {
       const wished = st.wish.includes(c.id);
@@ -754,7 +859,8 @@ export function createTCG(o) {
       acts.append(wishBtn);
     }
     if (st && !c.mine && !c.removed) acts.append(tbtn('Signaler', 'flag', 'tbtn--ghost tbtn--sm', () => reportSheet(c)));
-    const info = h('div.tdet-info', {}, h('p.tk', { text: CATS[c.cat] ?? '' }), h('h2.tdet-h', { text: c.title }), c.desc ? h('p.tdet-desc', { text: c.desc }) : null, dl, acts);
+    const echoNote = asEcho ? h('p.tdet-echo', {}, ic('echo', 'ic ic--sm'), h('span', { text: `${ECHO} : ${c.run === 1 ? 'l’exemplaire unique' : `les ${c.run} exemplaires numérotés`} étaient déjà tirés. Il complète ta collection mais ne s’échange pas ; « Je la cherche » reste possible pour un vrai exemplaire.` })) : null;
+    const info = h('div.tdet-info', {}, h('p.tk', { text: CATS[c.cat] ?? '' }), h('h2.tdet-h', { text: c.title }), c.desc ? h('p.tdet-desc', { text: c.desc }) : null, dl, echoNote, acts);
     const s = sheet('detail', c.title, h(`div.tdet.tdet--${c.rarity}`, {}, h('div.tdet-stage', {}, h('span.tdet-glow'), el), info));
     return s;
   }
@@ -805,7 +911,8 @@ export function createTCG(o) {
     cards,
     card: (id) => cards.get(id),
     owned: (id) => st?.owned?.[id] ?? [],
-    ownedCount: () => Object.keys(st?.owned ?? {}).length,
+    echoes: (id) => st?.echoes?.[id] ?? 0,
+    ownedCount: () => collected(),
     go,
     render,
     refresh: () => refresh({ quiet: false }),

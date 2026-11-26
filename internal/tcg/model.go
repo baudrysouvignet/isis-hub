@@ -10,7 +10,10 @@
 //	Légendaire    3 exemplaires
 //	Unique        1 seul exemplaire au monde
 //
-// Chaque joueur ouvre un booster de 5 cartes par jour et échange ses cartes en face à face.
+// Chaque joueur ouvre deux boosters de 4 cartes par jour (le second 3 h après le premier) et échange
+// ses cartes en face à face. Quand tous les exemplaires numérotés d'une carte sont tirés, elle sort
+// encore en « Écho » : même carte, finition mate, non numérotée et non échangeable, qui compte pour
+// compléter la collection.
 //
 // Ce que le serveur garde (fichier tcg.json du volume /data) : le pseudo de chaque joueur, sa
 // collection, ses propositions, ses votes du jury, l'historique de ses échanges ; pour les
@@ -102,6 +105,11 @@ type Card struct {
 	Issued  int       `json:"issued,omitempty"` // exemplaires déjà tirés
 	FirstBy string    `json:"firstBy,omitempty"`
 	FirstAt time.Time `json:"firstAt,omitzero"`
+	Echoes  int       `json:"echoes,omitempty"` // échos tirés (tous les exemplaires numérotés partis)
+
+	// Première validation par l'administration (Decided change ensuite : accords, impression). Sert
+	// à reconstituer le classement des créateurs de chaque soir (rewards.go).
+	Validated time.Time `json:"validated,omitzero"`
 
 	// Signalements des joueurs (une fois par joueur).
 	Reports   []Report  `json:"reports,omitempty"`
@@ -122,8 +130,20 @@ type Report struct {
 // Pull : une carte tirée d'un booster.
 type Pull struct {
 	Card   string `json:"card"`
-	Serial int    `json:"serial"` // numéro d'exemplaire (0 = commune)
-	New    bool   `json:"new"`    // première fois dans la collection
+	Serial int    `json:"serial"`         // numéro d'exemplaire (0 = commune ou écho)
+	New    bool   `json:"new"`            // première fois dans la collection
+	Echo   bool   `json:"echo,omitempty"` // écho : copie de substitution, non numérotée, non échangeable
+}
+
+// Pack : un booster bonus (récompenses de lancement, rewards.go), à ouvrir avant Until.
+type Pack struct {
+	ID     string    `json:"id"`
+	Size   int       `json:"size"`           // cartes
+	Kind   string    `json:"kind"`           // rank : place au classement d'un soir ; all : participation
+	Day    string    `json:"day,omitempty"`  // soir du classement (jour calendaire, Paris)
+	Rank   int       `json:"rank,omitempty"` // place ce soir-là
+	Until  time.Time `json:"until"`
+	Opened time.Time `json:"opened,omitzero"`
 }
 
 // Ballot : 5 cartes candidates à classer (jury de la semaine).
@@ -155,17 +175,20 @@ type Player struct {
 	Pseudo    string           `json:"pseudo"`
 	Created   time.Time        `json:"created"`
 	Owned     map[string][]int `json:"owned,omitempty"`    // carte → numéros d'exemplaires (0 = commune)
+	Echoes    map[string]int   `json:"echoes,omitempty"`   // carte → échos : jamais dans Owned, donc rien ne peut les échanger
 	Wish      []string         `json:"wish,omitempty"`     // « Je cherche »
 	Booster   string           `json:"booster,omitempty"`  // jour du dernier booster (statistiques)
-	BoosterAt time.Time        `json:"boosterAt,omitzero"` // dernier booster : le suivant 24 h après
+	BoosterAt time.Time        `json:"boosterAt,omitzero"` // dernier booster ouvert
+	CycleAt   time.Time        `json:"cycleAt,omitzero"`   // premier booster du cycle en cours (le suivant 24 h après)
+	CycleN    int              `json:"cycleN,omitempty"`   // boosters ouverts dans ce cycle (2 au plus)
+	Packs     []Pack           `json:"packs,omitempty"`    // boosters bonus
 	LastDraw  []Pull           `json:"lastDraw,omitempty"`
 	Ballots   map[int][]Ballot `json:"ballots,omitempty"` // vague → bulletins
 	Trades    []TradeLog       `json:"trades,omitempty"`
-	Muted     bool             `json:"muted,omitempty"`     // propositions suspendues par un administrateur
-	Seen      time.Time        `json:"seen,omitzero"`       // dernier passage (jour), pour les statistiques
-	MailKey   string           `json:"mailKey,omitempty"`   // HMAC de l'adresse de sa messagerie (accords)
-	Admin     bool             `json:"admin,omitempty"`     // identifiant dans ADMIN_USERS (envoi des mails d'accord)
-	Withdrawn int              `json:"withdrawn,omitempty"` // cartes bloquées par la modération puis retirées : comptent toujours au classement
+	Muted     bool             `json:"muted,omitempty"`   // propositions suspendues par un administrateur
+	Seen      time.Time        `json:"seen,omitzero"`     // dernier passage (jour), pour les statistiques
+	MailKey   string           `json:"mailKey,omitempty"` // HMAC de l'adresse de sa messagerie (accords)
+	Admin     bool             `json:"admin,omitempty"`   // identifiant dans ADMIN_USERS (envoi des mails d'accord)
 }
 
 // Wave : une vague de cartes, avec son calendrier.
@@ -184,12 +207,14 @@ type Wave struct {
 	Mix            map[Rarity]int    `json:"mix,omitempty"`       // cartes par rareté choisies par l'administrateur (communes : le reste)
 	Runs           map[Rarity]int    `json:"runs,omitempty"`      // exemplaires par carte pour cette vague (sinon ceux de la saison)
 	Opened         int               `json:"opened,omitempty"`    // boosters ouverts pendant la vague (de sa sortie à la suivante)
+	Rewarded       bool              `json:"rewarded,omitempty"`  // récompenses de lancement attribuées (vague 1)
 }
 
-// Sent : propositions envoyées par un compte dans la journée, retraits compris. Rangé sous
-// l'empreinte de l'identifiant (comme State.Keys), pour tenir même après « Quitter le jeu » ; oublié
-// le lendemain. Le quota est ainsi par compte, quel que soit l'appareil, et ne se regagne ni en
-// retirant une proposition, ni en quittant puis en rejoignant le jeu.
+// Sent : propositions envoyées par un compte dans la journée. Rangé sous l'empreinte de
+// l'identifiant (comme State.Keys), pour tenir même après « Quitter le jeu » ; oublié le lendemain.
+// Le quota est ainsi par compte, quel que soit l'appareil, et ne se regagne ni en retirant une
+// proposition en attente, ni en quittant puis en rejoignant le jeu. Seule exception : retirer une
+// carte bloquée par la modération rend une proposition le jour même (Withdraw).
 type Sent struct {
 	Day string `json:"day"` // jour (Paris)
 	N   int    `json:"n"`
@@ -203,6 +228,8 @@ type Activity struct {
 	Proposals int `json:"proposals,omitempty"` // cartes proposées
 	Series    int `json:"series,omitempty"`    // séries du jury classées (une série refaite ne compte pas deux fois)
 	Trades    int `json:"trades,omitempty"`    // échanges conclus
+	Packs     int `json:"packs,omitempty"`     // boosters bonus ouverts (hors rythme des raretés)
+	Echoes    int `json:"echoes,omitempty"`    // échos tirés
 }
 
 // Season : réglages du jeu.
@@ -210,7 +237,7 @@ type Season struct {
 	Enabled    bool           `json:"enabled"` // TCG visible des étudiants
 	Name       string         `json:"name"`
 	Runs       map[Rarity]int `json:"runs"`       // exemplaires par rareté (commune : 0 = illimité)
-	PaceDays   int            `json:"paceDays"`   // jours sur lesquels les exemplaires rares d'une vague sont répartis
+	PaceDays   int            `json:"paceDays"`   // jours sur lesquels les exemplaires numérotés d'une vague sont répartis
 	PerDay     int            `json:"perDay"`     // propositions par jour et par joueur
 	AutoWeekly bool           `json:"autoWeekly"` // une vague programmée chaque semaine après la précédente
 }

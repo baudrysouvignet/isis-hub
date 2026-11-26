@@ -231,10 +231,24 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.setCookie(w, "", -1)
 		ok(w)
 	case p == "booster":
-		if !s.guard(w, r) {
+		// Booster du jour, ou booster bonus ({"pack": "b2"}).
+		var in struct {
+			Pack string `json:"pack"`
+		}
+		if r.ContentLength != 0 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+			if !s.readJSON(w, r, 1<<10, &in) {
+				return
+			}
+		} else if !s.guard(w, r) {
 			return
 		}
-		pulls, err := s.Game.OpenBooster(pid)
+		var pulls []Pull
+		var err error
+		if in.Pack != "" {
+			pulls, err = s.Game.OpenPack(pid, in.Pack)
+		} else {
+			pulls, err = s.Game.OpenBooster(pid)
+		}
 		if err != nil {
 			failErr(w, err)
 			return
@@ -244,9 +258,15 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case p == "propose":
 		s.handlePropose(w, r, pid)
 	case strings.HasPrefix(p, "proposal/") && strings.HasSuffix(p, "/withdraw"):
-		if s.guard(w, r) {
-			s.result(w, s.Game.Withdraw(pid, strings.TrimSuffix(strings.TrimPrefix(p, "proposal/"), "/withdraw")))
+		if !s.guard(w, r) {
+			return
 		}
+		credited, err := s.Game.Withdraw(pid, strings.TrimSuffix(strings.TrimPrefix(p, "proposal/"), "/withdraw"))
+		if err != nil {
+			failErr(w, err)
+			return
+		}
+		reply(w, http.StatusOK, map[string]bool{"ok": true, "credited": credited})
 	case p == "jury":
 		var in struct {
 			Wave   int      `json:"wave"`
@@ -278,6 +298,13 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		reply(w, http.StatusOK, map[string]any{"cards": cards})
+	case p == "booster/try" && r.Method == http.MethodGet:
+		try, err := s.Game.TryBooster(pid, r.URL.Query().Get("kind"))
+		if err != nil {
+			failErr(w, err)
+			return
+		}
+		reply(w, http.StatusOK, try)
 	case p == "jury/more":
 		if s.guard(w, r) {
 			s.result(w, s.Game.MoreBallot(pid))
@@ -541,6 +568,9 @@ func (s *Service) serveAdmin(w http.ResponseWriter, r *http.Request, action stri
 	switch {
 	case action == "overview" && r.Method == http.MethodGet:
 		reply(w, http.StatusOK, s.Game.AdminOverview())
+	case action == "rewards" && r.Method == http.MethodGet:
+		w.Header().Set("Cache-Control", "no-store")
+		reply(w, http.StatusOK, s.Game.AdminRewards())
 	case action == "stats" && r.Method == http.MethodGet:
 		w.Header().Set("Cache-Control", "no-store")
 		reply(w, http.StatusOK, s.Game.AdminStats())

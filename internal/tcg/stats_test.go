@@ -42,7 +42,7 @@ func TestAdminStats(t *testing.T) {
 	}
 	s = g.AdminStats()
 	w := s.Waves[0]
-	if s.Boosters != 2 || w.Boosters != 2 || w.Copies != 10 || w.Collectors != 2 || s.Collectors != 2 || s.Days[len(s.Days)-1].Boosters != 2 {
+	if s.Boosters != 2 || w.Boosters != 2 || w.Copies != 2*boosterSize || w.Collectors != 2 || s.Collectors != 2 || s.Days[len(s.Days)-1].Boosters != 2 {
 		t.Fatalf("boosters : %+v", s)
 	}
 
@@ -121,11 +121,14 @@ func TestLeaderboard(t *testing.T) {
 	if strings.Contains(string(raw), "score") || strings.Contains(string(raw), "legendaire") {
 		t.Fatalf("score ou rareté envoyés : %s", raw)
 	}
-	// Refus d'une personne sur la photo : ni bonus ni malus ; suspendu : hors classement.
-	if cardPoints(&Card{Status: StatusRemoved, Reason: "personne"}) != 0 || cardPoints(&Card{Status: StatusRemoved, Reason: "moque"}) >= 0 {
-		t.Fatal("points des cartes retirées")
+	// Plus de pénalité : bloquée, retirée (signalements ou accord retiré) : 0 point.
+	for _, st := range []string{StatusBlocked, StatusRemoved, StatusPending} {
+		for _, reason := range []string{"", "personne", "moque"} {
+			if pts := cardPoints(&Card{Status: st, Reason: reason}, nil); pts != 0 {
+				t.Fatalf("%s (%s) : %v point(s)", st, reason, pts)
+			}
+		}
 	}
-	// Une carte bloquée puis retirée garde sa pénalité ; un refus sur la photo n'en a pas.
 	score := func(pid string) float64 {
 		for _, cr := range g.ranking() {
 			if cr.id == pid {
@@ -134,23 +137,19 @@ func TestLeaderboard(t *testing.T) {
 		}
 		return 0
 	}
-	before := score(d)
+	// Dan : 9 cartes validées, ses 3 cartes bloquées ne lui coûtent rien, même retirées.
+	if score(d) != 9 {
+		t.Fatalf("score de Dan : %v", score(d))
+	}
 	for id, card := range g.st.Cards {
 		if card.Author == d && card.Status == StatusBlocked {
-			if err := g.Withdraw(d, id); err != nil {
+			if _, err := g.Withdraw(d, id); err != nil {
 				t.Fatal(err)
 			}
-			break
 		}
 	}
-	if score(d) != before || g.st.Players[d].Withdrawn != 1 {
-		t.Fatalf("pénalité perdue en retirant une carte bloquée : %v → %v", before, score(d))
-	}
-	g.st.NextNum++
-	refused := fmt.Sprintf("x%d", g.st.NextNum)
-	g.st.Cards[refused] = &Card{ID: refused, Author: d, Status: StatusBlocked, Reason: "personne"}
-	if err := g.Withdraw(d, refused); err != nil || g.st.Players[d].Withdrawn != 1 {
-		t.Fatalf("refus d'une personne compté comme pénalité : %v, %d", err, g.st.Players[d].Withdrawn)
+	if score(d) != 9 {
+		t.Fatalf("retirer ses cartes bloquées change le score : %v", score(d))
 	}
 
 	g.st.Players[c].Muted = true

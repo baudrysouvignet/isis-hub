@@ -47,7 +47,13 @@ const ICONS = {
   spark: ['M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6'],
   trash: ['M4.5 7h15M9.5 7V5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 14.5 5v2M6.5 7l1 12.5a2 2 0 0 0 2 1.5h5a2 2 0 0 0 2-1.5l1-12.5'],
   logout: ['M14.5 4H18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3.5M10 8l-4 4 4 4M6 12h10'],
+  echo: ['M12 12h.01', 'M15.5 8.5a5 5 0 0 1 0 7M8.5 15.5a5 5 0 0 1 0-7', 'M18.4 5.6a9 9 0 0 1 0 12.8M5.6 18.4a9 9 0 0 1 0-12.8'],
+  gift: ['M4 11h16v9H4zM3 7.5h18V11H3zM12 7.5V20', 'M12 7.5C10.5 4 7 3.5 7 5.8 7 7.5 12 7.5 12 7.5zM12 7.5c1.5-3.5 5-4 5-1.7 0 1.7-5 1.7-5 1.7z'],
+  undo: ['M9 14L4 9l5-5', 'M4 9h10.5a5.5 5.5 0 0 1 0 11H11'],
 };
+
+/** Nom d'une copie de substitution : même carte, non numérotée, non échangeable. */
+export const ECHO = 'Écho';
 
 /** Icône de la maquette (grille 24 × 24, trait géré par la feuille de style). */
 export function ic(name, cls = 'ic ic--sm') {
@@ -134,12 +140,16 @@ export function placeholderArt(seed = '', label = '') {
 /**
  * Carte du jeu, balisage de la maquette.
  * card : { id, title, desc, cat, img, thumb, author, wave, no, total, rarity, run, removed }
- * o : { size: sm|md|lg|xl, serial, back, live, mystery, isNew, count, by, foot, artSrc }
+ * o : { size: sm|md|lg|xl, serial, back, live, mystery, isNew, count, by, foot, artSrc, echo }
+ * echo : copie de substitution (tous les exemplaires numérotés sont tirés). Même carte, même photo,
+ * reconnaissable tout de suite ; finition mate, liseré pointillé, onde au lieu de l'holographie,
+ * étiquette « Écho » et pas de numéro : on la distingue au premier coup d'œil d'une vraie.
  */
 export function cardEl(card, o = {}) {
   const rarity = o.mystery ? 'mystery' : card.rarity || 'commune';
-  const label = o.mystery ? card.title || 'Carte' : `${card.title}, ${RLABEL[rarity]}`;
-  const el = h(`article.tc.tc--${rarity}.tc--${o.size || 'md'}`, { data: { card: card.id || '' }, attrs: { 'aria-label': label } });
+  const echo = Boolean(o.echo && !o.mystery && rarity !== 'commune');
+  const label = o.mystery ? card.title || 'Carte' : `${card.title}, ${RLABEL[rarity]}${echo ? `, ${ECHO} (non échangeable)` : ''}`;
+  const el = h(`article.tc.tc--${rarity}.tc--${o.size || 'md'}${echo ? '.is-echo' : ''}`, { data: { card: card.id || '' }, attrs: { 'aria-label': label } });
   if (o.back) el.classList.add('is-back');
   if (o.live) el.classList.add('is-live');
 
@@ -149,7 +159,7 @@ export function cardEl(card, o = {}) {
   const img = h('img', { alt: '', decoding: 'async', draggable: false });
   const big = o.size === 'lg' || o.size === 'xl';
   img.src = o.artSrc || (card.removed ? placeholderArt(card.id, card.consentOff ? 'Accord retiré' : 'Carte retirée') : (big ? card.img || card.thumb : card.thumb || card.img) || placeholderArt(card.id || card.title));
-  const art = h('div.tc-art', {}, img, card.cat ? h('span.tc-cat', { text: CATS[card.cat] ?? card.cat }) : null, h('span.tc-shine'));
+  const art = h('div.tc-art', {}, img, card.cat ? h('span.tc-cat', { text: CATS[card.cat] ?? card.cat }) : null, echo ? h('span.tc-echo', {}, ic('echo', 'ic tc-echo-ic'), h('span', { text: ECHO })) : null, h('span.tc-shine'));
 
   const by = o.by ?? (card.author ? `Proposée par ${card.author}` : '');
   const body = h('div.tc-body', {}, h('p.tc-desc', { text: card.desc || '' }), by ? h('p.tc-by', { text: by }) : null);
@@ -158,11 +168,11 @@ export function cardEl(card, o = {}) {
   if (o.mystery) foot = h('footer.tc-foot', {}, h('span', { text: o.foot ?? 'Rareté révélée à l’impression' }));
   else {
     const left = card.no ? `#${pad3(card.no)}/${pad3(card.total || card.no)} · V${card.wave}` : '';
-    const serial = card.run > 0 ? `${o.serial || '?'}/${card.run}` : RLABEL[rarity];
+    const serial = echo ? ECHO : card.run > 0 ? `${o.serial || '?'}/${card.run}` : RLABEL[rarity];
     foot = h('footer.tc-foot', {}, h('span', { text: left }), h('span.tc-serial', { text: serial }));
   }
 
-  const front = h('div.tc-face.tc-front', {}, h('div.tc-frame', {}, head, art, body, foot), h('span.tc-holo'), h('span.tc-glare'));
+  const front = h('div.tc-face.tc-front', {}, h('div.tc-frame', {}, head, art, body, foot), h('span.tc-holo'), echo ? h('span.tc-ripple') : null, h('span.tc-glare'));
   const back = h('div.tc-face.tc-back', {}, h('span.tc-back-ring'), mark('tc-back-mark'), h('span.tc-back-txt', { text: 'ISIS · TCG' }));
   el.append(h('div.tc-tilt', {}, h('div.tc-inner', {}, front, back)));
   if (o.isNew) el.append(h('span.tc-new', { text: 'Nouvelle' }));

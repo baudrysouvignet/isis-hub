@@ -5,7 +5,7 @@
 // Appels à /api/tcg/admin/… avec la session administrateur (cookie HttpOnly) et l'en-tête
 // X-Hub-Admin. Tout ce qui vient des étudiants est affiché comme du texte.
 
-import { $, $$, h, toast, isTyping } from './core/dom.js';
+import { $, $$, h, toast, isTyping, motionOK, lockScroll } from './core/dom.js';
 import { cardEl, ic, rchip, RLABEL, RARITIES, CATS, ago, dayLong, hourText, plural } from './tcg/ui.js';
 import { peoplePicker } from './tcg/people.js';
 import { mailBridge } from './tcg/mailbridge.js';
@@ -89,6 +89,8 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
   const statsBox = h('div.tad-box.tad-stats');
   const mailing = h('section.tad-mailing', { hidden: true });
   const kpis = h('div.tad-kpis', { attrs: { role: 'tablist', 'aria-label': 'Filtrer' } });
+  const queueBar = h('div.tfq-entry', { hidden: true });
+  const rewardsBox = h('div.tad-box.tad-rewards');
   const list = h('ul.tad-list', { attrs: { 'aria-label': 'Propositions' } });
   const detail = h('section.tad-detail', { tabIndex: -1, attrs: { 'aria-label': 'Détail' } });
   const grid = h('div.tad-grid', {}, list, detail);
@@ -99,9 +101,10 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       launch,
       h('div.tad-policy', {}, h('span.tad-policy-ic', {}, ic('check', 'ic')), h('p', {}, h('b', { text: 'Chaque carte attend ta validation avant d’aller au jury.' }), ' En validant, indique qui est sur la photo : la carte attend alors l’accord de chacun et passe au jury d’elle-même à la dernière réponse. On bloque seulement ce qui insulte, dénigre ou expose quelqu’un.')),
       mailing,
+      queueBar,
       kpis,
       grid,
-      h('p.tad-keys', {}, h('kbd', { text: 'V' }), ' valider · ', h('kbd', { text: 'B' }), ' bloquer · ', h('kbd', { text: '↑' }), ' ', h('kbd', { text: '↓' }), ' naviguer'),
+      h('p.tad-keys', {}, h('kbd', { text: 'F' }), ' mode file · ', h('kbd', { text: 'V' }), ' valider · ', h('kbd', { text: 'B' }), ' bloquer · ', h('kbd', { text: '↑' }), ' ', h('kbd', { text: '↓' }), ' naviguer'),
     ),
   );
 
@@ -110,6 +113,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     ov = await tapi('overview');
     const c = ov.counts ?? {};
     onCount?.((c.pending ?? 0) + (c.reports ?? 0));
+    renderQueueEntry();
     return ov;
   }
 
@@ -186,6 +190,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       ['Séries', (w) => n0(w.series)],
       ['Boosters', (w) => (w.printed ? n0(w.boosters) : '–')],
       ['Exemplaires tirés', (w) => (w.printed ? n0(w.copies) : '–')],
+      ['Échos', (w) => (w.printed ? n0(w.echoes) : '–')],
       ['Découvertes', (w) => (w.printed ? `${n0(w.discovered)}/${n0(w.cards)}` : '–')],
       ['Collectionneurs', (w) => (w.printed ? n0(w.collectors) : '–')],
     ];
@@ -309,9 +314,50 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       checklist,
       statsBox,
       h('details.tad-box', { open: !s.enabled || !first }, h('summary', {}, ic('pen'), 'Réglages de la saison'), season),
+      rewardsBox,
       h('div.tad-box', {}, h('h3.tad-sub', { text: 'Vagues' }), waves.length ? wl : h('p.tad-help', { text: 'Aucune vague : crée la vague 1 pour fixer la date de lancement affichée aux étudiants.' }), h('div.tad-row.tad-row--start', {}, add), pv),
     );
     if (printWave) preview(printWave);
+    loadRewards();
+  }
+
+  // ---------------------------------------------------------------- récompenses de lancement
+  // Chaque soir de jury (minuit), le classement des créateurs : 1er 5 cartes, 2e 4, 3e 3, 4e-13e 1 ;
+  // 4 cartes par participant. Avant la sortie : à ce jour. Après : attribuées, et ouvertes.
+  async function loadRewards() {
+    let r;
+    try {
+      r = await tapi('rewards');
+    } catch {
+      rewardsBox.hidden = true;
+      return;
+    }
+    rewardsBox.hidden = false;
+    const rows = r.rows ?? [];
+    const place = (n) => (n === 1 ? '1er' : `${n}e`);
+    const list = rows.length
+      ? h(
+          'div.tad-tablewrap',
+          {},
+          h(
+            'table.tad-table',
+            {},
+            h('thead', {}, h('tr', {}, ...['Joueur', 'Participation', 'Soirs classés', 'Cartes bonus', r.granted ? 'Ouvertes' : null].filter(Boolean).map((t) => h('th', { text: t, attrs: { scope: 'col' } })))),
+            h(
+              'tbody',
+              {},
+              ...rows.slice(0, 40).map((x) =>
+                h('tr', {}, h('th', { text: x.pseudo, attrs: { scope: 'row' } }), h('td', { text: x.participant ? 'oui' : '–' }), h('td', { text: (x.nights ?? []).map((n) => place(n.rank)).join(' · ') || '–' }), h('td', { text: n0(x.cards) }), r.granted ? h('td', { text: n0(x.opened) }) : null),
+              ),
+            ),
+          ),
+        )
+      : h('p.tad-help', { text: 'Aucune récompense pour l’instant : elles commencent au premier soir de jury.' });
+    rewardsBox.replaceChildren(
+      h('h3.tad-sub', { text: r.granted ? 'Récompenses de lancement · attribuées' : 'Récompenses de lancement · à ce jour' }),
+      h('p.tad-help', { text: `${plural(r.nights, 'soir de jury compté', 'soirs de jury comptés')} · ${plural(r.cards, 'carte bonus', 'cartes bonus')} pour ${plural(rows.length, 'joueur')} sur ${n0(r.players)}. Chaque soir où la promo a voté, à minuit : 1er 5 cartes, 2e 4, 3e 3, du 4e au 13e 1 ; 4 cartes par participant (carte validée ou série du jury). ${r.maxNights} meilleurs soirs au plus par joueur. Attribuées d’elles-mêmes à la sortie de la vague 1, valables 24 h.` }),
+      list,
+    );
   }
 
   /** Formulaire de dates d'une vague (nouvelle si w est null). */
@@ -815,9 +861,14 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     return form;
   }
 
-  // Raccourcis : V valider, B bloquer, ↑ ↓ naviguer (onglet TCG affiché, hors saisie).
+  // Raccourcis : F mode file, V valider, B bloquer, ↑ ↓ naviguer (onglet TCG affiché, hors saisie).
   document.addEventListener('keydown', (e) => {
-    if (root.closest('[hidden]') || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey || mode) return;
+    if (root.closest('[hidden]') || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey || mode || queueOpen) return;
+    if ((e.key === 'f' || e.key === 'F') && (ov?.counts?.pending ?? 0) > 0) {
+      e.preventDefault();
+      openQueue();
+      return;
+    }
     const c = cards.find((x) => x.id === current);
     if (!c) return;
     const i = cards.indexOf(c);
@@ -839,6 +890,252 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       renderDetail();
     }
   });
+
+  // ---------------------------------------------------------------- mode file
+  // Une carte à la fois, en plein écran : grande carte, texte, signaux repérés, personnes
+  // indiquées ; Valider / Bloquer (motif en un geste), passage seul à la suivante, compteur,
+  // « Annuler » de la dernière décision. Au clavier : V ou Entrée valider, B bloquer puis 1 à 7,
+  // → passer, Z annuler, Échap fermer. Au doigt : les gros boutons du bas, à portée du pouce.
+  let queueOpen = false;
+  function renderQueueEntry() {
+    const n = ov?.counts?.pending ?? 0;
+    queueBar.hidden = !n;
+    if (!n) return;
+    queueBar.replaceChildren(
+      h('div.tfq-entry-t', {}, h('b', { text: plural(n, 'carte à valider', 'cartes à valider') }), h('span', { text: 'Une à la fois, en plein écran, au clavier comme au doigt.' })),
+      btn('btn--primary', 'Mode file', 'cards', () => openQueue()),
+    );
+  }
+
+  async function openQueue() {
+    if (queueOpen) return;
+    queueOpen = true;
+    let items = [];
+    try {
+      items = (await tapi('cards?filter=pending')) ?? [];
+    } catch (e) {
+      queueOpen = false;
+      return toast(e.message, 'alert');
+    }
+    const total = items.length;
+    let done = 0;
+    let idx = 0;
+    let reasons = false; // motifs affichés
+    let editPeople = null; // sélecteur de personnes ouvert
+    let busy = false;
+    const history = []; // décisions (pour « Annuler »)
+    const back = document.activeElement;
+
+    const count = h('b.tfq-count');
+    const bar = h('i');
+    const undoBtn = btn('btn--ghost btn--sm tfq-undo', 'Annuler', 'undo', () => undo());
+    const close = h('button.tfq-x', { type: 'button', attrs: { 'aria-label': 'Fermer le mode file' } }, ic('x'));
+    const stage = h('div.tfq-stage', { attrs: { 'aria-live': 'polite' } });
+    const foot = h('div.tfq-foot');
+    const layer = h(
+      'div.tfq',
+      { attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'File de validation' }, tabIndex: -1 },
+      h('header.tfq-top', {}, h('div.tfq-prog', {}, h('span', {}, count), h('span.tfq-bar', { attrs: { 'aria-hidden': 'true' } }, bar)), undoBtn, close),
+      stage,
+      foot,
+    );
+    (document.querySelector('.app') ?? document.body).append(layer); // dans .app : variables du thème, au-dessus de la page
+    lockScroll(true);
+    layer.focus({ preventScroll: true });
+
+    const left = () => items.length;
+    function paintTop() {
+      count.textContent = left() ? `${plural(left(), 'carte restante', 'cartes restantes')}` : 'File terminée';
+      bar.style.setProperty('--pw', `${total ? Math.round(((total - left()) / total) * 100) : 100}%`);
+      undoBtn.disabled = !history.length || busy;
+    }
+
+    function shut() {
+      queueOpen = false;
+      document.removeEventListener('keydown', onKey, true);
+      layer.remove();
+      lockScroll(false);
+      back?.focus?.({ preventScroll: true });
+      refreshAll().catch(() => {});
+    }
+    close.addEventListener('click', shut);
+
+    function render(dir = 0) {
+      paintTop();
+      reasons = false;
+      editPeople = null;
+      if (!items.length) {
+        stage.replaceChildren(h('div.tfq-done', {}, h('span.tfq-done-ic', {}, ic('check', 'ic')), h('h2', { text: done ? 'File terminée' : 'Rien à valider' }), h('p', { text: done ? `${plural(done, 'décision', 'décisions')} dans cette file. Les nouvelles propositions arriveront ici.` : 'Les nouvelles propositions arriveront ici.' })));
+        foot.replaceChildren(btn('btn--primary btn--lg', 'Fermer', 'check', shut));
+        return;
+      }
+      if (idx >= items.length) idx = 0;
+      const c = items[idx];
+      const view = { ...c, author: c.author.pseudo, removed: false };
+      const card = cardEl(view, { size: 'lg', mystery: true, live: true });
+      const people = c.proposed ?? [];
+      const peopleBox = h('div.tfq-people', {}, h('p.tfq-label', {}, ic('person', 'ic ic--xs'), people.length ? `${plural(people.length, 'personne indiquée', 'personnes indiquées')} par l’auteur` : 'Personne indiquée par l’auteur'), people.length ? h('ul.tfq-chips', {}, ...people.map((a) => h('li', { text: a }))) : h('p.tfq-muted', { text: 'Si quelqu’un est reconnaissable, ajoute-le : sa carte attendra son accord.' }));
+      const editBtn = h('button.tfq-link', { type: 'button', text: people.length ? 'Modifier les personnes' : 'Ajouter des personnes' });
+      editBtn.addEventListener('click', () => openPeople(c, peopleBox));
+      peopleBox.append(editBtn);
+      const flags = c.flags?.length ? h('div.tfq-flags', {}, h('p.tfq-label', {}, ic('alert', 'ic ic--xs'), 'Repéré automatiquement · à toi de juger'), h('ul', {}, ...c.flags.map((f) => h('li', { text: f })))) : h('p.tfq-clean', {}, ic('check', 'ic ic--xs'), 'Aucun signal repéré automatiquement');
+      const info = h(
+        'div.tfq-info',
+        {},
+        h('p.tfq-kick', { text: `P-${String(c.num).padStart(4, '0')} · ${CATS[c.cat] ?? c.cat} · envoyée ${ago(c.created)}${c.edited ? ' · texte corrigé' : ''}` }),
+        h('h2.tfq-title', { text: c.title }),
+        h('p.tfq-desc', { text: c.desc }),
+        h('p.tfq-author', {}, h('span.tav.tav--sm', { text: c.author.pseudo.slice(0, 2).toUpperCase() }), h('span', {}, h('b', { text: c.author.pseudo }), ` · ${plural(c.author.validated, 'validée')} · ${plural(c.author.blocked, 'bloquée')}${c.author.muted ? ' · propositions suspendues' : ''}`)),
+        flags,
+        peopleBox,
+      );
+      const slide = h('article.tfq-card', {}, h('div.tfq-art', {}, card), info);
+      stage.replaceChildren(slide);
+      if (dir && motionOK()) slide.animate([{ opacity: 0, transform: `translateX(${dir * 40}px)` }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      paintFoot(c);
+    }
+
+    function paintFoot(c) {
+      if (reasons) {
+        const chips = h('div.tfq-reasons', { attrs: { role: 'group', 'aria-label': 'Motif du blocage' } });
+        Object.entries(REASONS).forEach(([k, [label, text]], i) => {
+          const b = h('button.tfq-reason', { type: 'button' }, h('kbd', { text: String(i + 1) }), h('span', { text: label }));
+          b.addEventListener('click', () => (k === 'autre' ? otherReason(c) : decide(c, { action: 'block', reason: k, message: text }, 'Bloquée')));
+          chips.append(b);
+        });
+        foot.replaceChildren(h('p.tfq-label', { text: 'Motif (un geste) · le message bienveillant à l’auteur part avec' }), chips, btn('btn--ghost tfq-cancel', 'Retour', 'back', () => ((reasons = false), paintFoot(c))));
+        return;
+      }
+      const skip = btn('btn--ghost tfq-skip', 'Passer', 'arrow', () => skipCard());
+      skip.disabled = items.length < 2;
+      foot.replaceChildren(
+        h(
+          'div.tfq-acts',
+          {},
+          btn('btn--lg tfq-no', 'Bloquer', 'x', () => ((reasons = true), paintFoot(c))),
+          btn('btn--primary btn--lg tfq-ok', 'Valider', 'check', () => validate(c)),
+        ),
+        h('div.tfq-sub', {}, skip, h('p.tfq-keys', {}, h('kbd', { text: 'V' }), ' valider · ', h('kbd', { text: 'B' }), ' bloquer · ', h('kbd', { text: '→' }), ' passer · ', h('kbd', { text: 'Z' }), ' annuler')),
+      );
+    }
+
+    function openPeople(c, box) {
+      editPeople = peoplePicker({
+        id: 'tfq-people',
+        initial: c.proposed ?? [],
+        search: async (q) => (await mailBridge()).searchContacts(q, 12),
+        recent: async () => (await mailBridge()).recentRecipients(),
+      });
+      box.replaceChildren(h('label.tfq-label', { htmlFor: 'tfq-people', text: 'Personnes reconnaissables sur la photo (adresses de l’université)' }), editPeople.el, h('p.tfq-muted', { text: 'Valider enverra leur demande d’accord ; la carte passera au jury à la dernière réponse.' }));
+      editPeople.focus();
+    }
+
+    function otherReason(c) {
+      const msg = h('textarea.input.textarea', { rows: 3, maxLength: 400, attrs: { 'aria-label': 'Message à l’auteur' } });
+      const send = btn('btn--lg tfq-no', 'Bloquer avec ce message', 'x', () => decide(c, { action: 'block', reason: 'autre', message: msg.value }, 'Bloquée'));
+      foot.replaceChildren(h('p.tfq-label', { text: 'Autre motif : écris un message bienveillant à l’auteur' }), msg, h('div.tfq-acts', {}, btn('btn--ghost', 'Retour', 'back', () => paintFoot(c)), send));
+      msg.focus();
+    }
+
+    function validate(c) {
+      const people = editPeople ? editPeople.list() : (c.proposed ?? []);
+      if (people === null) return toast('Une adresse n’est pas valide (adresses de l’université seulement).', 'alert');
+      decide(c, { action: 'validate', people: people.join(',') }, people.length ? `Validée · accord demandé à ${plural(people.length, 'personne')}` : 'Validée');
+    }
+
+    async function decide(c, body, label) {
+      if (busy) return;
+      busy = true;
+      paintTop();
+      try {
+        await tapi(`card/${c.id}`, body);
+        history.push({ card: c, label });
+        items.splice(idx, 1);
+        done++;
+        toast(`${label} : « ${c.title} ».`, body.action === 'block' ? 'x' : 'check');
+        busy = false;
+        render(1);
+        loadOverview().catch(() => {});
+        if (body.action === 'validate' && body.people) loadMailing();
+      } catch (e) {
+        busy = false;
+        paintTop();
+        toast(e.message, 'alert');
+      }
+    }
+
+    async function undo() {
+      const last = history[history.length - 1];
+      if (!last || busy) return;
+      busy = true;
+      paintTop();
+      try {
+        await tapi(`card/${last.card.id}`, { action: 'reopen' });
+        history.pop();
+        done--;
+        const fresh = ((await tapi('cards?filter=pending')) ?? []).find((x) => x.id === last.card.id) ?? last.card;
+        items.splice(idx, 0, fresh);
+        toast(`Décision annulée : « ${last.card.title} » revient à valider.`, 'restore');
+        busy = false;
+        render(-1);
+        loadOverview().catch(() => {});
+      } catch (e) {
+        busy = false;
+        paintTop();
+        toast(e.message, 'alert');
+      }
+    }
+
+    function skipCard() {
+      if (items.length < 2) return;
+      items.push(items.splice(idx, 1)[0]);
+      render(1);
+    }
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (reasons) {
+          reasons = false;
+          paintFoot(items[idx]);
+        } else shut();
+        return;
+      }
+      if (isTyping(e.target) || e.metaKey || e.altKey || busy) return;
+      const c = items[idx];
+      if ((e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (!c || e.ctrlKey) return;
+      if (reasons) {
+        const k = Object.keys(REASONS)[Number(e.key) - 1];
+        if (k) {
+          e.preventDefault();
+          if (k === 'autre') otherReason(c);
+          else decide(c, { action: 'block', reason: k, message: REASONS[k][1] }, 'Bloquée');
+        }
+        return;
+      }
+      if (e.key === 'v' || e.key === 'V' || e.key === 'Enter') {
+        if (e.key === 'Enter' && e.target.closest?.('button')) return;
+        e.preventDefault();
+        validate(c);
+      } else if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        reasons = true;
+        paintFoot(c);
+      } else if (e.key === 'ArrowRight' || e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        skipCard();
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    if (motionOK()) layer.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });
+    render();
+  }
 
   async function refreshAll() {
     await Promise.all([loadOverview(), loadStats()]);

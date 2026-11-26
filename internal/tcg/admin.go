@@ -21,7 +21,7 @@ var BlockReasons = map[string]string{
 
 // Moderate : décision d'un administrateur sur une carte.
 type Moderate struct {
-	Action  string `json:"action"` // validate | block | edit | keep | remove | restore
+	Action  string `json:"action"` // validate | block | reopen | edit | keep | remove | restore
 	Reason  string `json:"reason,omitempty"`
 	Message string `json:"message,omitempty"`
 	Title   string `json:"title,omitempty"`
@@ -59,7 +59,7 @@ func (g *Game) ModerateCard(id string, m Moderate) error {
 		}
 		// La liste confirmée par l'administration remplace celle de l'auteur.
 		c.Tags = g.newTags(c.Author, people)
-		c.Status, c.Decided, c.Reason, c.Message = StatusConsent, now, "", ""
+		c.Status, c.Decided, c.Validated, c.Reason, c.Message = StatusConsent, now, now, "", ""
 		g.settleConsent(c)
 	case "people":
 		// Personnes ajoutées après coup (carte validée ou en jeu).
@@ -121,6 +121,31 @@ func (g *Game) ModerateCard(id string, m Moderate) error {
 		}
 		c.Status, c.Decided, c.Reason, c.Message = StatusBlocked, now, m.Reason, msg
 		g.forgetBallots(c.ID)
+	case "reopen":
+		// Annuler une décision (« Annuler » du mode file) : la carte revient à valider. Seulement
+		// tant que rien n'en dépend : ni classement du jury, ni mail d'accord parti, ni réponse.
+		switch c.Status {
+		case StatusBlocked:
+			if c.Reason == "personne" {
+				return userErr(http.StatusConflict, "Une personne sur la photo a refusé : la carte ne peut pas revenir.")
+			}
+			if c.Purged {
+				return userErr(http.StatusConflict, "La photo de cette carte a déjà été effacée.")
+			}
+		case StatusConsent, StatusAccepted:
+			if c.JuryVotes > 0 {
+				return userErr(http.StatusConflict, "Déjà classée au jury : bloque-la plutôt.")
+			}
+			for _, t := range c.Tags {
+				if !t.Notified.IsZero() || (t.Answer != "" && t.By != c.Author) {
+					return userErr(http.StatusConflict, "Une personne sur la photo a déjà été prévenue : la décision reste.")
+				}
+			}
+			g.forgetBallots(c.ID)
+		default:
+			return userErr(http.StatusConflict, "Cette carte n’a pas de décision à annuler.")
+		}
+		c.Status, c.Decided, c.Validated, c.Reason, c.Message = StatusPending, time.Time{}, time.Time{}, "", ""
 	case "edit":
 		title, desc, cat, err := CleanCardText(m.Title, m.Desc, m.Cat)
 		if err != nil {
@@ -240,6 +265,7 @@ type AdminCard struct {
 	Rarity   Rarity         `json:"rarity,omitempty"`
 	Run      int            `json:"run,omitempty"`
 	Issued   int            `json:"issued,omitempty"`
+	Echoes   int            `json:"echoes,omitempty"`  // échos tirés
 	Reports  map[string]int `json:"reports,omitempty"` // motif → nombre (non examinés)
 	ReportN  int            `json:"reportN,omitempty"`
 	LastRep  time.Time      `json:"lastReport,omitzero"`
@@ -265,7 +291,7 @@ func (g *Game) adminCard(c *Card, img func(string) string) AdminCard {
 	a := AdminCard{
 		ID: c.ID, Num: c.Num, Title: c.Title, Desc: c.Desc, Cat: c.Cat, Img: img(c.Img), Thumb: img(c.Thumb),
 		Status: c.Status, Created: c.Created, Decided: c.Decided, Reason: c.Reason, Message: c.Message, Edited: c.Edited,
-		Wave: c.Wave, No: c.No, Rarity: c.Rarity, Run: c.Run, Issued: c.Issued, Jury: juryScore(c), JuryN: c.JuryVotes,
+		Wave: c.Wave, No: c.No, Rarity: c.Rarity, Run: c.Run, Issued: c.Issued, Echoes: c.Echoes, Jury: juryScore(c), JuryN: c.JuryVotes,
 	}
 	if c.Status == StatusPending || c.Status == StatusAccepted || c.Status == StatusConsent {
 		a.Flags = Flags(c.Title, c.Desc)
@@ -432,7 +458,8 @@ type WaveStats struct {
 	Jurors     int       `json:"jurors"`     // joueurs ayant classé au moins une série
 	Series     int       `json:"series"`     // séries classées
 	Boosters   int       `json:"boosters"`   // ouverts pendant la vague
-	Copies     int       `json:"copies"`     // exemplaires de ses cartes tirés
+	Copies     int       `json:"copies"`     // exemplaires de ses cartes tirés (échos non compris)
+	Echoes     int       `json:"echoes"`     // échos tirés (cartes dont tous les exemplaires numérotés sont partis)
 	Discovered int       `json:"discovered"` // cartes tirées au moins une fois
 	Collectors int       `json:"collectors"` // joueurs qui ont au moins une de ses cartes
 }
@@ -490,6 +517,7 @@ func (g *Game) AdminStats() AdminStats {
 			for _, id := range w.Cards {
 				if c := g.st.Cards[id]; c != nil {
 					ws.Copies += c.Issued
+					ws.Echoes += c.Echoes
 					if c.Issued > 0 {
 						ws.Discovered++
 					}
@@ -547,6 +575,11 @@ func (g *Game) AdminStats() AdminStats {
 		has := map[int]bool{} // vagues dont le joueur a au moins une carte
 		for id, serials := range p.Owned {
 			if c := g.st.Cards[id]; c != nil && len(serials) > 0 && c.Wave > 0 {
+				has[c.Wave] = true
+			}
+		}
+		for id, n := range p.Echoes {
+			if c := g.st.Cards[id]; c != nil && n > 0 && c.Wave > 0 {
 				has[c.Wave] = true
 			}
 		}

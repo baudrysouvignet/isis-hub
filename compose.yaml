@@ -7,8 +7,8 @@ services:
     build:
       context: .
       args:
-        VERSION: "2.2.2"
-    image: isis-hub:2.2.2
+        VERSION: "2.3.0"
+    image: isis-hub:2.3.0
     restart: unless-stopped
     environment:
       PUBLIC_ORIGIN: "https://${DOMAIN:?définir DOMAIN, par ex. DOMAIN=hub.exemple.fr}"

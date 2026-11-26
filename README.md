@@ -244,11 +244,18 @@ connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
    description, la rareté ni le nombre de tirages. « Relancer » prépare un message pour les
    personnes indiquées (partage du téléphone, sinon copié).
    Quota du jour **par compte** (tous appareils) : le serveur compte les envois de la journée sous
-   l'empreinte de l'identifiant ; ni un retrait ni « Quitter le TCG » ne rendent de proposition le
-   même jour, et ce compteur est oublié le lendemain.
+   l'empreinte de l'identifiant ; ni le retrait d'une carte en attente ni « Quitter le TCG » ne
+   rendent de proposition le même jour, et ce compteur est oublié le lendemain. Seule exception :
+   retirer une carte **bloquée** par la modération rend une proposition le jour même (le compteur
+   baisse d'un, sans passer sous 0).
 3. **Modération** (onglet *Cartes TCG*) : on valide par défaut (touche V), on bloque (touche B) avec
    un motif et un message bienveillant visible par l'auteur ; points à vérifier repérés
-   automatiquement ; correction du texte ; suspension des propositions d'un joueur.
+   automatiquement ; correction du texte ; suspension des propositions d'un joueur. **Mode file**
+   (bouton « Mode file » ou touche F) : une carte à la fois en plein écran (grande carte, texte,
+   signaux repérés, personnes indiquées par l'auteur, modifiables), gros boutons Valider / Bloquer
+   (motif en un geste, touches 1 à 7), passage seul à la suivante, compteur restant et « Annuler »
+   de la dernière décision (touche Z : la carte revient à valider, tant qu'aucun mail d'accord n'est
+   parti et que le jury ne l'a pas classée).
 4. **Jury** : pendant ses dates, une série de « Tu préfères ? » par jour (5 cartes validées, 7 duels
    au plus, auteurs masqués, jamais les siennes ; 7 séries au plus). Une série envoyée est close :
    le serveur ne renvoie plus ses cartes ni l'ordre choisi, et refuse de la reclasser. **Aperçu de l'impression** : cartes classées par le jury, rareté
@@ -256,16 +263,41 @@ connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
 5. **Sortie** : à la date prévue la vague s'imprime seule (ou « Imprimer maintenant ») ; sans carte
    validée, la sortie est repoussée d'un jour. Avec « Une vague chaque semaine », la vague suivante
    est programmée aussitôt.
-6. **Jeu** : un booster de 5 cartes par jour (nouveau à 6 h). Exemplaires numérotés : Rare 25,
-   Épique 10, Légendaire 3, Unique 1 (réglables) ; ils sont répartis sur 14 jours après la sortie au
-   lieu de partir le premier jour. Collection, « Je cherche », signalements, échanges en face à face
-   (QR code ou code à 4 caractères, table en direct, échange atomique côté serveur).
+6. **Jeu** : deux boosters de 4 cartes par cycle de 24 h : le premier quand on veut, le second 3 h
+   après, et le cycle suivant 24 h après le premier booster du précédent (un second booster pas
+   ouvert à temps ne se garde pas) : 8 cartes par jour. Exemplaires numérotés : Rare 25, Épique 10,
+   Légendaire 3, Unique 1 (réglables, saison et vague) ; ils sont répartis sur 14 jours après la
+   sortie au lieu de partir le premier jour. Le rythme compte les boosters attendus par jour : le
+   plus grand de la moyenne des 7 derniers jours, des boosters du jour et de 1,5 par joueur venu ces
+   7 jours (plus les boosters bonus valables) ; ce plancher évite, le jour du lancement, que les
+   premiers à ouvrir raflent les cartes numérotées. Collection, « Je cherche », signalements,
+   échanges en face à face (QR code ou code à 4 caractères, table en direct, échange atomique côté
+   serveur).
+   **Échos** : quand tous les exemplaires numérotés d'une carte sont tirés, elle sort encore en
+   « Écho », au même rythme moyen que ses vrais exemplaires (Run ÷ (boosters par jour × 14)) : même
+   carte et même photo, finition mate (cadre désaturé et immobile, liseré pointillé, onde au lieu de
+   l'holographie), étiquette « Écho », sans numéro. Un écho compte pour compléter la collection mais
+   est rangé à part (`Player.Echoes`, jamais dans `Owned`) : aucun échange, double ni correspondance
+   ne peut le voir.
 7. **Meilleurs créateurs** : podium des 3 premiers et place de chacun (accueil du jeu, page
    d'attente). Score calculé par le serveur (`internal/tcg/leaderboard.go`) et jamais envoyé : carte
-   en jeu selon sa rareté (commune 2 … unique 25), carte validée 1, bloquée −1, retirée après
-   signalements −3 ; refus d'une personne sur la photo et propositions en attente : 0. Une carte
-   bloquée puis retirée par son auteur garde sa pénalité (`Player.Withdrawn` : un nombre). La page dit
-   ce qui compte et à quel point (jauges), sans chiffre, pour ne rien dévoiler de la rareté.
+   en jeu selon sa rareté (commune 2 … unique 25), carte validée 1. Les points ne font que monter,
+   sauf une exception : une carte validée, non retenue, que le jury de la vague en jeu a placée dans
+   son dernier quart (au moins 3 classements, score négatif) coûte 2 (−1 au total). Elle se calcule
+   vague par vague, avec les seuls classements de ce jury. Cartes bloquées, retirées, refusées par
+   une personne sur la photo et propositions en attente : 0. La page dit ce qui compte et à quel
+   point (jauges), sans chiffre, pour ne rien dévoiler de la rareté.
+8. **Récompenses de lancement** (`internal/tcg/rewards.go`) : chaque soir du jury de la vague 1 où
+   la promo a voté, à minuit, le classement des créateurs tel qu'il s'affichait est reconstitué (date
+   de validation de chaque carte, date des séries du jury) : 1er → booster bonus de 5 cartes, 2e → 4,
+   3e → 3, du 4e au 13e → 1 ; chaque participant (une carte validée ou une série du jury) reçoit 4
+   cartes. Les 5 meilleurs soirs d'un joueur comptent. Attribués d'eux-mêmes à la sortie de la
+   vague 1, valables 24 h, au même taux de tirage que les boosters du jour, et comptés d'avance dans
+   le rythme des cartes numérotées. Avant la sortie, chacun voit ce qu'il a gagné à ce jour, et
+   l'administration le tableau complet. Équilibrage simulé avec le vrai code :
+   `TCG_SIM=1 go test ./internal/tcg/ -run TestLaunchSimulation -v`.
+   Avant le lancement, l'administration peut **essayer une ouverture** (booster du jour ou bonus,
+   avec un écho) depuis la page d'attente : raretés inventées, rien n'est enregistré.
 
 **Ce que le serveur garde** (`tcg.json` du volume `/data`, droits 600, copie quotidienne dans
 `tcg-backups/`, 14 jours) : pseudo, collection, propositions, votes, signalements et échanges de
@@ -278,7 +310,7 @@ reprise ; sans copie, le serveur refuse de démarrer plutôt que d'écraser le j
 **Statistiques** (`/admin` → *Cartes TCG* → *Statistiques*) : joueurs inscrits et venus (aujourd'hui,
 7 et 30 jours), jurés et séries classées, boosters ouverts, échanges, créateurs ; une courbe sur 30
 jours (venus, boosters, séries, propositions, inscriptions, échanges) et un tableau par vague
-(cartes, jurés, séries, boosters ouverts pendant la vague, exemplaires tirés, découvertes,
+(cartes, jurés, séries, boosters ouverts pendant la vague, exemplaires tirés, échos, découvertes,
 collectionneurs). Pour cela, le serveur ne garde que des **compteurs par jour** (400 jours) et un
 compteur de boosters par vague : aucun pseudo, rien qui dise qui est venu ou a voté.
 
