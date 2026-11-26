@@ -2007,3 +2007,66 @@ html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
 .tad-nights li { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 8px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-size: 13px; }
 .tad-nights li b { min-width: 120px; }
 .tad-nights li span { color: var(--text-2); }
+
+/* ==========================================================================
+   Administration du TCG : deux vues (lancement et modération, détail des scores), récompenses repliées
+   ========================================================================== */
+.tad-views { display: grid; grid-auto-flow: column; justify-content: start; margin-bottom: 14px; }
+.tad-views .tad-seg-b { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 14px; font-size: 13.5px; }
+@media (max-width: 640px) { .tad-views { grid-auto-flow: row; grid-template-columns: 1fr 1fr; } .tad-views .tad-seg-b { padding: 8px 10px; } }
+.tad-rewards-d > summary { min-height: 28px; }
+.tad-rewards-t { display: grid; gap: 2px; min-width: 0; }
+.tad-rewards-t small { color: var(--text-3); font-weight: 500; font-size: 12.5px; }
+.tad-rewards-chev { margin-left: auto; flex: none; color: var(--text-3); rotate: 90deg; transition: rotate .2s var(--ease, ease); }
+.tad-rewards-d[open] .tad-rewards-chev { rotate: -90deg; }
+.tad-rewards-d[open] > summary { margin-bottom: 12px; }
+.tad-more { justify-self: start; }
+
+.tad-scores { display: grid; gap: 14px; min-width: 0; padding: 20px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); }
+.tad-scores .tad-h { margin: 0; font-size: 20px; }
+.tad-scores .tad-box .tad-help { margin-bottom: 0; }
+.tad-scale { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.tad-scale li { padding: 6px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); color: var(--text-2); font-size: 12.5px; }
+.tad-scale b { color: var(--text); font-variant-numeric: tabular-nums; }
+.tad-sc-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.tad-sc-search { flex: 1 1 220px; max-width: 360px; }
+.tad-sc-tools .tad-help { margin: 0; }
+.tad-sc-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.tad-sc { border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.tad-sc.is-podium { border-color: color-mix(in srgb, var(--brand) 35%, var(--line)); }
+.tad-sc > summary { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; cursor: pointer; list-style: none; border-radius: 14px; }
+.tad-sc > summary::-webkit-details-marker { display: none; }
+.tad-sc > summary:hover { background: var(--hover); }
+.tad-sc-rank { color: var(--text-3); font: 750 13px/1.2 var(--font); font-variant-numeric: tabular-nums; }
+.tad-sc.is-podium .tad-sc-rank { color: var(--brand); }
+.tad-sc.is-out .tad-sc-rank { font-weight: 600; font-size: 12px; }
+.tad-sc-who { min-width: 0; }
+.tad-sc-who b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 650 14px/1.3 var(--font); }
+.tad-sc-who span { display: block; color: var(--text-3); font-size: 12.5px; }
+.tad-sc-pts { text-align: right; font: 800 18px/1 var(--font); font-variant-numeric: tabular-nums; }
+.tad-sc-pts small { display: block; margin-top: 2px; color: var(--text-3); font: 500 11px/1.2 var(--font); }
+.tad-sc-pts.is-neg { color: var(--err); }
+.tad-sc-cards { display: grid; margin: 0 12px 10px; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.tad-sc-cards li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.tad-sc-cards li:last-child { border-bottom: 0; }
+.tad-sc-c { min-width: 0; }
+.tad-sc-c b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.tad-sc-c span { display: block; color: var(--text-3); font-size: 12px; }
+.tad-sc-p { font-weight: 750; font-variant-numeric: tabular-nums; }
+.tad-sc-p.is-pos { color: var(--ok); }
+.tad-sc-p.is-neg { color: var(--err); }
+.tad-sc-p.is-zero { color: var(--text-3); }
+@media (max-width: 640px) {
+  .tad-scores { padding: 14px; }
+  .tad-sc > summary { grid-template-columns: minmax(0, 1fr) auto; }
+  .tad-sc-rank { grid-column: 1 / -1; }
+}
+/* Détail des scores, sur téléphone : les trois chiffres restent sur une ligne. */
+@media (max-width: 640px) {
+  .tad-scores .tad-minis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .tad-scores .tad-mini { padding: 10px; }
+  .tad-scores .tad-mini b { font-size: 18px; }
+  .tad-scores .tad-mini span, .tad-scores .tad-mini small { font-size: 11.5px; }
+}
+.tad-scale-d[open] > summary { margin-bottom: 10px; }
+.tad-scale-d[open] .tad-rewards-chev { rotate: -90deg; }

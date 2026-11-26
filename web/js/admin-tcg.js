@@ -84,29 +84,63 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
   let mode = ''; // '' | block | edit | validate | people
   let shown = false;
   let printWave = 0;
+  let view = 'main'; // main (lancement et modération) | scores (détail des scores)
+  let rewardsOpen = false; // bloc des récompenses déplié
+  let rewardsAll = false; // tous les joueurs, pas seulement les premiers
+  let scoreQuery = '';
 
   const launch = h('section.tad-launch');
   const statsBox = h('div.tad-box.tad-stats');
   const mailing = h('section.tad-mailing', { hidden: true });
   const kpis = h('div.tad-kpis', { attrs: { role: 'tablist', 'aria-label': 'Filtrer' } });
   const queueBar = h('div.tfq-entry', { hidden: true });
-  const rewardsBox = h('div.tad-box.tad-rewards');
+  const rewardsBox = h('div.tad-rewards-wrap');
   const list = h('ul.tad-list', { attrs: { 'aria-label': 'Propositions' } });
   const detail = h('section.tad-detail', { tabIndex: -1, attrs: { 'aria-label': 'Détail' } });
   const grid = h('div.tad-grid', {}, list, detail);
-  root.replaceChildren(
-    h(
-      'div.tad-wrap',
-      {},
-      launch,
-      h('div.tad-policy', {}, h('span.tad-policy-ic', {}, ic('check', 'ic')), h('p', {}, h('b', { text: 'Chaque carte attend ta validation avant d’aller au jury.' }), ' En validant, indique qui est sur la photo : la carte attend alors l’accord de chacun et passe au jury d’elle-même à la dernière réponse. On bloque seulement ce qui insulte, dénigre ou expose quelqu’un.')),
-      mailing,
-      queueBar,
-      kpis,
-      grid,
-      h('p.tad-keys', {}, h('kbd', { text: 'F' }), ' mode file · ', h('kbd', { text: 'V' }), ' valider · ', h('kbd', { text: 'B' }), ' bloquer · ', h('kbd', { text: '↑' }), ' ', h('kbd', { text: '↓' }), ' naviguer'),
-    ),
+  const main = h(
+    'div.tad-main',
+    { id: 'tad-v-main', attrs: { role: 'tabpanel', 'aria-labelledby': 'tad-t-main' } },
+    launch,
+    h('div.tad-policy', {}, h('span.tad-policy-ic', {}, ic('check', 'ic')), h('p', {}, h('b', { text: 'Chaque carte attend ta validation avant d’aller au jury.' }), ' En validant, indique qui est sur la photo : la carte attend alors l’accord de chacun et passe au jury d’elle-même à la dernière réponse. On bloque seulement ce qui insulte, dénigre ou expose quelqu’un.')),
+    mailing,
+    queueBar,
+    kpis,
+    grid,
+    h('p.tad-keys', {}, h('kbd', { text: 'F' }), ' mode file · ', h('kbd', { text: 'V' }), ' valider · ', h('kbd', { text: 'B' }), ' bloquer · ', h('kbd', { text: '↑' }), ' ', h('kbd', { text: '↓' }), ' naviguer'),
   );
+  const scoresView = h('section.tad-scores', { id: 'tad-v-scores', hidden: true, attrs: { role: 'tabpanel', 'aria-labelledby': 'tad-t-scores' } });
+  // Deux vues : le lancement et la modération (comme avant), et le détail des scores du classement.
+  const VIEWS = [
+    ['main', 'Lancement et modération', 'cards'],
+    ['scores', 'Détail des scores', 'podium'],
+  ];
+  const viewBtns = VIEWS.map(([k, label, icon]) => {
+    const b = h('button.tad-seg-b', { type: 'button', id: `tad-t-${k}`, attrs: { role: 'tab', 'aria-controls': `tad-v-${k}` } }, ic(icon), h('span', { text: label }));
+    b.addEventListener('click', () => setView(k));
+    b.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      e.preventDefault();
+      const next = VIEWS[(VIEWS.findIndex(([x]) => x === k) + (e.key === 'ArrowRight' ? 1 : VIEWS.length - 1)) % VIEWS.length][0];
+      setView(next);
+      $(`#tad-t-${next}`, root)?.focus();
+    });
+    return b;
+  });
+  function setView(k) {
+    view = k;
+    viewBtns.forEach((b, i) => {
+      const on = VIEWS[i][0] === k;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-selected', String(on));
+      b.tabIndex = on ? 0 : -1;
+    });
+    main.hidden = k !== 'main';
+    scoresView.hidden = k !== 'scores';
+    if (k === 'scores') loadScores();
+  }
+  root.replaceChildren(h('div.tad-wrap', {}, h('div.tad-seg.tad-views', { attrs: { role: 'tablist', 'aria-label': 'Cartes TCG' } }, ...viewBtns), main, scoresView));
+  setView('main');
 
   // ---------------------------------------------------------------- vue d'ensemble, lancement
   async function loadOverview() {
@@ -333,8 +367,18 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       return;
     }
     rewardsBox.hidden = false;
-    const rows = r.rows ?? [];
+    const rows = [...(r.rows ?? [])].sort((a, b) => b.cards - a.cards || a.pseudo.localeCompare(b.pseudo, 'fr'));
     const place = (n) => (n === 1 ? '1er' : `${n}e`);
+    // Replié par défaut, et seulement les premiers une fois déplié : la liste peut être longue.
+    const FIRST = 10;
+    const shownRows = rewardsAll ? rows : rows.slice(0, FIRST);
+    const more =
+      rows.length > FIRST
+        ? btn('btn--ghost btn--sm tad-more', rewardsAll ? `Seulement les ${FIRST} premiers` : `Voir les ${rows.length} joueurs`, rewardsAll ? 'up' : 'down', () => {
+            rewardsAll = !rewardsAll;
+            loadRewards();
+          })
+        : null;
     const list = rows.length
       ? h(
           'div.tad-tablewrap',
@@ -346,7 +390,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
             h(
               'tbody',
               {},
-              ...rows.slice(0, 40).map((x) =>
+              ...shownRows.map((x) =>
                 h('tr', {}, h('th', { text: x.pseudo, attrs: { scope: 'row' } }), h('td', { text: x.participant ? 'oui' : '–' }), h('td', { text: (x.nights ?? []).map((n) => place(n.rank)).join(' · ') || '–' }), h('td', { text: n0(x.cards) }), r.granted ? h('td', { text: n0(x.opened) }) : null),
               ),
             ),
@@ -361,12 +405,163 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
           ...[...r.podiums].reverse().map((n) => h('li', {}, h('b', { text: `Soir du ${dayDate(n.day).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}` }), h('span', { text: n.top.length ? n.top.map((p, i) => `${place(i + 1)} ${p}`).join(' · ') : 'personne au classement' }))),
         )
       : null;
-    rewardsBox.replaceChildren(
-      h('h3.tad-sub', { text: r.granted ? 'Récompenses de lancement · attribuées' : 'Récompenses de lancement · à ce jour' }),
-      h('p.tad-help', { text: `${plural(r.nights, 'soir de jury compté', 'soirs de jury comptés')} · ${plural(r.cards, 'carte bonus', 'cartes bonus')} pour ${plural(rows.length, 'joueur')} sur ${n0(r.players)}. Chaque soir où la promo a voté, à minuit : 1er 5 cartes, 2e 4, 3e 3, du 4e au 13e 1 ; 4 cartes par participant (carte validée ou série du jury). ${r.maxNights} meilleurs soirs au plus par joueur. Attribuées d’elles-mêmes à la sortie de la vague 1, valables 24 h.` }),
-      nights ? h('h4.tad-sub.tad-sub--sm', { text: 'Podium de chaque soir (classement à minuit)' }) : null,
-      nights,
-      list,
+    const box = h(
+      'details.tad-box.tad-rewards-d',
+      { open: rewardsOpen },
+      h(
+        'summary',
+        {},
+        ic('gift'),
+        h('span.tad-rewards-t', {}, h('span', { text: r.granted ? 'Récompenses de lancement · attribuées' : 'Récompenses de lancement · à ce jour' }), h('small', { text: `${plural(r.cards, 'carte bonus', 'cartes bonus')} · ${plural(rows.length, 'joueur')} · ${plural(r.nights, 'soir compté', 'soirs comptés')}` })),
+        ic('chev', 'ic ic--sm tad-rewards-chev'),
+      ),
+      h(
+        'div.tad-rewards',
+        {},
+        h('p.tad-help', { text: `${plural(r.cards, 'carte bonus', 'cartes bonus')} pour ${plural(rows.length, 'joueur')} sur ${n0(r.players)}. Chaque soir où la promo a voté, à minuit : 1er 5 cartes, 2e 4, 3e 3, du 4e au 13e 1 ; 4 cartes par participant (carte validée ou série du jury). ${r.maxNights} meilleurs soirs au plus par joueur. Attribuées d’elles-mêmes à la sortie de la vague 1, valables 24 h.` }),
+        nights ? h('h4.tad-sub.tad-sub--sm', { text: 'Podium de chaque soir (classement à minuit)' }) : null,
+        nights,
+        rows.length ? h('h4.tad-sub.tad-sub--sm', { text: rewardsAll || rows.length <= FIRST ? 'Cartes bonus par joueur' : `Cartes bonus · les ${FIRST} premiers sur ${rows.length}` }) : null,
+        list,
+        more,
+      ),
+    );
+    box.addEventListener('toggle', () => (rewardsOpen = box.open));
+    rewardsBox.replaceChildren(box);
+  }
+
+  // ---------------------------------------------------------------- détail des scores
+  // Le classement des créateurs (podium du TCG), joueur par joueur : sa place, ses points, et ce
+  // que rapporte chacune de ses cartes. Points et places viennent du serveur (mêmes calculs que le
+  // podium) ; les joueurs, eux, ne voient jamais un score.
+  const fold = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const pts = (n) => (n > 0 ? `+${n0(n)}` : n < 0 ? `−${n0(-n)}` : '0');
+  const rlabels = (r, n) => (n > 1 ? `${RLABEL[r]}s` : RLABEL[r]);
+  let scores = null;
+
+  async function loadScores() {
+    if (!scores) scoresView.replaceChildren(h('p.tad-help', { text: 'Chargement du détail des scores…' }));
+    try {
+      scores = await tapi('scores');
+    } catch (e) {
+      scoresView.replaceChildren(h('p.tad-help', { text: `Détail des scores indisponible : ${e.message}` }));
+      return;
+    }
+    renderScores();
+  }
+
+  /** Ce que vaut une carte, en clair. */
+  function cardWhy(c, s) {
+    if (c.status === 'printed') return `En jeu · ${RLABEL[c.rarity] ?? 'rareté inconnue'}${c.wave ? ` · vague ${c.wave}` : ''}`;
+    if (c.status === 'accepted' || c.status === 'consent') {
+      const base = c.status === 'consent' ? 'Validée · attend l’accord des personnes sur la photo' : 'Validée · pas encore imprimée';
+      return c.penalty ? `${base} · dernier quart du jury de la vague ${s.penaltyWave} (${n0(s.validated)} − ${n0(-s.penalty)})` : base;
+    }
+    if (c.status === 'pending') return 'À valider · ne compte qu’une fois validée';
+    if (c.status === 'blocked') return 'Bloquée · ne compte pas';
+    return 'Retirée du jeu · ne compte pas';
+  }
+
+  /** Résumé d'un joueur : « 2 Épiques +18 · 3 validées +3 · 1 en bas du jury −1 · 2 sans points ». */
+  function breakdown(row) {
+    const parts = [];
+    const printed = {};
+    for (const c of row.cards) if (c.status === 'printed') (printed[c.rarity] ??= []).push(c);
+    for (const r of [...RARITIES].reverse()) {
+      const list = printed[r];
+      if (list) parts.push(`${list.length} ${rlabels(r, list.length)} ${pts(list.reduce((a, c) => a + c.points, 0))}`);
+    }
+    const valid = row.cards.filter((c) => (c.status === 'accepted' || c.status === 'consent') && !c.penalty);
+    if (valid.length) parts.push(`${plural(valid.length, 'validée', 'validées')} ${pts(valid.reduce((a, c) => a + c.points, 0))}`);
+    const pen = row.cards.filter((c) => c.penalty);
+    if (pen.length) parts.push(`${n0(pen.length)} en bas du jury ${pts(pen.reduce((a, c) => a + c.points, 0))}`);
+    const zero = row.cards.filter((c) => !['printed', 'accepted', 'consent'].includes(c.status));
+    if (zero.length) parts.push(`${n0(zero.length)} sans points`);
+    return parts.join(' · ');
+  }
+
+  function renderScores() {
+    const s = scores;
+    const rows = s.rows ?? [];
+    const ranked = rows.filter((r) => r.rank);
+    const penalized = rows.reduce((a, r) => a + r.cards.filter((c) => c.penalty).length, 0);
+    const place = (r) => (r.rank ? (r.rank === 1 ? '1er' : `${r.rank}e`) : 'Hors classement');
+    const why = (r) => {
+      if (r.rank) return null;
+      if (r.muted) return 'propositions suspendues';
+      if (!r.cards.some((c) => ['printed', 'accepted', 'consent'].includes(c.status))) return 'aucune carte validée';
+      return 'score nul ou négatif';
+    };
+
+    const scale = h(
+      'ul.tad-scale',
+      { attrs: { 'aria-label': 'Barème' } },
+      ...RARITIES.map((r) => h('li', {}, `${RLABEL[r]} en jeu `, h('b', { text: pts(s.rarity?.[r] ?? 0) }))),
+      h('li', {}, 'Validée, pas encore imprimée ', h('b', { text: pts(s.validated) })),
+      h('li', {}, s.penaltyWave ? `En plus, dernier quart du jury de la vague ${s.penaltyWave} ` : 'En plus, dernier quart du jury de la vague en jeu ', h('b', { text: pts(s.penalty) })),
+      h('li', {}, 'À valider, bloquée, retirée ', h('b', { text: '0' })),
+    );
+
+    const search = h('input.input.tad-sc-search', { type: 'search', placeholder: 'Rechercher un joueur', value: scoreQuery, attrs: { 'aria-label': 'Rechercher un joueur' } });
+    const count = h('span.tad-help');
+    const ul = h('ul.tad-sc-list', { attrs: { 'aria-label': 'Créateurs' } });
+    const paint = () => {
+      const q = fold(scoreQuery.trim());
+      const shownRows = q ? rows.filter((r) => fold(r.pseudo).includes(q)) : rows;
+      count.textContent = q ? `${plural(shownRows.length, 'créateur trouvé', 'créateurs trouvés')} sur ${n0(rows.length)}` : `${plural(rows.length, 'créateur')} · ${plural(ranked.length, 'classé', 'classés')}`;
+      ul.replaceChildren(
+        ...shownRows.map((r) => {
+          const off = why(r);
+          return h(
+            `li`,
+            {},
+            h(
+              `details.tad-sc${r.rank && r.rank <= s.podium ? '.is-podium' : ''}${r.rank ? '' : '.is-out'}`,
+              {},
+              h(
+                'summary',
+                {},
+                h('span.tad-sc-rank', { text: place(r) }),
+                h('span.tad-sc-who', {}, h('b', { text: r.pseudo }), h('span', { text: [off ? off[0].toUpperCase() + off.slice(1) : null, breakdown(r)].filter(Boolean).join(' · ') || 'Aucune carte' })),
+                h(`span.tad-sc-pts${r.score < 0 ? '.is-neg' : ''}`, {}, n0(r.score), h('small', { text: 'points' })),
+              ),
+              h(
+                'ol.tad-sc-cards',
+                { attrs: { 'aria-label': `Cartes de ${r.pseudo}` } },
+                ...r.cards.map((c) => h('li', {}, h('span.tad-sc-c', {}, h('b', { text: c.title || 'Sans titre' }), h('span', { text: cardWhy(c, s) })), h(`span.tad-sc-p${c.points > 0 ? '.is-pos' : c.points < 0 ? '.is-neg' : '.is-zero'}`, { text: pts(c.points) }))),
+              ),
+            ),
+          );
+        }),
+      );
+      if (!shownRows.length) ul.append(h('li.tad-help', { text: rows.length ? 'Aucun joueur ne correspond.' : 'Aucune carte proposée pour l’instant.' }));
+    };
+    search.addEventListener('input', () => {
+      scoreQuery = search.value;
+      paint();
+    });
+    paint();
+
+    scoresView.replaceChildren(
+      h(
+        'header.tad-launch-head',
+        {},
+        h('div', {}, h('h2.tad-h', { text: 'Détail des scores' }), h('p.tad-help', { text: 'Le classement des créateurs (podium du TCG), avec les points de chacun et ce que rapporte chaque carte. Visible ici seulement : les joueurs ne voient que le podium et leur place, jamais un score.' })),
+        btn('btn--ghost btn--sm', 'Actualiser', 'loop', async (e) => {
+          e.currentTarget.disabled = true;
+          await loadScores();
+        }),
+      ),
+      h(
+        'div.tad-minis',
+        {},
+        h('div.tad-mini', {}, h('span', { text: 'Créateurs classés' }), h('b', { text: n0(ranked.length) }), h('small', { text: `sur ${plural(rows.length, 'créateur')}` })),
+        h('div.tad-mini', {}, h('span', { text: 'En tête' }), h('b', { text: ranked[0] ? n0(ranked[0].score) : '–' }), h('small', { text: ranked[0] ? `points · ${ranked[0].pseudo}` : 'personne n’est classé' })),
+        h('div.tad-mini', {}, h('span', { text: 'Cartes en bas du jury' }), h('b', { text: n0(penalized) }), h('small', { text: s.penaltyWave ? `jury de la vague ${s.penaltyWave} · ${pts(s.penalty)} chacune` : 'aucune vague imprimée' })),
+      ),
+      h('details.tad-box.tad-scale-d', {}, h('summary', {}, ic('info'), 'Barème : comment les points se comptent', ic('chev', 'ic ic--sm tad-rewards-chev')), scale, h('p.tad-help', { text: `Une carte compte selon sa rareté une fois imprimée (le jury décide de la rareté), 1 point tant qu’elle est validée sans être imprimée. Seule pénalité : une carte validée non retenue que le jury de la vague en jeu place dans son dernier quart (au moins ${plural(s.minVotes, 'classement')}, score négatif). Classés : au moins une carte validée, un score positif et des propositions non suspendues. À égalité : le plus de cartes validées, puis la première validée le plus tôt.` })),
+      h('div.tad-sc-tools', {}, search, count),
+      ul,
     );
   }
 
@@ -871,9 +1066,10 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     return form;
   }
 
-  // Raccourcis : F mode file, V valider, B bloquer, ↑ ↓ naviguer (onglet TCG affiché, hors saisie).
+  // Raccourcis : F mode file, V valider, B bloquer, ↑ ↓ naviguer (onglet TCG affiché, vue de
+  // modération, hors saisie).
   document.addEventListener('keydown', (e) => {
-    if (root.closest('[hidden]') || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey || mode || queueOpen) return;
+    if (view !== 'main' || root.closest('[hidden]') || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey || mode || queueOpen) return;
     if ((e.key === 'f' || e.key === 'F') && (ov?.counts?.pending ?? 0) > 0) {
       e.preventDefault();
       openQueue();

@@ -1,6 +1,7 @@
 package tcg
 
 import (
+	"maps"
 	"sort"
 	"time"
 )
@@ -212,4 +213,97 @@ func (g *Game) leaderboard(pid string) Leaderboard {
 		}
 	}
 	return lb
+}
+
+// ------------------------------------------------------------ détail des scores (administration)
+
+// ScoreCard : une carte d'un créateur et ce qu'elle rapporte au classement (cardPoints).
+type ScoreCard struct {
+	Title   string  `json:"title"`
+	Status  string  `json:"status"`
+	Rarity  Rarity  `json:"rarity,omitempty"` // carte en jeu seulement
+	Wave    int     `json:"wave,omitempty"`
+	Points  float64 `json:"points"`
+	Penalty bool    `json:"penalty,omitempty"` // dernier quart du jury de la vague en jeu
+}
+
+// ScoreRow : un créateur, sa place (0 : hors classement) et ses cartes, de celle qui rapporte le
+// plus à celle qui rapporte le moins.
+type ScoreRow struct {
+	Pseudo string      `json:"pseudo"`
+	Rank   int         `json:"rank,omitempty"`
+	Score  float64     `json:"score"`
+	Muted  bool        `json:"muted,omitempty"`
+	Cards  []ScoreCard `json:"cards"`
+}
+
+// ScoresAdmin : pour l'administration seulement, le détail du classement des créateurs (qui a
+// combien de points, et grâce à quelles cartes), avec le barème. Les joueurs, eux, ne voient
+// jamais un score : seulement le podium et leur place.
+type ScoresAdmin struct {
+	Rows        []ScoreRow         `json:"rows"`
+	Rarity      map[Rarity]float64 `json:"rarity"`    // carte en jeu, selon sa rareté
+	Validated   float64            `json:"validated"` // carte validée, pas encore imprimée
+	Penalty     float64            `json:"penalty"`   // en plus, dernier quart du jury
+	MinVotes    int                `json:"minVotes"`
+	PenaltyWave int                `json:"penaltyWave,omitempty"` // vague dont le jury compte (0 : aucune imprimée)
+	Podium      int                `json:"podium"`
+}
+
+// AdminScores : tous les créateurs (au moins une carte proposée), les classés d'abord, dans
+// l'ordre du podium. Points et places viennent de cardPoints et ranking, comme pour les joueurs.
+func (g *Game) AdminScores() ScoresAdmin {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	bottom := g.juryBottom()
+	out := ScoresAdmin{Rows: []ScoreRow{}, Rarity: maps.Clone(rarityPoints), Validated: validatedPoints, Penalty: juryPenalty, MinVotes: penaltyMinVotes, Podium: podiumSize}
+	if w := g.latestPrinted(); w != nil {
+		out.PenaltyWave = w.N
+	}
+	place := map[string]int{}
+	for i, cr := range g.ranking() {
+		place[cr.id] = i + 1
+	}
+	by := map[string]*ScoreRow{}
+	for _, c := range g.st.Cards {
+		p := g.st.Players[c.Author]
+		if p == nil {
+			continue
+		}
+		row := by[p.ID]
+		if row == nil {
+			row = &ScoreRow{Pseudo: p.Pseudo, Rank: place[p.ID], Muted: p.Muted, Cards: []ScoreCard{}}
+			by[p.ID] = row
+		}
+		sc := ScoreCard{Title: c.Title, Status: c.Status, Wave: c.Wave, Points: cardPoints(c, bottom), Penalty: bottom[c.ID]}
+		if c.Status == StatusPrinted {
+			sc.Rarity = c.Rarity
+		}
+		row.Score += sc.Points
+		row.Cards = append(row.Cards, sc)
+	}
+	for _, row := range by {
+		sort.SliceStable(row.Cards, func(i, j int) bool {
+			a, b := row.Cards[i], row.Cards[j]
+			if a.Points != b.Points {
+				return a.Points > b.Points
+			}
+			return a.Title < b.Title
+		})
+		out.Rows = append(out.Rows, *row)
+	}
+	sort.Slice(out.Rows, func(i, j int) bool {
+		a, b := out.Rows[i], out.Rows[j]
+		if (a.Rank > 0) != (b.Rank > 0) {
+			return a.Rank > 0
+		}
+		if a.Rank != b.Rank {
+			return a.Rank < b.Rank
+		}
+		if a.Score != b.Score {
+			return a.Score > b.Score
+		}
+		return a.Pseudo < b.Pseudo
+	})
+	return out
 }
