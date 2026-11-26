@@ -30,6 +30,9 @@ type GradeSubject struct {
 	Coef  float64     `json:"coef"`
 	Code  string      `json:"code"` // code de la matière dans ADE (lien avec l'emploi du temps), facultatif
 	Evals []GradeEval `json:"evals"`
+	// Retired : évaluations retirées de la maquette. Plus affichées, mais une note qu'un étudiant y
+	// avait saisie devient une note personnelle de la même matière, au lieu de disparaître.
+	Retired []GradeEval `json:"retired,omitempty"`
 }
 
 type GradeUE struct {
@@ -177,6 +180,29 @@ func (g *GradeClass) Validate() error {
 						return err
 					}
 				}
+				// Évaluations retirées : nettoyées, sans celles redevenues actives, 80 au plus.
+				kept := m.Retired[:0]
+				for _, e := range m.Retired {
+					e.Label = clean1(e.Label, 40)
+					if !gradeIDRE.MatchString(e.ID) || ids["e"+e.ID] || ids["r"+e.ID] {
+						continue
+					}
+					if e.Label == "" {
+						e.Label = "Évaluation"
+					}
+					if !validCoef(e.Coef) {
+						e.Coef = 1
+					}
+					if e.Date != "" && !validDate(e.Date) {
+						e.Date = ""
+					}
+					ids["r"+e.ID] = true
+					kept = append(kept, e)
+				}
+				if len(kept) > 80 {
+					kept = kept[len(kept)-80:]
+				}
+				m.Retired = kept
 			}
 		}
 	}
@@ -225,13 +251,16 @@ func (c *ContentStore) SetGrades(class string, g *GradeClass) error {
 	if !gradeKeyRE.MatchString(class) {
 		return errors.New("classe invalide")
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if g != nil {
+		if old, ok := c.grades[class]; ok {
+			keepRetired(&old, g)
+		}
 		if err := g.Validate(); err != nil {
 			return err
 		}
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	next := GradeBook{}
 	for k, v := range c.grades {
 		next[k] = v

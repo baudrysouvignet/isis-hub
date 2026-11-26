@@ -210,6 +210,12 @@ func (s *Service) adminContent(w http.ResponseWriter, r *http.Request, action st
 	case "grades":
 		s.adminGrades(w, r)
 		return true
+	case "grades/coefs":
+		s.adminGradesCoefs(w, r)
+		return true
+	case "grades/bulk":
+		s.adminGradesBulk(w, r)
+		return true
 	case "classes":
 		var in calendar.Data
 		if !s.readJSON(w, r, 256<<10, &in) {

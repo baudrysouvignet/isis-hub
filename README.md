@@ -143,7 +143,11 @@ code servi. D'où les moyens de vérification ci-dessous.
   les séances marquées examen (par ADE ou par l'étudiant) datent les évaluations « Examen » sans
   date et, en plus, apparaissent comme propositions de contrôles (« Examen · EDT »). **Semestre en
   cours** choisi par chaque étudiant (« Terminer le S7 », réversible), sauvegardé pour tous ses
-  appareils : plus de dates de semestre.
+  appareils : plus de dates de semestre. **Évaluations sans note** : l'étudiant ajoute le détail
+  donné par le prof (ex. Oral ×0,3, Écrit ×0,4), avec un coefficient décimal ; elles comptent pour
+  « la note à viser » et reçoivent leur note plus tard. Une note posée sur une évaluation que la
+  maquette retire reste, en note personnelle de la même matière (la maquette garde ses évaluations
+  retirées, `retired`, même pour les notes enregistrées avant leur description).
 - **Sauvegarde anonyme et chiffrée** des données créées dans le Hub (notes, séances marquées
   examen, étiquettes et règles de mails, notes de cours, « déjà vu ») : retrouvées sur tous les appareils. À la connexion, la
   page tire du mot de passe (PBKDF2-SHA-256, 600 000 tours) un identifiant, une preuve et une clé
@@ -155,7 +159,13 @@ code servi. D'où les moyens de vérification ci-dessous.
   (↑ ↓ pour passer d'un mail à l'autre) ; filtres, étiquettes, Envoyés, Corbeille et actions y
   restent. Tous les pleins écrans se ferment par « ✕ Fermer » en haut à droite.
 - **Écrire** : pièces jointes par glisser-déposer, destinataires récents (boîte « Envoyés »)
-  proposés en premier.
+  proposés en premier. **Cc** et **Cci** (copie cachée, visible ensuite dans « Envoyés ») ; une
+  liste d'adresses collée (« Nom <adresse>, … », colonne de tableur, `"NOM, Prénom" <…>`) devient
+  des destinataires d'un coup (`web/js/core/addrlist.js`). Un message envoyé seulement en Cc ou Cci
+  part avec l'expéditeur en destinataire principal.
+- **Thème** : menu du compte → Auto (suit l'appareil, dès le premier affichage), Clair ou Sombre ;
+  gardé sur l'appareil (`web/js/core/theme.js`). Le sombre ne redéfinit que les variables de
+  couleur (`hub.css`) : chaque composant suit.
 - **Retours** (« Une idée ? ») et page d'**administration** `/admin` (voir plus bas).
 - **Moodle** : cours suivis, recherche (`/`), et le bon cours mis en avant selon l'heure (en cours,
   sinon le prochain).
@@ -220,6 +230,15 @@ coefficients, codes ADE et évaluations prévues. **Import JSON** : une classe (
 ou plusieurs (`{ "FIA4": {...}, "FIE5": {...} }`), dates en `AAAA-MM-JJ`, `JJ/MM/AAAA` ou « 14 janv. » ;
 les identifiants manquants sont créés, aucune note d'étudiant n'est importée. **Export** pour
 sauvegarder ou recopier une maquette.
+
+**Toutes les maquettes** (même onglet) : **Exporter les coefficients** de toutes les classes (UE et
+matières, `isis-hub-coefficients`), modifier le JSON, **Importer des coefficients** : une matière se
+retrouve par son `id`, sinon par son nom dans l'UE (accents et casse ignorés) ; une ligne sans
+correspondance est signalée, une valeur invalide refuse tout. **Coefficients des matières à 1** et
+**Retirer les évaluations prévues** de toutes les maquettes. Chaque fois, un essai à blanc dit ce qui
+changera avant de tout enregistrer d'un coup (`/api/admin/grades/coefs`, `/api/admin/grades/bulk`).
+Les notes des étudiants ne sont jamais touchées : une évaluation retirée reste connue de sa matière
+(`retired`), et la note qu'un étudiant y avait mise devient une note personnelle.
 
 La répartition est vérifiée avant d'être acceptée, puis appliquée aussitôt à l'emploi du temps des
 étudiants et à leurs abonnements d'agenda. Elle est gardée dans le volume `/data` ; tant qu'elle n'a

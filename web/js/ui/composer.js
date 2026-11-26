@@ -6,6 +6,7 @@ import { $, $$, h, icon, lockScroll, motionOK, toast, EASE, EASE_IO } from '../c
 import * as D from '../core/dates.js';
 import * as mail from '../portals/mail.js';
 import { normalize } from '../portals/match.js';
+import { parseAddresses, looksLikeList } from '../core/addrlist.js';
 import { modal } from './layout.js';
 
 const kb = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} Mo` : `${Math.max(1, Math.round(n / 1024))} Ko`);
@@ -28,11 +29,13 @@ export function createComposer({ app, onSessionLost }) {
   const quote = $('[data-cmp-quote]', comp);
   const ccRow = $('[data-cc-row]', comp);
   const ccBtn = $('[data-cc-toggle]', comp);
+  const bccRow = $('[data-bcc-row]', comp);
+  const bccBtn = $('[data-bcc-toggle]', comp);
   const filesBox = $('[data-cmp-files]', comp);
   const fileInput = $('[data-cmp-file]', comp);
   const error = $('[data-cmp-error]', comp);
   const sendBtn = $('[data-cmp-send]', comp);
-  const boxes = { to: $('[data-recips="to"]', comp), cc: $('[data-recips="cc"]', comp) };
+  const boxes = { to: $('[data-recips="to"]', comp), cc: $('[data-recips="cc"]', comp), bcc: $('[data-recips="bcc"]', comp) };
 
   let files = []; // { name, type, size, bytes?, source? }
   let context = {}; // { inReplyTo, references, quoted, forwardOf }
@@ -133,9 +136,31 @@ export function createComposer({ app, onSessionLost }) {
     }, 220);
   }
 
+  /**
+   * Liste d'adresses collée (« Baudry SOUVIGNET <baudry…>, Léa… », une colonne de tableur…) : chaque
+   * adresse devient un destinataire ; ce qui n'en était pas une reste dans le champ.
+   */
+  function takeList(input, box, text) {
+    const { people, rest } = parseAddresses(text);
+    const before = chips(box).length;
+    people.filter((p) => mail.EMAIL_RE.test(p.email)).forEach((p) => addChip(box, p));
+    const added = chips(box).length - before;
+    input.value = rest;
+    closeAc();
+    if (added) toast(added > 1 ? `${added} destinataires ajoutés` : '1 destinataire ajouté', 'check');
+    return added;
+  }
+
   for (const box of Object.values(boxes)) {
     const input = $('[data-recip-input]', box);
-    input.addEventListener('input', () => suggest(input, box));
+    input.addEventListener('paste', (e) => {
+      const text = e.clipboardData?.getData('text/plain') ?? '';
+      if (!looksLikeList(text)) return;
+      e.preventDefault();
+      takeList(input, box, `${input.value} ${text}`);
+    });
+    // Collage sans événement « paste » (certains claviers de téléphone), ou dépôt de texte.
+    input.addEventListener('input', () => (looksLikeList(input.value) && /[,;\n<]/.test(input.value) ? takeList(input, box, input.value) : suggest(input, box)));
     input.addEventListener('focus', () => !input.value && suggest(input, box));
     input.addEventListener('blur', () => setTimeout(closeAc, 150));
     input.addEventListener('keydown', (e) => {
@@ -164,11 +189,16 @@ export function createComposer({ app, onSessionLost }) {
     });
     box.addEventListener('click', (e) => e.target === box && input.focus());
   }
-  ccBtn.addEventListener('click', () => {
-    ccRow.hidden = !ccRow.hidden;
-    ccBtn.setAttribute('aria-pressed', String(!ccRow.hidden));
-    if (!ccRow.hidden) $('input', ccRow).focus();
-  });
+  for (const [btn, row] of [
+    [ccBtn, ccRow],
+    [bccBtn, bccRow],
+  ]) {
+    btn.addEventListener('click', () => {
+      row.hidden = !row.hidden;
+      btn.setAttribute('aria-pressed', String(!row.hidden));
+      if (!row.hidden) $('input', row).focus();
+    });
+  }
 
   // ------------------------------------------------------------ pièces jointes
 
@@ -284,6 +314,8 @@ export function createComposer({ app, onSessionLost }) {
     cc.forEach((p) => addChip(boxes.cc, p));
     ccRow.hidden = !cc.length;
     ccBtn.setAttribute('aria-pressed', String(Boolean(cc.length)));
+    bccRow.hidden = true;
+    bccBtn.setAttribute('aria-pressed', 'false');
     subject.value = subj;
     text.value = body;
     error.hidden = true;
@@ -325,10 +357,11 @@ export function createComposer({ app, onSessionLost }) {
         input.value = '';
       }
     }
-    const to = chips(boxes.to);
+    let to = chips(boxes.to);
     const cc = ccRow.hidden ? [] : chips(boxes.cc);
+    const bcc = bccRow.hidden ? [] : chips(boxes.bcc);
     error.hidden = true;
-    if (!to.length) {
+    if (!to.length && !cc.length && !bcc.length) {
       $('[data-recip-input]', boxes.to).focus();
       error.textContent = 'Ajoute au moins un destinataire.';
       error.hidden = false;
@@ -348,11 +381,18 @@ export function createComposer({ app, onSessionLost }) {
       if (context.quoted) {
         body += `\n\n${context.quoted.head}\n${context.quoted.lines.map((l) => (context.forwardOf ? l : `> ${l}`)).join('\n')}`;
       }
-      const result = await mail.send({ to, cc, subject: subject.value, text: body, files: ready, inReplyTo: context.inReplyTo, references: context.references });
+      // Seulement des copies (Cc, Cci) : le message part à toi-même, les autres en copie (comme
+      // « destinataires non divulgués »).
+      if (!to.length) {
+        const me = await mail.me();
+        if (me.address) to = [{ address: me.address, name: me.name || me.address }];
+      }
+      const result = await mail.send({ to, cc, bcc, subject: subject.value, text: body, files: ready, inReplyTo: context.inReplyTo, references: context.references });
       files = [];
       hide();
-      const first = to[0].name || to[0].address;
-      const who = to.length > 1 ? `${first} et ${to.length - 1} autre${to.length > 2 ? 's' : ''}` : first;
+      const all = [...cc, ...bcc].length ? [...to, ...cc, ...bcc].filter((p, i, a) => a.findIndex((q) => q.address === p.address) === i) : to;
+      const first = all[0].name || all[0].address;
+      const who = all.length > 1 ? `${first} et ${all.length - 1} autre${all.length > 2 ? 's' : ''}` : first;
       toast(result.confirmed ? `Message envoyé à ${who}` : `Message confié à la messagerie pour ${who} (expédition en cours)`, 'check');
     } catch (err) {
       if (err.name === 'NotSignedIn') {

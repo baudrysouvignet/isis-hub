@@ -72,6 +72,23 @@
 .fx--doc { background: #E6EEFB; color: #2B5BD7; }
 .fx--slide { background: #FBE9DD; color: #A24A12; }
 .fx--img { background: #F1E9FD; color: #6A2FC9; }
+/* Types de fichiers en sombre : mêmes teintes, sur fond sombre. */
+.app[data-theme="dark"] .fx--pdf { background: rgba(255, 129, 116, .14); color: #FF9A8F; }
+.app[data-theme="dark"] .fx--zip { background: rgba(255, 255, 255, .08); color: #C9C5BC; }
+.app[data-theme="dark"] .fx--code { background: rgba(243, 180, 90, .14); color: #F3B45A; }
+.app[data-theme="dark"] .fx--data { background: rgba(82, 201, 129, .14); color: #6FD496; }
+.app[data-theme="dark"] .fx--doc { background: rgba(143, 171, 255, .15); color: #9DB6FF; }
+.app[data-theme="dark"] .fx--slide { background: rgba(242, 166, 108, .15); color: #F2A66C; }
+.app[data-theme="dark"] .fx--img { background: rgba(190, 162, 255, .16); color: #C6ADFF; }
+@media (prefers-color-scheme: dark) {
+  .app[data-theme="auto"] .fx--pdf { background: rgba(255, 129, 116, .14); color: #FF9A8F; }
+  .app[data-theme="auto"] .fx--zip { background: rgba(255, 255, 255, .08); color: #C9C5BC; }
+  .app[data-theme="auto"] .fx--code { background: rgba(243, 180, 90, .14); color: #F3B45A; }
+  .app[data-theme="auto"] .fx--data { background: rgba(82, 201, 129, .14); color: #6FD496; }
+  .app[data-theme="auto"] .fx--doc { background: rgba(143, 171, 255, .15); color: #9DB6FF; }
+  .app[data-theme="auto"] .fx--slide { background: rgba(242, 166, 108, .15); color: #F2A66C; }
+  .app[data-theme="auto"] .fx--img { background: rgba(190, 162, 255, .16); color: #C6ADFF; }
+}
 .fx--folder { background: var(--brand-soft); color: var(--brand); }
 .mc-file--sm { min-height: 44px; grid-template-columns: 32px minmax(0, 1fr) auto; }
 .mc-file--sm .fx { width: 32px; height: 32px; font-size: 8.5px; border-radius: 8px; }

@@ -10,6 +10,36 @@
 
 export const CHANGELOG = [
   {
+    version: '2.4.0',
+    date: '2026-11-26',
+    title: 'Le mode sombre, la copie cachée et le détail des évaluations',
+    launch: {
+      art: 'theme',
+      title: 'Le mode sombre est là',
+      sub: 'Et pour tes mails la copie cachée, pour tes notes le détail des évaluations.',
+      steps: [
+        ['Le mode sombre', 'Menu du compte → Thème : Auto (comme ton téléphone), Clair ou Sombre.'],
+        ['Cci et listes d’adresses', 'Écris en copie cachée, et colle d’un coup une liste « Nom <adresse>, … » : chaque adresse devient un destinataire.'],
+        ['Le détail des évaluations', 'Dans Notes, ajoute une évaluation sans note (ex. Oral 0,3 · Écrit 0,4) dès que le prof te la donne.'],
+      ],
+      privacy: 'Le thème est gardé sur cet appareil : rien n’est envoyé.',
+      go: { label: 'Passer en sombre', to: 'dark' },
+    },
+    short: [
+      'Mode sombre : menu du compte → Thème (Auto, Clair ou Sombre).',
+      'Mails : copie cachée (Cci), et une liste d’adresses collée devient des destinataires.',
+      'Notes : ajoute une évaluation et son coefficient sans note, en attendant la note.',
+    ],
+    details: [
+      'Mode sombre : dans le menu du compte, choisis Auto (le Hub suit ton téléphone ou ton ordinateur, dès l’ouverture), Clair ou Sombre. Le choix est gardé sur cet appareil.',
+      'Mails : bouton « Cci » à côté de « Cc » pour écrire en copie cachée ; les autres destinataires ne voient pas ces adresses. Dans « Envoyés », le message garde la liste des Cci.',
+      'Mails : colle une liste copiée d’Outlook, de BlueMind, d’un tableur ou d’un mail (« Baudry SOUVIGNET <baudry…>, Léa… », une colonne d’adresses…) dans « À », « Cc » ou « Cci » : chaque adresse devient un destinataire, d’un coup.',
+      'Mails : un message envoyé seulement en Cc ou en Cci part avec toi en destinataire principal, comme « destinataires non divulgués ».',
+      'Notes : ajoute une évaluation sans note (ex. Oral ×0,3, Écrit ×0,4, TP ×0,3) dès que le prof en donne le détail ; elle compte pour « la note à viser », et tu y mets la note plus tard. Le coefficient accepte les décimales.',
+      'Notes : si une évaluation prévue disparaît de ta maquette, la note que tu y avais mise reste, en note personnelle de la même matière.',
+    ],
+  },
+  {
     version: '2.3.0',
     date: '2026-11-26',
     title: 'TCG : deux boosters par jour, les répliques et les récompenses de lancement',

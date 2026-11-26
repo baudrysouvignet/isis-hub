@@ -4,7 +4,12 @@
 //     par les étudiants ; puis les semestres, et pour chacun les UE et leurs matières, à déplier
 //     une par une (coefficients, code ADE, évaluations prévues) ;
 //   - import / export JSON et exemple à télécharger ou charger ;
-//   - barre d'enregistrement qui signale les modifications en attente.
+//   - barre d'enregistrement qui signale les modifications en attente ;
+//   - « Toutes les maquettes » : exporter les coefficients (UE et matières) de toutes les classes,
+//     réimporter un JSON qui les réécrit d'un coup, remettre les coefficients des matières à 1,
+//     retirer toutes les évaluations prévues. Chaque fois : un essai à blanc dit ce qui changera,
+//     puis tout s'enregistre d'un coup (ou rien). Les notes des étudiants ne sont jamais touchées :
+//     une note posée sur une évaluation retirée devient une note personnelle de la même matière.
 // Les identifiants internes des matières et évaluations sont créés ici et ne changent plus : les
 // notes déjà saisies par les étudiants restent attachées quand on renomme ou réordonne.
 
@@ -58,6 +63,7 @@ export function setupGradesAdmin({ api, getClasses }) {
   const editor = $('[data-gr-editor]', panel);
   const bar = $('[data-gr-savebar]', panel);
   const fileIn = $('[data-gr-file]', panel);
+  const coefIn = h('input', { type: 'file', hidden: true, attrs: { accept: 'application/json,.json' } });
   let book = {};
   let cls = null;
   let model = null; // maquette de la classe en cours d'édition (copie)
@@ -356,7 +362,7 @@ export function setupGradesAdmin({ api, getClasses }) {
       if (model && !confirm(`Remplacer la maquette de ${cls} par une copie de celle de ${from} ?`)) return;
       // Nouveaux identifiants : les notes des deux classes restent séparées.
       model = structuredClone(book[from]);
-      model.semesters.forEach((S) => S.ues.forEach((U) => U.matieres.forEach((M) => ((M.id = rid('m')), M.evals.forEach((e) => (e.id = rid('e')))))));
+      model.semesters.forEach((S) => S.ues.forEach((U) => U.matieres.forEach((M) => ((M.id = rid('m')), M.evals.forEach((e) => (e.id = rid('e'))), delete M.retired))));
       model.disabled = true;
       semIdx = 0;
       render();
@@ -542,6 +548,100 @@ export function setupGradesAdmin({ api, getClasses }) {
     render();
     toast(failed.length ? `Importées : ${done.join(', ') || 'aucune'} · refusées : ${failed.join(' ; ')}` : `Maquettes importées et enregistrées : ${done.join(', ')}`, failed.length ? 'alert' : 'check');
   });
+
+  // ------------------------------------------------------------ toutes les maquettes
+
+  const bulkBox = h('section.gr-bulk', { attrs: { 'aria-labelledby': 'gr-bulk-h' } });
+  $('.gr-layout', panel).before(bulkBox, coefIn);
+  const bulkBtn = (text, ic, on, cls = '') => h(`button.btn.btn--sm${cls}`, { type: 'button', on: { click: on } }, icon(ic, 'ic ic--sm'), text);
+  const where = (rep) => (rep.classes.length ? rep.classes.join(', ') : 'aucune maquette');
+  function renderBulk() {
+    bulkBox.replaceChildren(
+      h('div.gr-bulk-t', {}, h('h3', { id: 'gr-bulk-h', text: 'Toutes les maquettes' }), h('p.hint', { text: 'Corriger les coefficients de toutes les classes d’un coup : exporte-les, modifie le JSON, réimporte-le. Avant chaque enregistrement, un aperçu dit ce qui changera. Les notes déjà saisies par les étudiants ne sont jamais touchées.' })),
+      h(
+        'div.gr-bulk-a',
+        {},
+        bulkBtn('Exporter les coefficients', 'download', exportCoefs),
+        bulkBtn('Importer des coefficients', 'download', () => coefIn.click(), '.gr-up-btn'),
+        bulkBtn('Coefficients des matières à 1', 'retry', resetCoefs, '.btn--ghost'),
+        bulkBtn('Retirer les évaluations prévues', 'trash', clearEvals, '.btn--ghost.gr-danger'),
+      ),
+    );
+  }
+  /** Rien d'autre en cours : une opération sur toutes les maquettes remplacerait l'édition. */
+  const editing = () => {
+    if (model && dirty()) {
+      toast(`Enregistre ou annule d’abord les modifications de ${cls}.`, 'alert');
+      return true;
+    }
+    return false;
+  };
+  async function runBulk(body, ask, done) {
+    if (editing()) return;
+    let preview;
+    try {
+      preview = await api('grades/bulk', { ...body, dry: true });
+    } catch (err) {
+      return toast(`Refusé : ${err.message}`, 'alert');
+    }
+    const q = ask(preview.report);
+    if (!q || !confirm(q)) return;
+    try {
+      const out = await api('grades/bulk', body);
+      book = out.grades;
+      model = book[cls] ? structuredClone(book[cls]) : null;
+      render();
+      toast(done(out.report), 'check');
+    } catch (err) {
+      toast(`Refusé : ${err.message}`, 'alert');
+    }
+  }
+  async function exportCoefs() {
+    try {
+      download(await api('grades/coefs'), `coefficients-${new Date().toISOString().slice(0, 10)}.json`);
+    } catch (err) {
+      toast(`Export impossible : ${err.message}`, 'alert');
+    }
+  }
+  coefIn.addEventListener('change', async () => {
+    const file = coefIn.files[0];
+    coefIn.value = '';
+    if (!file) return;
+    if (file.size > 512 * 1024) return toast('Fichier trop lourd (512 Ko au plus).', 'alert');
+    let sheet;
+    try {
+      sheet = JSON.parse(await file.text());
+    } catch {
+      return toast('Ce fichier n’est pas un JSON lisible.', 'alert');
+    }
+    runBulk(
+      { action: 'coefs', sheet },
+      (rep) => {
+        const unknown = rep.unknown?.length ? `\n\n${plural(rep.unknown.length, 'ligne', 'lignes')} sans correspondance (ignorées) :\n· ${rep.unknown.slice(0, 8).join('\n· ')}${rep.unknown.length > 8 ? '\n…' : ''}` : '';
+        if (!rep.changed) {
+          toast(`Aucun coefficient ne change.${rep.unknown?.length ? ` ${plural(rep.unknown.length, 'ligne')} sans correspondance.` : ''}`, 'alert');
+          return null;
+        }
+        return `Réécrire ${plural(rep.changed, 'coefficient')} (${where(rep)}) ?${unknown}`;
+      },
+      (rep) => `${plural(rep.changed, 'coefficient modifié', 'coefficients modifiés')} · ${where(rep)}`,
+    );
+  });
+  function resetCoefs() {
+    runBulk(
+      { action: 'reset-coefs' },
+      (rep) => (rep.changed ? `Remettre au coefficient 1 les ${plural(rep.changed, 'matière')} qui en ont un autre (${where(rep)}) ? Les coefficients des UE ne changent pas.` : (toast('Toutes les matières sont déjà au coefficient 1.', 'check'), null)),
+      (rep) => `${plural(rep.changed, 'matière remise', 'matières remises')} au coefficient 1`,
+    );
+  }
+  function clearEvals() {
+    runBulk(
+      { action: 'clear-evals' },
+      (rep) => (rep.evals ? `Retirer les ${plural(rep.evals, 'évaluation prévue', 'évaluations prévues')} de toutes les maquettes (${where(rep)}) ?\n\nLes notes que les étudiants y ont déjà saisies restent : elles deviennent des notes personnelles de la même matière, avec leur coefficient.` : (toast('Aucune évaluation prévue dans les maquettes.', 'check'), null)),
+      (rep) => `${plural(rep.evals, 'évaluation retirée', 'évaluations retirées')} · les notes saisies restent`,
+    );
+  }
+  renderBulk();
 
   // ------------------------------------------------------------ enregistrement
 

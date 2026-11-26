@@ -879,6 +879,10 @@ export function createMails({ app, onSessionLost, onLogin, onReply, onExpand, lo
     set('name', m.from.name || m.from.address);
     set('email', m.from.address && m.from.name ? `<${m.from.address}>` : '');
     showRecipients($('[data-r="to"]', reader), [...m.to, ...m.cc]);
+    // Copie cachée : connue seulement de l'expéditeur (messages envoyés).
+    const bccRow = $('[data-r-bcc-row]', reader);
+    bccRow.hidden = !m.bcc?.length;
+    if (m.bcc?.length) showRecipients($('[data-r="bcc"]', reader), m.bcc);
     set('date', D.fullDate(m.date));
     const av = $('[data-r="avatar"]', reader);
     av.textContent = initials(m.from.name || m.from.address || '?');

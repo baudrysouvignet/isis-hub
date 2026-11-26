@@ -385,7 +385,7 @@ button.rfile-main:hover, .rfile-dl:hover { background: var(--hover); }
 .npill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font: 650 12px/1 var(--font); white-space: nowrap; background: var(--sunken); color: var(--text-2); }
 .npill--fail { background: var(--err-soft); color: var(--err); }
 .npill--ok { background: var(--ok-soft); color: var(--ok); }
-.npill--done { background: var(--ok); color: #fff; }
+.npill--done { background: var(--ok); color: var(--on-ok); }
 .npill--none { background: var(--sunken); color: var(--text-3); }
 .nbar { position: relative; display: block; height: 6px; border-radius: 99px; background: var(--sunken); overflow: visible; }
 .nbar-fill { position: absolute; left: 0; top: 0; bottom: 0; width: var(--pw, 0%); border-radius: inherit; background: var(--brand); transition: width .7s var(--ease); }
@@ -554,7 +554,7 @@ button.ng:active { transform: scale(.97); }
 .nv-verdict .ic { flex: none; margin-top: 1px; }
 .nv-verdict.is-fail { background: var(--err-soft); color: var(--err); }
 .nv-verdict.is-ok { background: var(--ok-soft); color: var(--ok); }
-.nv-verdict.is-done { background: var(--ok); color: #fff; }
+.nv-verdict.is-done { background: var(--ok); color: var(--on-ok); }
 .nv-prog { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 12px; font: 500 12.5px/1.3 var(--font); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .nv-coach-l { display: grid; gap: 10px; }
 .nv-tip { display: grid; gap: 3px; padding: 12px 12px 12px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); border-left: 3px solid var(--warn); }
@@ -636,6 +636,8 @@ button.ng:active { transform: scale(.97); }
 .nadd-on { font: 550 13.5px/1 var(--font); color: var(--text-3); }
 .stepper { display: inline-flex; align-items: center; gap: 4px; height: 56px; padding: 0 6px; border-radius: 12px; border: 1px solid var(--line-2); }
 .stepper output { min-width: 2.5ch; text-align: center; font: 720 18px/1 var(--font); font-variant-numeric: tabular-nums; }
+.stepper .nadd-coef { width: 5ch; min-width: 0; height: 40px; padding: 0 4px; border: 0; background: transparent; text-align: center; font: 720 18px/1 var(--font); font-variant-numeric: tabular-nums; box-shadow: none; }
+.stepper .nadd-coef:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; border-radius: 8px; }
 .nadd.is-slot.is-sim .stepper { background: var(--sunken); border-color: transparent; }
 .nadd-label-h { display: none; margin-top: 6px; font: 500 12px/1.4 var(--font); color: var(--text-3); }
 .nadd.is-slot:not(.is-sim) .nadd-label-h { display: block; }
@@ -1057,6 +1059,13 @@ button.ng:active { transform: scale(.97); }
 
 .gr-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px; border-radius: 14px; background: var(--sunken); }
 .gr-tools .gr-up { transform: rotate(180deg); }
+/* Toutes les maquettes : coefficients et évaluations, d'un coup */
+.gr-bulk { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; margin: 0 0 14px; padding: 14px 16px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--line); }
+.gr-bulk-t { display: grid; gap: 4px; min-width: 0; flex: 1 1 320px; }
+.gr-bulk-t h3 { font: 650 15px/1.2 var(--font); }
+.gr-bulk-t .hint { margin: 0; }
+.gr-bulk-a { display: flex; flex-wrap: wrap; gap: 6px; }
+.gr-up-btn .ic { transform: rotate(180deg); }
 .gr-copy { min-width: 170px; }
 .gr-copy .input { height: 34px; }
 
@@ -1362,7 +1371,7 @@ a.dl-row:active { background: var(--press); }
 .dl-check {
   position: absolute; right: -5px; top: -5px; display: grid; place-items: center;
   width: 19px; height: 19px; border-radius: 999px;
-  background: var(--ok); color: #fff; box-shadow: 0 0 0 2.5px var(--surface);
+  background: var(--ok); color: var(--on-ok); box-shadow: 0 0 0 2.5px var(--surface);
 }
 .dl-check .ic { width: 12px; height: 12px; stroke-width: 2.4; }
 .dl-main { display: grid; gap: 3px; min-width: 0; }
@@ -1538,6 +1547,26 @@ dialog.launch:not([open]) { display: none; }
   animation: laFloat 3.6s ease-in-out infinite;
 }
 .la-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: #3B2A00; box-shadow: 0 0 0 3px rgba(59, 42, 0, .18); }
+/* Écran « nouvelle version » 2.4.0 : le Hub en clair et en sombre, et l'interrupteur (CSS seulement) */
+.la-theme { position: absolute; inset: 0; }
+.la-th {
+  position: absolute; top: 6px; width: 168px; max-width: 46%; height: 112px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 14px 1fr 16px; gap: 7px;
+  padding: 10px; border-radius: 16px; box-shadow: 0 18px 40px -16px rgba(0, 0, 0, .5);
+}
+.la-th--light { left: 8%; rotate: -4deg; background: #F5F4F0; --c1: #FFFFFF; --c2: #1D1C19; --c3: #0B6E7F; }
+.la-th--dark { right: 8%; top: 16px; rotate: 3deg; background: #111416; --c1: #191D20; --c2: #ECEBE6; --c3: #3BAFC1; box-shadow: 0 18px 40px -16px rgba(0, 0, 0, .7), inset 0 0 0 1px rgba(255, 255, 255, .08); }
+.la-th i { display: block; border-radius: 6px; background: var(--c1); }
+.la-th .la-th-bar { grid-column: 1 / -1; width: 46%; height: 8px; align-self: center; border-radius: 4px; background: var(--c2); opacity: .75; }
+.la-th-tile { box-shadow: inset 0 -12px 0 -6px var(--c3); }
+.la-th-tile--b { box-shadow: inset 0 0 0 1px rgba(127, 127, 127, .15); }
+.la-th .la-th-row { grid-column: 1 / -1; width: 62%; background: var(--c3); opacity: .85; }
+.la-th-sw {
+  position: absolute; left: 50%; top: 44px; translate: -50% 0; width: 58px; height: 32px; border-radius: 999px; z-index: 1;
+  background: linear-gradient(90deg, #FFD66B, #3BAFC1); box-shadow: 0 10px 24px -8px rgba(0, 0, 0, .6), inset 0 0 0 2px rgba(255, 255, 255, .5);
+}
+.la-th-sw b { position: absolute; top: 4px; left: 4px; width: 24px; height: 24px; border-radius: 50%; background: #111416; box-shadow: inset -6px -4px 0 0 #ECEBE6; animation: laSwitch 3.2s ease-in-out infinite; }
+@keyframes laSwitch { 0%, 35% { translate: 0 0; background: #FFF6CF; box-shadow: 0 0 0 3px rgba(255, 214, 107, .5); } 50%, 85% { translate: 26px 0; background: #111416; box-shadow: inset -6px -4px 0 0 #ECEBE6; } 100% { translate: 0 0; background: #FFF6CF; box-shadow: 0 0 0 3px rgba(255, 214, 107, .5); } }
+@media (prefers-reduced-motion: reduce) { .la-th-sw b { animation: none; } }
 
 .launch-steps { display: grid; gap: 4px; padding: 18px 20px 4px; counter-reset: none; list-style: none; }
 .launch-steps li { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 6px; }

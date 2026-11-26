@@ -58,6 +58,7 @@ export function createGrades(def, { saved = null, current = null, today = new Da
   const UE_OF = {};
   const SEM_OF = {};
   const EV = {};
+  const RET = {}; // évaluations retirées de la maquette (serveur : GradeSubject.Retired)
   G.semesters.forEach((S) =>
     S.ues.forEach((U) => {
       SEM_OF[U.id] = S;
@@ -65,6 +66,8 @@ export function createGrades(def, { saved = null, current = null, today = new Da
         MAT[M.id] = M;
         UE_OF[M.id] = U;
         M.evals = M.evals ?? [];
+        for (const e of M.retired ?? []) RET[e.id] = { mat: M.id, label: e.label, coef: e.coef, date: e.date || '' };
+        delete M.retired;
         M.evals.forEach((e) => {
           e.mat = M.id;
           e.tpl = e.label; // intitulé de la maquette (l'étudiant peut en choisir un autre)
@@ -111,9 +114,10 @@ export function createGrades(def, { saved = null, current = null, today = new Da
       if (EV[id] && !EV[id].extra) {
         real[id] = cleanGrade(v);
         if (!meta[id]) migrated = true;
-      } else if (!EV[id] && meta[id] && cleanGrade(v) !== null) {
-        // Évaluation retirée de la maquette : la note saisie reste, en note personnelle.
-        const e = addEval({ ...meta[id], id });
+      } else if (!EV[id] && (meta[id] || RET[id]) && cleanGrade(v) !== null) {
+        // Évaluation retirée de la maquette : la note saisie reste, en note personnelle (décrite par
+        // `meta`, ou à défaut par la maquette, qui garde ses évaluations retirées).
+        const e = addEval({ ...(meta[id]?.mat && MAT[meta[id].mat] ? meta[id] : RET[id] ?? meta[id]), id });
         if (e) {
           real[e.id] = cleanGrade(v);
           migrated = true;

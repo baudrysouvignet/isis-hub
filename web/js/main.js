@@ -3,6 +3,7 @@
 import { $, $$, toast } from './core/dom.js';
 import * as D from './core/dates.js';
 import { prefs } from './core/store.js';
+import { applyTheme, setTheme, themeOf, onThemeChange } from './core/theme.js';
 import { openVault } from './net/vault.js';
 import { initCache, clearCache } from './net/cache.js';
 import { http, jar, ready } from './net/engine.js';
@@ -43,6 +44,15 @@ import { fetchContent, renderLinks } from './ui/content.js';
 import { setupTransparency, versionLabel } from './ui/transparency.js';
 import { startTour, tourActive } from './ui/tour.js';
 import { createTCG } from './tcg/app.js';
+
+// Thème (clair, sombre, ou comme l'appareil) : appliqué tout de suite, choisi dans le menu du compte.
+applyTheme();
+function paintThemeMenu() {
+  for (const b of $$('[data-theme-set]')) b.setAttribute('aria-checked', String(b.dataset.themeSet === themeOf()));
+}
+paintThemeMenu();
+onThemeChange(paintThemeMenu);
+for (const b of $$('[data-theme-set]')) b.addEventListener('click', () => setTheme(b.dataset.themeSet));
 
 if (window.top !== window.self) throw new Error('ISIS Hub refuse de s’afficher dans un cadre.');
 
@@ -334,7 +344,14 @@ function setupDashboard() {
   setupMailRules({ onRuleAdded: () => mails.applyRulesNow() });
   install = setupInstall();
   // Écran « nouvelle version » : où mène « Accéder » (launch.go.to dans core/changelog.js).
-  const launchTargets = { moodle: () => moodleView?.openHome(null), tcg: () => tcg.enter() };
+  const launchTargets = {
+    moodle: () => moodleView?.openHome(null),
+    tcg: () => tcg.enter(),
+    dark: () => {
+      setTheme('dark');
+      toast('Mode sombre activé · menu du compte → Thème pour revenir à Auto', 'check');
+    },
+  };
   changelog = setupChangelog({ onLaunch: (to) => launchTargets[to]?.(), canLaunch: (what) => what !== 'tcg' || Boolean(tcg?.visible()) });
   $$('[data-compose]').forEach((b) => b.addEventListener('click', () => composer.open()));
   moodleView = createMoodleView({

@@ -165,6 +165,7 @@ function toMail(item, uid) {
     from,
     to: recipients.filter((r) => r.kind === 'Primary').map(person),
     cc: recipients.filter((r) => r.kind === 'CarbonCopy').map(person),
+    bcc: recipients.filter((r) => r.kind === 'BlindCarbonCopy').map(person), // visibles seulement dans « Envoyés »
     date: new Date(body.date || v.internalDate || Date.now()),
     preview: (body.preview || '').replace(/\s+/g, ' ').trim(),
     unread: !(item.flags ?? []).includes('Seen'),

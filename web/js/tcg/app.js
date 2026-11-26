@@ -7,6 +7,7 @@
 
 import { $, h, toast, motionOK } from '../core/dom.js';
 import { prefs } from '../core/store.js';
+import { hubBarColor } from '../core/theme.js';
 import { seen, markSeen } from '../core/seen.js';
 import { api, adminApi, TcgError } from './api.js';
 import { cardEl, ic, mark, rchip, RLABEL, CATS, REPLICA, tier, sheet, sheetOpen, tbtn, meter, dayLong, dateShort, hourText, ago, untilText, plural, placeholderArt, pips } from './ui.js';
@@ -348,7 +349,7 @@ export function createTCG(o) {
       tabTcg.setAttribute('aria-selected', String(tcg));
       tabHub.tabIndex = tcg ? -1 : 0;
       tabTcg.tabIndex = tcg ? 0 : -1;
-      theme?.setAttribute('content', tcg ? '#061317' : '#F5F4F0');
+      theme?.setAttribute('content', tcg ? '#061317' : hubBarColor());
       if (tcg) render();
       window.scrollTo(0, 0);
     };

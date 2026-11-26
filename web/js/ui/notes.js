@@ -281,7 +281,7 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
   function evalChip(e) {
     const v = N.val(e);
     const isSim = N.simOn && N.has(N.sim[e.id]);
-    if ((N.simOn && !N.has(N.real[e.id]) && !e.extra) || (N.simOn && e.sim)) {
+    if ((N.simOn && !N.has(N.real[e.id]) && !e.sim) || (N.simOn && e.sim)) {
       const lab = el('label', `ng is-input${N.has(N.sim[e.id]) ? ' is-sim' : ''}`);
       lab.append(el('span', 'ng-l', e.label));
       const inp = el('input', 'ng-in');
@@ -300,7 +300,7 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
       b.dataset.slot = e.id;
       const d = N.dateOf(e);
       b.setAttribute('aria-label', `Saisir la note : ${e.label}, ${nameOf(e)}${d ? `, prévu le ${shortDate(d)}` : ''}${!e.date && d ? ' (date de l’emploi du temps)' : ''}`);
-      b.append(el('span', 'ng-l', e.label), el('span', 'ng-d', shortDate(d) || 'à venir'), icon('plus', 'ic ic--xs'));
+      b.append(el('span', 'ng-l', e.label), el('span', 'ng-d', shortDate(d) || 'à venir'), el('span', 'ng-c', `×${fN(e.coef)}`), icon('plus', 'ic ic--xs'));
       if (!e.date && d) {
         b.classList.add('is-ade');
         b.title = 'Date trouvée dans ton emploi du temps (examen)';
@@ -661,9 +661,10 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
   let slot = null;
   let editId = null;
   const coefLab = $('#nadd-coef-l', nadd);
-  const setCoef = (c) => {
-    coef = Math.max(0.5, Math.min(10, c));
-    coefOut.textContent = fN(coef);
+  // Coefficient : de 0,05 à 100, décimales comprises (ex. Oral 0,3 · Écrit 0,4), au clavier ou ±.
+  const setCoef = (c, { typed = false } = {}) => {
+    coef = Math.round(Math.max(0.05, Math.min(100, c)) * 100) / 100;
+    if (!typed) coefOut.value = fN(coef);
     // Évaluation de la maquette : on rappelle son coefficient quand l'étudiant en choisit un autre.
     const e = N?.EV?.[editId || slot];
     coefLab.textContent = e && !e.extra && e.tplCoef !== undefined && coef !== e.tplCoef ? `Coefficient · maquette ×${fN(e.tplCoef)}` : 'Coefficient';
@@ -685,7 +686,7 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
   }
   function fillSlots() {
     const M = N.MAT[selM.value];
-    const free = [...N.evalsOf(M).filter((e) => !N.has(N.val(e)) && !e.extra), ...(N.simOn ? [] : N.proposalsOf(M))];
+    const free = [...N.evalsOf(M).filter((e) => !N.has(N.val(e)) && !e.sim), ...(N.simOn ? [] : N.proposalsOf(M))];
     slots.replaceChildren(
       ...free.map((e) => {
         const b = el('button', `nchip${e.proposal ? ' is-ade' : ''}`);
@@ -728,11 +729,17 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
     if (v === null || v < 0 || v > out || out <= 0 || out > 1000) return null;
     return Math.round((v / out) * 20 * 100) / 100;
   }
+  // Bouton : « Ajouter l'évaluation » quand aucune note n'est tapée (nouvelle évaluation prévue).
+  function syncOk() {
+    if (editId) okLab.textContent = 'Enregistrer';
+    else okLab.textContent = !N.simOn && !vIn.value.trim() && !(slot && N.EV[slot]) ? 'Ajouter l’évaluation' : 'Ajouter';
+  }
   function preview() {
+    syncOk();
     const v = candidate();
     const M = N.MAT[selM.value];
     if (!M || v === null) {
-      prev.replaceChildren(el('span', 'nadd-hint', 'Tape la note : tu verras tout de suite l’effet sur tes moyennes.'));
+      prev.replaceChildren(el('span', 'nadd-hint', N.simOn ? 'Tape la note : tu verras tout de suite l’effet sur tes moyennes.' : 'Tape la note : tu verras tout de suite l’effet sur tes moyennes. Sans note, l’évaluation est gardée avec son coefficient, pour plus tard.'));
       return;
     }
     const U = N.UE_OF[M.id];
@@ -812,15 +819,16 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
     setCoef(1);
     err.hidden = true;
     vIn.removeAttribute('aria-invalid');
-    $('[data-nadd-title]', nadd).textContent = editId ? 'Modifier la note' : N.simOn ? 'Ajouter une note simulée' : 'Ajouter une note';
-    $('[data-nadd-sub]', nadd).textContent = editId ? `${e.label} · ${nameOf(e)}` : 'Elle compte tout de suite dans tes moyennes.';
+    const noGrade = e && !N.has(N.val(e));
+    $('[data-nadd-title]', nadd).textContent = editId ? (noGrade ? 'Modifier l’évaluation' : 'Modifier la note') : N.simOn ? 'Ajouter une note simulée' : 'Ajouter une note';
+    $('[data-nadd-sub]', nadd).textContent = editId ? `${e.label} · ${nameOf(e)}${noGrade ? ' · pas encore de note' : ''}` : 'Elle compte tout de suite dans tes moyennes, ou ajoute seulement l’évaluation et son coefficient.';
     okLab.textContent = editId ? 'Enregistrer' : 'Ajouter';
     del.hidden = !editId;
     fillSlots();
     if (e) {
       label.value = e.label;
       setCoef(e.coef);
-      vIn.value = fN(N.val(e));
+      vIn.value = N.has(N.val(e)) ? fN(N.val(e)) : '';
       $$('[data-coef]', nadd).forEach((b) => (b.disabled = !e.extra && N.simOn)); // coefficient personnel, pas en simulation
       nadd.classList.toggle('is-slot', !e.extra);
       label.disabled = N.simOn && !e.extra; // renommer est personnel : pas en simulation
@@ -828,7 +836,7 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
       label.disabled = false;
       // En simulation, les évaluations prévues se remplissent dans leurs cases : « + » ajoute une
       // note simulée de plus.
-      const first = o.slot || (N.simOn ? null : N.evalsOf(N.MAT[matId]).find((x) => !N.has(N.val(x)) && !x.extra)?.id) || null;
+      const first = o.slot || (N.simOn ? null : N.evalsOf(N.MAT[matId]).find((x) => !N.has(N.val(x)) && !x.sim)?.id) || null;
       pickSlot(first);
     }
     preview();
@@ -838,7 +846,7 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
   selM.addEventListener('change', () => {
     slot = null;
     fillSlots();
-    const f = N.simOn ? null : N.evalsOf(N.MAT[selM.value]).find((x) => !N.has(N.val(x)) && !x.extra)?.id || null;
+    const f = N.simOn ? null : N.evalsOf(N.MAT[selM.value]).find((x) => !N.has(N.val(x)) && !x.sim)?.id || null;
     pickSlot(f);
     if (!f) {
       label.value = '';
@@ -870,23 +878,50 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
   $$('[data-coef]', nadd).forEach((b) =>
     b.addEventListener('click', () => {
       const step = Number(b.dataset.coef);
-      setCoef(coef + step * (coef <= 1 && step < 0 ? 0.5 : 1));
+      // Pas de 1 au-dessus de 1, de 0,1 en dessous (0,3 · 0,4…).
+      setCoef(step < 0 ? (coef > 1 ? coef - 1 : coef - 0.1) : coef < 1 ? coef + 0.1 : coef + 1);
       preview();
     }),
   );
+  coefOut.addEventListener('input', () => {
+    const c = num(coefOut.value);
+    if (c !== null && c > 0) {
+      setCoef(c, { typed: true });
+      preview();
+    }
+  });
+  coefOut.addEventListener('blur', () => setCoef(num(coefOut.value) > 0 ? num(coefOut.value) : coef));
   form.addEventListener('submit', (ev) => {
     ev.preventDefault();
     const v = candidate();
     // Évaluation de la maquette renommée sans note (pas encore passée) : seul le nom change.
     const named = !N.simOn && (editId || (slot && !proposalById(slot))) && N.EV[editId || slot];
-    if (v === null && named && !named.extra && !vIn.value.trim() && (label.value.trim() !== named.label || coef !== named.coef)) {
-      const renamed = label.value.trim() !== named.label;
-      N.renameEval(named, label.value);
-      N.recoefEval(named, coef);
+    // Évaluation existante sans note (prévue, ou ajoutée pour plus tard) : seuls le nom et le
+    // coefficient changent.
+    if (v === null && named && !vIn.value.trim() && !N.has(N.val(named))) {
+      const renamed = label.value.trim() && label.value.trim() !== named.label;
+      if (named.extra) {
+        named.label = label.value.trim().slice(0, 40) || named.label;
+        named.coef = coef;
+      } else {
+        N.renameEval(named, label.value);
+        N.recoefEval(named, coef);
+      }
       save();
       addM.close();
       renderAll();
-      toast(renamed ? `Renommée : ${named.label}` : `Coefficient de « ${named.label} » : ${fN(named.coef)}`);
+      toast(renamed ? `Renommée : ${named.label}` : `${named.label} · coefficient ${fN(named.coef)}`);
+      return;
+    }
+    // Nouvelle évaluation sans note : le détail donné par le prof (ex. Oral ×0,3), la note viendra.
+    if (v === null && !named && !N.simOn && !vIn.value.trim()) {
+      const M = N.MAT[selM.value];
+      const prop = proposalById(slot);
+      const e = N.addEval({ id: `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, mat: M.id, label: label.value.trim() || prop?.label || 'Évaluation', coef, date: prop?.date ?? '' });
+      save();
+      addM.close();
+      renderAll();
+      toast(`Évaluation ajoutée : ${e.label} ×${fN(e.coef)} en ${M.name}, sans note pour l’instant`);
       return;
     }
     if (v === null) {
@@ -911,9 +946,13 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
       }
     } else if (slot && !proposalById(slot)) {
       target[slot] = v;
-      if (!N.simOn) {
-        N.renameEval(N.EV[slot], label.value);
-        N.recoefEval(N.EV[slot], coef);
+      const e = N.EV[slot];
+      if (e.extra && !N.simOn) {
+        e.label = label.value.trim().slice(0, 40) || e.label;
+        e.coef = coef;
+      } else if (!N.simOn) {
+        N.renameEval(e, label.value);
+        N.recoefEval(e, coef);
       }
     }
     else {
@@ -1053,7 +1092,7 @@ export function createNotes({ app, beforeOpen, isSignedIn = () => false, onLogin
     if (t.closest('[data-note-add]')) return openAdd({});
     if (!nView.contains(t)) return;
     const slotB = t.closest('[data-slot]');
-    if (slotB) return openAdd({ slot: slotB.dataset.slot });
+    if (slotB) return N.EV[slotB.dataset.slot]?.extra && !N.simOn ? openAdd({ editId: slotB.dataset.slot }) : openAdd({ slot: slotB.dataset.slot });
     const ed = t.closest('[data-eval-edit]');
     if (ed) return openAdd({ editId: ed.dataset.evalEdit });
     const ap = t.closest('[data-ade-prop]');

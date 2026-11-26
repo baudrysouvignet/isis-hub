@@ -8,6 +8,9 @@
 import { $, $$, h, toast, motionOK, EASE } from './core/dom.js';
 import { setupGradesAdmin } from './admin-grades.js';
 import { setupTcgAdmin } from './admin-tcg.js';
+import { applyTheme } from './core/theme.js';
+
+applyTheme(); // même thème que le Hub (choisi dans le menu du compte)
 
 if (window.top !== window.self) throw new Error('Refus d’affichage dans un cadre.');
 

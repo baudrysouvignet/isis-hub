@@ -380,3 +380,21 @@ test('notes : coefficient d’une évaluation prévue changé par l’étudiant,
   again.recoefEval(again.EV.c1, -3);
   assert.equal(again.EV.c1.coef, 1, 'coefficient invalide : celui de la maquette');
 });
+
+test('notes : évaluations retirées par l’administration, les notes saisies restent (même sans méta)', () => {
+  // L'administration retire toutes les évaluations prévues : la maquette les garde dans `retired`.
+  const cleared = structuredClone(DEF);
+  for (const S of cleared.semesters) for (const U of S.ues) for (const M of U.matieres) [M.retired, M.evals] = [M.evals, []];
+  // Notes enregistrées avant `meta` (aucune description) : elles deviennent des notes personnelles.
+  const N = createGrades(cleared, { saved: { values: VALUES }, today: '2026-11-16' });
+  const S = N.currentSem();
+  assert.equal(f2(N.avgS(S)), '12,25', 'mêmes moyennes : chaque note garde son coefficient');
+  const quiz = N.MAT.interop.evals.find((e) => e.id === 'i1');
+  assert.ok(quiz?.extra, 'le quiz est devenu une note personnelle');
+  assert.equal(quiz.label, 'Quiz FHIR');
+  assert.equal(N.real.i1, 16);
+  assert.equal(N.MAT.interop.evals.length, 1, 'les évaluations sans note ne reviennent pas');
+  // Et elles restent à la sauvegarde suivante.
+  const again = createGrades(cleared, { saved: N.dump(), today: '2026-11-16' });
+  assert.equal(f2(again.avgS(again.currentSem())), '12,25');
+});
