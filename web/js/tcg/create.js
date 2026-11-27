@@ -3,6 +3,12 @@
 // doigts, molette ou curseur). Par défaut toute la photo est visible (bords flous si besoin). Elle part déjà compressée en deux tailles
 // (960 × 720 et 320 × 240, WebP sinon JPEG) : redessinée sur un canevas, elle perd au passage ses
 // métadonnées (position GPS, appareil…). Le serveur vérifie de nouveau tout cela.
+//
+// Vagues qui l'ouvrent (Wave.video) : une vidéo à la place de la photo. On choisit le début, on
+// recadre comme une photo, et l'atelier enregistre 2 secondes au format de la carte (640 × 480,
+// 800 kbit/s, MP4 si le navigateur sait le produire, sinon WebM), SANS SON : ni voix ni
+// conversation captées par mégarde. La photo de la carte est la première image de l'extrait.
+// Vagues qui l'ouvrent (Wave.music) : une musique de la bibliothèque, choisie et écoutée ici.
 
 import { h, toast, motionOK } from '../core/dom.js';
 import { api, TcgError } from './api.js';
@@ -17,6 +23,72 @@ const TW = 320;
 const TH = 240;
 const MAX = 380 * 1024;
 const MAX_THUMB = 76 * 1024;
+const MAX_VIDEO = 340 * 1024;
+const CLIP = 2; // secondes
+const VW = 640;
+const VH = 480;
+// Formats d'enregistrement, du plus lisible partout (MP4 H.264) au moins répandu.
+const VIDEO_TYPES = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+const videoType = () => (typeof MediaRecorder === 'undefined' || !HTMLCanvasElement.prototype.captureStream ? '' : (VIDEO_TYPES.find((t) => MediaRecorder.isTypeSupported(t)) ?? ''));
+
+/** Attend un événement d'un élément média (rejette sur « error »). */
+const once = (el, ev) =>
+  new Promise((resolve, reject) => {
+    const ok = () => {
+      el.removeEventListener('error', ko);
+      resolve();
+    };
+    const ko = () => {
+      el.removeEventListener(ev, ok);
+      reject(new Error(ev));
+    };
+    el.addEventListener(ev, ok, { once: true });
+    el.addEventListener('error', ko, { once: true });
+  });
+const seek = async (v, t) => {
+  if (Math.abs(v.currentTime - t) < 0.02 && v.readyState >= 2) return;
+  const p = once(v, 'seeked');
+  v.currentTime = t;
+  await p;
+};
+
+/** L'extrait : CLIP secondes à partir de start, recadrées (crop) en VW × VH, sans son. */
+async function recordClip(v, start, crop) {
+  const type = videoType();
+  if (!type) throw new TcgError('Ce navigateur ne sait pas préparer de vidéo : envoie une photo, ou essaie Chrome ou Safari.');
+  const out = canvas(VW, VH);
+  const stream = out.captureStream(24);
+  try {
+    for (const bps of [800e3, 500e3]) {
+      await seek(v, start);
+      draw(v, crop, VW, VH, out);
+      const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: bps });
+      const chunks = [];
+      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      const stopped = new Promise((resolve) => (rec.onstop = resolve));
+      await v.play();
+      rec.start();
+      const t0 = performance.now();
+      await new Promise((resolve) => {
+        const tick = () => {
+          draw(v, crop, VW, VH, out);
+          if (performance.now() - t0 >= CLIP * 1000 || v.ended) return resolve();
+          if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(tick);
+          else requestAnimationFrame(tick);
+        };
+        tick();
+      });
+      rec.stop();
+      v.pause();
+      await stopped;
+      const blob = new Blob(chunks, { type: type.split(';')[0] });
+      if (blob.size && blob.size <= MAX_VIDEO) return blob;
+    }
+  } finally {
+    stream.getTracks().forEach((t) => t.stop());
+  }
+  throw new TcgError('Extrait trop détaillé pour être compressé : choisis un autre moment de la vidéo.');
+}
 const CAT_ICONS = { meme: 'spark', moment: 'clock', lieu: 'pin', truc: 'cards' };
 
 function canvas(w, hgt) {
@@ -82,7 +154,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
   const renderPreview = () => {
     const next = cardEl(
       { ...draft, title: draft.title || 'Ton titre ici', desc: draft.desc || 'Deux ou trois phrases, courtes. Ce qui rend ce moment unique pour la promo.' },
-      { size: 'lg', mystery: true, live: true, artSrc: photo ? photoURL : undefined },
+      { size: 'lg', mystery: true, live: true, artSrc: photo ? photoURL : undefined, videoSrc: clip?.blobURL || undefined },
     );
     if (card) card.replaceWith(next);
     else preview.querySelector('.tcr-live').after(next);
@@ -101,13 +173,20 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
   let photoURL = '';
   let blobURL = '';
   const crop = { zoom: 1, cx: 0, cy: 0 };
+  // Vague qui reçoit la carte : vidéo et musique ouvertes ?
+  const wv = ((st ?? pub)?.waves ?? []).find((w) => !w.printed && (!w.proposalsUntil || new Date(w.proposalsUntil) > Date.now()));
+  const canVideo = Boolean(wv?.video) && Boolean(videoType());
+  const tracks = wv?.music ? (st?.tracks ?? []) : [];
+  let mode = 'photo'; // photo | video
+  let clip = null; // { v, url, start, duration, blob, blobURL }
   const fileIn = h('input.sr-only', { type: 'file', id: 'tcr-file', accept: 'image/*' });
   const dropTitle = h('b', { text: 'Ajoute une photo' });
+  let dropSub;
   const drop = h(
     'label.tcr-drop',
     { htmlFor: 'tcr-file' },
     h('span.tcr-drop-ic', {}, ic('camera', 'ic')),
-    h('span.tcr-drop-t', {}, dropTitle, h('small', { text: 'Touche pour choisir, ou glisse-la ici · JPG ou PNG' })),
+    h('span.tcr-drop-t', {}, dropTitle, (dropSub = h('small', { text: 'Touche pour choisir, ou glisse-la ici · JPG ou PNG' }))),
   );
   // Recadreur (comme dans les apps photo) : grand cadre 4:3 avec la grille des tiers.
   const zoomIn = h('input', { type: 'range', min: '0.3', max: String(MAX_ZOOM), step: '0.005', value: '1', id: 'tcr-zoom' });
@@ -139,11 +218,110 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
       draw(photo, crop, 640, 480, cropCanvas);
       photoURL = cropCanvas.toDataURL('image/jpeg', 0.82);
       if (artImg) artImg.src = photoURL;
+      staleClip();
     });
   };
 
+  // ---------------------------------------------------------------- vidéo (vagues qui l'ouvrent)
+  const startIn = h('input', { type: 'range', min: '0', max: '0', step: '0.05', value: '0', id: 'tcr-start' });
+  const startTxt = h('span.tcr-start-t', { text: '0,0 s' });
+  const startRow = h('div.tcr-crop-tools.tcr-start', { hidden: true }, h('label.tlabel', { htmlFor: 'tcr-start', text: 'Début' }), startIn, startTxt);
+  const clipNote = h('small.tcr-clip-note', { text: 'Choisis le moment et le cadre, puis prépare l’extrait : 2 secondes, sans le son.' });
+  const clipBtn = tbtn('Préparer l’extrait (2 s)', 'loop', 'tbtn--sm', () => prepareClip().catch((e) => showErr(e instanceof TcgError ? e.message : 'Préparation impossible : essaie un autre moment de la vidéo.')));
+  const clipBox = h('div.tcr-clip', { hidden: true }, startRow, h('div.tcr-clip-row', {}, clipBtn, clipNote));
+  const frame = canvas(2, 2); // image de début de l'extrait : la photo de la carte
+  function dropClip() {
+    if (!clip) return;
+    clip.v.pause();
+    clip.v.remove();
+    URL.revokeObjectURL(clip.url);
+    if (clip.blobURL) URL.revokeObjectURL(clip.blobURL);
+    clip = null;
+  }
+  function staleClip() {
+    if (!clip?.blob) return;
+    URL.revokeObjectURL(clip.blobURL);
+    clip.blob = null;
+    clip.blobURL = '';
+    card?.querySelector('.tc-vid')?.remove();
+    clipNote.textContent = 'Cadre ou moment changé : prépare de nouveau l’extrait.';
+  }
+  async function grabFrame(t) {
+    await seek(clip.v, t);
+    if (frame.width !== clip.v.videoWidth || frame.height !== clip.v.videoHeight) [frame.width, frame.height] = [clip.v.videoWidth, clip.v.videoHeight];
+    frame.getContext('2d').drawImage(clip.v, 0, 0);
+    frame.naturalWidth = frame.width; // pour le recadreur, comme une photo
+    frame.naturalHeight = frame.height;
+  }
+  async function loadVideo(file) {
+    if (!/^video\//.test(file.type) && !/\.(mp4|mov|m4v|webm)$/i.test(file.name)) return showErr('Choisis une vidéo (MP4 ou MOV).');
+    if (file.size > 400 * 1024 * 1024) return showErr('Vidéo trop lourde (400 Mo au plus).');
+    const url = URL.createObjectURL(file);
+    const v = h('video.tcr-src', { muted: true, playsInline: true, preload: 'auto', src: url, attrs: { muted: '', playsinline: '', 'aria-hidden': 'true' } });
+    document.body.append(v); // hors champ : certains navigateurs ne dessinent une vidéo qu'affichée
+    try {
+      await once(v, 'loadedmetadata');
+      if (v.readyState < 2) await once(v, 'loadeddata');
+    } catch {
+      v.remove();
+      URL.revokeObjectURL(url);
+      return showErr('Cette vidéo ne s’ouvre pas dans ce navigateur : essaie une vidéo MP4, ou ouvre le Hub sur ton téléphone.');
+    }
+    if (v.videoWidth < 320 || v.videoHeight < 240) {
+      v.remove();
+      URL.revokeObjectURL(url);
+      return showErr('Vidéo trop petite (320 × 240 pixels au moins).');
+    }
+    v.naturalWidth = v.videoWidth; // le même recadrage, image par image
+    v.naturalHeight = v.videoHeight;
+    dropClip();
+    clip = { v, url, start: 0, duration: Number.isFinite(v.duration) ? v.duration : CLIP, blob: null, blobURL: '' };
+    startIn.max = String(Math.max(0, clip.duration - CLIP));
+    startIn.value = '0';
+    startTxt.textContent = '0,0 s';
+    startRow.hidden = clip.duration <= CLIP + 0.05;
+    clipBox.hidden = false;
+    clipNote.textContent = 'Choisis le moment et le cadre, puis prépare l’extrait : 2 secondes, sans le son.';
+    await grabFrame(0);
+    usePhoto(frame);
+  }
+  let seekTimer = 0;
+  startIn.addEventListener('input', () => {
+    if (!clip) return;
+    clip.start = Number(startIn.value);
+    startTxt.textContent = `${clip.start.toFixed(1).replace('.', ',')} s`;
+    clearTimeout(seekTimer);
+    seekTimer = setTimeout(async () => {
+      await grabFrame(clip.start);
+      repaint();
+    }, 90);
+  });
+  async function prepareClip() {
+    if (!clip) return;
+    clipBtn.disabled = true;
+    clipNote.textContent = 'Enregistrement de l’extrait…';
+    try {
+      const blob = await recordClip(clip.v, clip.start, { ...crop });
+      // La photo de la carte : l'image de début, redessinée tout de suite (pas par repaint, qui
+      // marquerait l'extrait comme périmé).
+      await grabFrame(clip.start);
+      draw(photo, crop, 640, 480, cropCanvas);
+      photoURL = cropCanvas.toDataURL('image/jpeg', 0.82);
+      if (clip.blobURL) URL.revokeObjectURL(clip.blobURL);
+      clip.blob = blob;
+      clip.blobURL = URL.createObjectURL(blob);
+      clipNote.textContent = `Extrait prêt · ${Math.round(blob.size / 1024)} Ko · sans le son`;
+      renderPreview();
+    } finally {
+      clipBtn.disabled = false;
+    }
+  }
+
   async function loadFile(file) {
     if (!file) return;
+    ctx.editing = true;
+    ctx.draftForm = host;
+    if (mode === 'video') return loadVideo(file);
     if (!/^image\//.test(file.type) && !/\.(jpe?g|png|webp|heic|heif|gif)$/i.test(file.name)) return showErr('Choisis une image (JPG ou PNG).');
     if (file.size > 40 * 1024 * 1024) return showErr('Photo trop lourde (40 Mo au plus).');
     const url = URL.createObjectURL(file);
@@ -162,6 +340,11 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     }
     if (blobURL) URL.revokeObjectURL(blobURL);
     blobURL = url;
+    usePhoto(img);
+  }
+
+  /** Une photo (ou l'image de début d'une vidéo) dans le recadreur et l'aperçu. */
+  function usePhoto(img) {
     photo = img;
     // Par défaut : toute la photo (rien n'est coupé) ; « Remplir le cadre » ou le zoom pour recadrer.
     const fit = fitZoom(img.naturalWidth, img.naturalHeight);
@@ -172,13 +355,47 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     zoomIn.value = String(fit);
     zoom.hidden = false;
     draw(photo, crop, 640, 480, cropCanvas);
-    dropTitle.textContent = 'Changer la photo';
+    dropTitle.textContent = mode === 'video' ? 'Changer la vidéo' : 'Changer la photo';
     err.hidden = true;
     photoURL = cropCanvas.toDataURL('image/jpeg', 0.82);
     renderPreview();
     paintRail();
   }
   fileIn.addEventListener('change', () => loadFile(fileIn.files[0]));
+
+  // Photo ou vidéo (vagues qui ouvrent la vidéo).
+  const modeSeg = canVideo ? h('div.tcr-mode', { attrs: { role: 'radiogroup', 'aria-label': 'Photo ou vidéo' } }) : null;
+  const setMode = (m) => {
+    if (m === mode) return;
+    mode = m;
+    ctx.editing = true; // le rafraîchissement du jeu ne redessine pas un formulaire commencé
+    ctx.draftForm = host;
+    for (const b of modeSeg.children) {
+      const on = b.dataset.mode === m;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-checked', String(on));
+    }
+    // On repart d'un cadre vide : une photo ne devient pas une vidéo (ni l'inverse).
+    dropClip();
+    photo = null;
+    photoURL = '';
+    zoom.hidden = true;
+    clipBox.hidden = true;
+    fileIn.value = '';
+    fileIn.accept = m === 'video' ? 'video/*' : 'image/*';
+    dropTitle.textContent = m === 'video' ? 'Ajoute une vidéo' : 'Ajoute une photo';
+    dropSub.textContent = m === 'video' ? 'Touche pour choisir · MP4 ou MOV · on en garde 2 secondes, sans le son' : 'Touche pour choisir, ou glisse-la ici · JPG ou PNG';
+    rightsTxt.textContent = m === 'video' ? 'J’ai filmé cette vidéo ou j’ai le droit de l’utiliser.' : 'J’ai pris cette photo ou j’ai le droit de l’utiliser.';
+    renderPreview();
+    paintRail();
+  };
+  if (modeSeg) {
+    for (const [m, label, icon] of [['photo', 'Photo', 'photo'], ['video', 'Vidéo 2 s', 'camera']]) {
+      const b = h(`button.tchip${m === mode ? '.is-on' : ''}`, { type: 'button', data: { mode: m }, attrs: { role: 'radio', 'aria-checked': String(m === mode) } }, ic(icon, 'ic ic--xs'), h('span', { text: label }));
+      b.addEventListener('click', () => setMode(m));
+      modeSeg.append(b);
+    }
+  }
   drop.addEventListener('dragover', (e) => e.preventDefault());
   drop.addEventListener('drop', (e) => {
     e.preventDefault();
@@ -286,6 +503,34 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     return [input, h('label.tcheck', {}, input, h('span.tcheck-box', {}, ic('check', 'ic ic--xs')), h('span', { text }))];
   };
   const [c2, l2] = check('tcr-c2', 'J’ai pris cette photo ou j’ai le droit de l’utiliser.');
+  const rightsTxt = l2.lastElementChild;
+
+  // Musique (vagues qui l'ouvrent) : un morceau de la bibliothèque, à écouter avant de choisir.
+  draft.music = '';
+  let audio = null;
+  const stopAudio = () => {
+    audio?.pause();
+    audio = null;
+    listenBtn?.querySelector('span') && (listenBtn.querySelector('span').textContent = 'Écouter');
+  };
+  const musicSel = tracks.length ? h('select.tinput.tcr-music', { id: 'tcr-music' }, h('option', { value: '', text: 'Sans musique' }), ...tracks.map((t) => h('option', { value: t.id, text: t.credit ? `${t.title} · ${t.credit}` : t.title }))) : null;
+  const listenBtn = tracks.length
+    ? tbtn('Écouter', 'sound', 'tbtn--ghost tbtn--sm', () => {
+        if (audio) return stopAudio();
+        const t = tracks.find((x) => x.id === musicSel.value);
+        if (!t) return;
+        audio = new Audio(t.url);
+        audio.loop = true;
+        audio.play().catch(() => stopAudio());
+        listenBtn.querySelector('span').textContent = 'Arrêter';
+      })
+    : null;
+  musicSel?.addEventListener('change', () => {
+    stopAudio();
+    draft.music = musicSel.value;
+    listenBtn.disabled = !musicSel.value;
+  });
+  if (listenBtn) listenBtn.disabled = true;
   // Personnes sur la photo : même liste que le champ « Cc » d'un mail (récents, puis annuaire,
   // étudiants d'abord). L'équipe confirme à la validation, puis leur demande leur accord.
   const people = peoplePicker({ id: 'tcr-people', search: ctx.searchContacts, recent: ctx.recentPeople, onChange: () => paintRail() });
@@ -325,7 +570,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     'form.tcr-form',
     { noValidate: true },
     rail,
-    step(1, 'photo', 'La photo', 'Recadrée au format de la carte : fais-la glisser, zoome.', drop, fileIn, zoom),
+    step(1, 'photo', canVideo ? 'La photo ou la vidéo' : 'La photo', canVideo ? 'Recadrée au format de la carte : fais-la glisser, zoome. Vidéo : 2 secondes, sans le son.' : 'Recadrée au format de la carte : fais-la glisser, zoome.', modeSeg, drop, fileIn, zoom, clipBox),
     step(
       2,
       'text',
@@ -335,8 +580,11 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
       h('div.tfield', {}, h('div.tfield-top', {}, h('label.tlabel', { htmlFor: 'tcr-desc', text: 'Description' }), descCount), descIn, h('p.thelp', { text: '2 ou 3 phrases. Un mème, un moment, un truc : ce que tout le monde reconnaîtra.' })),
     ),
     step(3, 'cat', 'La catégorie', null, chips),
+    tracks.length
+      ? step(4, 'music', 'La musique', 'Facultatif. Elle se joue quand on ouvre ta carte et qu’on appuie sur lecture.', h('label.sr-only', { htmlFor: 'tcr-music', text: 'Musique' }), h('div.tcr-music-row', {}, musicSel, listenBtn))
+      : null,
     step(
-      4,
+      tracks.length ? 5 : 4,
       'people',
       'Qui est sur la photo ?',
       'Facultatif. 10 personnes au plus : l’équipe leur demande leur accord par mail après la validation (ton nom n’y figure pas).',
@@ -348,7 +596,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
   const paintRail = () => {
     const done = { photo: Boolean(photo), text: [...draft.title].length >= 2 && [...draft.desc].length >= 4, cat: Boolean(draft.cat), send: c2.checked };
     for (const li of rail.children) li.classList.toggle('is-done', done[li.dataset.rail]);
-    for (const sec of form.querySelectorAll('.tcr-step')) sec.classList.toggle('is-done', sec.dataset.step === 'people' ? people.count() > 0 : Boolean(done[sec.dataset.step]));
+    for (const sec of form.querySelectorAll('.tcr-step')) sec.classList.toggle('is-done', sec.dataset.step === 'people' ? people.count() > 0 : sec.dataset.step === 'music' ? Boolean(draft.music) : Boolean(done[sec.dataset.step]));
     form.classList.toggle('is-ready', Object.values(done).every(Boolean));
   };
   form.addEventListener('input', paintRail);
@@ -369,7 +617,7 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     err.hidden = true;
-    if (!photo) return showErr('Ajoute une photo.');
+    if (!photo) return showErr(mode === 'video' ? 'Ajoute une vidéo.' : 'Ajoute une photo.');
     if ([...draft.title].length < 2) return showErr('Donne un titre à ta carte.') || titleIn.focus();
     if ([...draft.desc].length < 4) return showErr('Écris deux ou trois phrases.') || descIn.focus();
     const tagged = people.list();
@@ -379,6 +627,11 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
     submitLabel.textContent = 'Envoi…';
     try {
       if (!(await ctx.join())) throw new TcgError('Rejoins le jeu pour envoyer ta carte.');
+      if (mode === 'video' && !clip?.blob) {
+        submitLabel.textContent = 'Préparation de l’extrait…';
+        await prepareClip();
+        submitLabel.textContent = 'Envoi…';
+      }
       const [big, small] = await Promise.all([encode(draw(photo, crop, W, H), MAX), encode(draw(photo, crop, TW, TH), MAX_THUMB)]);
       const fd = new FormData();
       fd.append('title', draft.title);
@@ -389,7 +642,11 @@ export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
       const ext = big.type === 'image/webp' ? 'webp' : 'jpg';
       fd.append('photo', big, `photo.${ext}`);
       fd.append('thumb', small, `vignette.${small.type === 'image/webp' ? 'webp' : 'jpg'}`);
+      if (mode === 'video' && clip?.blob) fd.append('video', clip.blob, `extrait.${clip.blob.type.includes('webm') ? 'webm' : 'mp4'}`);
+      if (draft.music) fd.append('music', draft.music);
       await api.propose(fd);
+      stopAudio();
+      dropClip();
       toast('Carte envoyée : suis son avancement dans « Mes cartes envoyées ».', 'check');
       if (blobURL) URL.revokeObjectURL(blobURL);
       ctx.draftForm = null; // envoyée : le prochain affichage repart d'un formulaire vide

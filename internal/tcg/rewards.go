@@ -20,7 +20,8 @@ import (
 //	4e à 13e place  1 carte
 //
 // Et chaque participant (au moins une carte validée, ou une série du jury classée) reçoit un
-// booster bonus de 4 cartes. Tous ces boosters s'ajoutent aux deux boosters du jour, se tirent au
+// booster bonus de 2 cartes (4 jusqu'à la 2.4.4 : 87 % des cartes bonus allaient à la simple
+// participation ; à 2, participation et podiums pèsent autant sur les 7 soirs du jury). Tous ces boosters s'ajoutent aux deux boosters du jour, se tirent au
 // même taux par carte (draw) et sont valables 24 h après la sortie de la vague 1.
 //
 // Équilibrage (simulations : sim_test.go, day_sim_test.go). Pour que personne ne rafle les cartes
@@ -34,7 +35,7 @@ var rankPackSize = map[int]int{1: 5, 2: 4, 3: 3}
 const (
 	rankPackPlaces = 13 // places récompensées chaque soir (podium, puis 1 carte jusqu'à la 13e)
 	followPackSize = 1
-	allPackSize    = 4
+	allPackSize    = 2 // participation
 	packValid      = 24 * time.Hour
 )
 
@@ -184,6 +185,7 @@ type RewardsView struct {
 	Participant bool          `json:"participant"`
 	Cards       int           `json:"cards"`     // cartes bonus en tout (meilleurs soirs seulement)
 	MaxNights   int           `json:"maxNights"` // soirs comptés au plus
+	PartSize    int           `json:"partSize"`  // cartes du booster de participation
 	Packs       []Pack        `json:"packs,omitempty"`
 	Until       time.Time     `json:"until,omitzero"`
 	Preview     bool          `json:"preview,omitempty"` // avant le lancement : à ce jour
@@ -196,7 +198,7 @@ func (g *Game) rewardsView(p *Player, now time.Time) *RewardsView {
 			return nil
 		}
 		nights, part := g.launchRewards(lw, now, false)
-		v := &RewardsView{Nights: nights[p.ID], Participant: part[p.ID], MaxNights: maxNights, Preview: true}
+		v := &RewardsView{Nights: nights[p.ID], Participant: part[p.ID], MaxNights: maxNights, PartSize: allPackSize, Preview: true}
 		if v.Nights == nil {
 			v.Nights = []RewardNight{}
 		}
@@ -208,7 +210,7 @@ func (g *Game) rewardsView(p *Player, now time.Time) *RewardsView {
 	if len(p.Packs) == 0 {
 		return nil
 	}
-	v := &RewardsView{Nights: []RewardNight{}, MaxNights: maxNights, Packs: append([]Pack{}, p.Packs...)}
+	v := &RewardsView{Nights: []RewardNight{}, MaxNights: maxNights, PartSize: allPackSize, Packs: append([]Pack{}, p.Packs...)}
 	for _, pk := range p.Packs {
 		v.Cards += pk.Size
 		if pk.Kind == "all" {
@@ -248,13 +250,14 @@ type RewardsAdmin struct {
 	Cards   int           `json:"cards"` // cartes bonus en tout
 	Players int           `json:"players"`
 	Max     int           `json:"maxNights"`
+	Part    int           `json:"partSize"` // cartes du booster de participation
 }
 
 func (g *Game) AdminRewards() RewardsAdmin {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := g.now()
-	out := RewardsAdmin{Rows: []RewardRow{}, Players: len(g.st.Players), Max: maxNights, Podiums: []NightPodium{}}
+	out := RewardsAdmin{Rows: []RewardRow{}, Players: len(g.st.Players), Max: maxNights, Part: allPackSize, Podiums: []NightPodium{}}
 	podiums := func(w *Wave, until time.Time, atRelease bool) {
 		for _, mid := range g.launchNights(w, until, atRelease) {
 			np := NightPodium{Day: calendarDay(mid.Add(-time.Minute)), Top: []string{}, Places: []int{}}

@@ -18,6 +18,8 @@ type WaveInput struct {
 	ReleaseAt      time.Time `json:"releaseAt"`
 	Size           int       `json:"size"`
 	PerDay         int       `json:"perDay"` // 0 = réglage de la saison (vague 1 : 10 par défaut)
+	Video          bool      `json:"video"`  // cartes avec un extrait vidéo de 2 s
+	Music          bool      `json:"music"`  // et une musique de la bibliothèque
 }
 
 func (in WaveInput) check() error {
@@ -71,6 +73,7 @@ func (g *Game) SaveWave(in WaveInput) (*Wave, error) {
 		}
 	}
 	w.ProposalsUntil, w.JuryFrom, w.JuryUntil, w.ReleaseAt, w.Size, w.PerDay = in.ProposalsUntil, in.JuryFrom, in.JuryUntil, in.ReleaseAt, in.Size, in.PerDay
+	w.Video, w.Music = in.Video, in.Music
 	sortWaves(g.st.Waves)
 	g.dirty = true
 	cp := *w
@@ -435,6 +438,6 @@ func (g *Game) scheduleNext(w *Wave) {
 	juryUntil := time.Date(rel.Year(), rel.Month(), rel.Day()+6, 20, 0, 0, 0, Paris)
 	g.st.Waves = append(g.st.Waves, &Wave{
 		N: w.N + 1, ProposalsUntil: juryUntil, JuryFrom: w.ReleaseAt, JuryUntil: juryUntil,
-		ReleaseAt: next, Size: w.Size,
+		ReleaseAt: next, Size: w.Size, Video: w.Video, Music: w.Music,
 	})
 }

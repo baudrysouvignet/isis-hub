@@ -81,9 +81,11 @@ type Card struct {
 	Title   string    `json:"title"`
 	Desc    string    `json:"desc"`
 	Cat     string    `json:"cat"`
-	Img     string    `json:"img"`   // photo (nom d'objet : empreinte + extension)
-	Thumb   string    `json:"thumb"` // vignette
-	Bytes   int64     `json:"bytes"` // taille des deux images
+	Img     string    `json:"img"`             // photo (nom d'objet : empreinte + extension)
+	Thumb   string    `json:"thumb"`           // vignette
+	Video   string    `json:"video,omitempty"` // extrait de 2 s, sans son (vagues qui l'ouvrent ; media.go)
+	Music   string    `json:"music,omitempty"` // musique de la bibliothèque (Track.ID), jouée quand on ouvre la carte
+	Bytes   int64     `json:"bytes"`           // taille des images et de la vidéo
 	Status  string    `json:"status"`
 	Created time.Time `json:"created"`
 	Decided time.Time `json:"decided,omitzero"`
@@ -208,6 +210,9 @@ type Wave struct {
 	Runs           map[Rarity]int    `json:"runs,omitempty"`      // exemplaires par carte pour cette vague (sinon ceux de la saison)
 	Opened         int               `json:"opened,omitempty"`    // boosters ouverts pendant la vague (de sa sortie à la suivante)
 	Rewarded       bool              `json:"rewarded,omitempty"`  // récompenses de lancement attribuées (vague 1)
+	// Ce que les cartes de la vague peuvent avoir en plus de la photo (choisi par l'administration).
+	Video bool `json:"video,omitempty"` // un extrait vidéo de 2 s
+	Music bool `json:"music,omitempty"` // une musique de la bibliothèque
 }
 
 // Sent : propositions envoyées par un compte dans la journée. Rangé sous l'empreinte de
@@ -220,8 +225,9 @@ type Sent struct {
 	N   int    `json:"n"`
 }
 
-// Activity : chiffres d'une journée de jeu (de 6 h à 6 h, comme les boosters), pour les
-// statistiques de l'administration. Des compteurs seulement : rien ne dit qui.
+// Activity : chiffres d'une journée (jour du calendrier, heure de Paris, de minuit à minuit ; les
+// jours d'avant la 2.4.4 allaient de 6 h à 6 h), pour les statistiques de l'administration. Des
+// compteurs seulement : rien ne dit qui.
 type Activity struct {
 	Visitors  int `json:"visitors,omitempty"`  // joueurs venus sur le TCG ce jour-là
 	Joined    int `json:"joined,omitempty"`    // nouveaux joueurs
@@ -230,6 +236,7 @@ type Activity struct {
 	Trades    int `json:"trades,omitempty"`    // échanges conclus
 	Packs     int `json:"packs,omitempty"`     // boosters bonus ouverts (hors rythme des raretés)
 	Replicas  int `json:"replicas,omitempty"`  // répliques tirées
+	Opened    int `json:"opened,omitempty"`    // boosters du jour ouverts (statistiques ; le rythme des raretés garde State.Boosters)
 }
 
 // Season : réglages du jeu.
@@ -272,6 +279,7 @@ type state struct {
 	Sent     map[string]Sent      `json:"sent,omitempty"`     // empreinte de l'identifiant → propositions envoyées aujourd'hui
 	Used     int64                `json:"used"`               // octets d'images gardés
 	Mailing  Mailing              `json:"mailing,omitzero"`   // mails d'accord (consent.go)
+	Tracks   []*Track             `json:"tracks,omitempty"`   // bibliothèque de musiques (media.go)
 }
 
 func defaultSeason() Season {

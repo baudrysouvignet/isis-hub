@@ -143,7 +143,10 @@ export function placeholderArt(seed = '', label = '') {
 /**
  * Carte du jeu, balisage de la maquette.
  * card : { id, title, desc, cat, img, thumb, author, wave, no, total, rarity, run, removed }
- * o : { size: sm|md|lg|xl, serial, back, live, mystery, isNew, count, by, foot, artSrc, replica }
+ * o : { size: sm|md|lg|xl, serial, back, live, mystery, isNew, count, by, foot, artSrc, videoSrc, replica }
+ * Vidéo (card.video, ou videoSrc : l'aperçu de l'atelier) : l'extrait de 2 s se joue sans son, en
+ * boucle, par-dessus la photo, sur les grandes cartes (lg, xl) ; la photo reste si le navigateur
+ * ne sait pas lire la vidéo, ou si le mouvement est réduit. Petites cartes : un repère ▶.
  * replica : copie de substitution (tous les exemplaires numérotés sont tirés). Même carte, même photo,
  * reconnaissable tout de suite ; finition mate, liseré pointillé, onde au lieu de l'holographie,
  * étiquette « Réplique » et pas de numéro : on la distingue au premier coup d'œil d'une vraie.
@@ -168,6 +171,12 @@ export function cardEl(card, o = {}) {
   const big = o.size === 'lg' || o.size === 'xl';
   img.src = o.artSrc || (card.removed ? placeholderArt(card.id, card.consentOff ? 'Accord retiré' : 'Carte retirée') : (big ? card.img || card.thumb : card.thumb || card.img) || placeholderArt(card.id || card.title));
   const art = h('div.tc-art', {}, img, card.cat ? h('span.tc-cat', { text: CATS[card.cat] ?? card.cat }) : null, replica ? h('span.tc-replica', {}, ic('replica', 'ic tc-replica-ic'), h('span', { text: REPLICA })) : null, h('span.tc-shine'));
+  const vsrc = o.videoSrc || (!card.removed && card.video) || '';
+  if (vsrc && big && motionOK() && (o.videoSrc || canPlayVideo(vsrc))) {
+    const v = h('video.tc-vid', { muted: true, loop: true, autoplay: true, playsInline: true, preload: 'auto', poster: img.src, src: vsrc, disablePictureInPicture: true, attrs: { 'aria-hidden': 'true', muted: '', playsinline: '' } });
+    v.addEventListener('error', () => v.remove()); // illisible : la photo reste
+    img.after(v);
+  } else if (vsrc && !big) art.append(h('span.tc-vid-badge', { attrs: { 'aria-label': 'Carte animée' } }, h('i')));
 
   const by = o.by ?? (card.author ? `Proposée par ${card.author}` : '');
   const body = h('div.tc-body', {}, h('p.tc-desc', { text: card.desc || '' }), by ? h('p.tc-by', { text: by }) : null);
@@ -188,6 +197,19 @@ export function cardEl(card, o = {}) {
   if (o.live) attachTilt(el);
   return el;
 }
+
+/** Ce navigateur sait-il lire cette vidéo (MP4 ou WebM, d'après le nom) ? */
+export function canPlayVideo(src) {
+  const type = /\.webm(\?|$)/.test(src) ? 'video/webm' : 'video/mp4';
+  try {
+    return document.createElement('video').canPlayType(type) !== '';
+  } catch {
+    return false;
+  }
+}
+
+/** Morceau de la bibliothèque (st.tracks) d'une carte, ou null. */
+export const trackOf = (st, id) => (id ? (st?.tracks ?? []).find((t) => t.id === id) ?? null : null);
 
 /** Reflet et inclinaison qui suivent le pointeur (souris, doigt). */
 export function attachTilt(el) {

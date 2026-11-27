@@ -252,6 +252,8 @@ type AdminCard struct {
 	Cat      string         `json:"cat"`
 	Img      string         `json:"img"`
 	Thumb    string         `json:"thumb"`
+	Video    string         `json:"video,omitempty"`
+	Music    string         `json:"music,omitempty"` // titre du morceau
 	Status   string         `json:"status"`
 	Created  time.Time      `json:"created"`
 	Decided  time.Time      `json:"decided,omitzero"`
@@ -289,7 +291,7 @@ type AdminAuthor struct {
 
 func (g *Game) adminCard(c *Card, img func(string) string) AdminCard {
 	a := AdminCard{
-		ID: c.ID, Num: c.Num, Title: c.Title, Desc: c.Desc, Cat: c.Cat, Img: img(c.Img), Thumb: img(c.Thumb),
+		ID: c.ID, Num: c.Num, Title: c.Title, Desc: c.Desc, Cat: c.Cat, Img: img(c.Img), Thumb: img(c.Thumb), Video: img(c.Video),
 		Status: c.Status, Created: c.Created, Decided: c.Decided, Reason: c.Reason, Message: c.Message, Edited: c.Edited,
 		Wave: c.Wave, No: c.No, Rarity: c.Rarity, Run: c.Run, Issued: c.Issued, Replicas: c.Replicas, Jury: juryScore(c), JuryN: c.JuryVotes,
 	}
@@ -297,6 +299,9 @@ func (g *Game) adminCard(c *Card, img func(string) string) AdminCard {
 		a.Flags = Flags(c.Title, c.Desc)
 	}
 	a.Consent = g.consentOf(c)
+	if t := g.track(c.Music); t != nil {
+		a.Music = t.Title
+	}
 	if c.Status == StatusPending || c.Status == StatusBlocked {
 		for _, t := range c.Tags {
 			if addr, err := g.openMail(t.Enc); err == nil {
@@ -434,7 +439,9 @@ func (g *Game) AdminOverview() Overview {
 			}
 		}
 	}
-	o.Today = g.st.Boosters[DayKey(now)]
+	if a := g.st.Activity[calendarDay(now)]; a != nil {
+		o.Today = a.Opened // boosters ouverts aujourd'hui (depuis minuit)
+	}
 	o.Waves = g.waveViews()
 	return o
 }
@@ -442,7 +449,7 @@ func (g *Game) AdminOverview() Overview {
 // statsSpan : jours montrés dans le graphique des statistiques.
 const statsSpan = 30
 
-// DayStats : une journée de jeu (de 6 h à 6 h).
+// DayStats : une journée (jour du calendrier, heure de Paris).
 type DayStats struct {
 	Day string `json:"day"` // 2026-11-25
 	Activity
@@ -470,7 +477,7 @@ type AdminStats struct {
 	Since      string      `json:"since,omitempty"` // premier jour du journal d'activité
 	Players    int         `json:"players"`
 	Joined7    int         `json:"joined7"`
-	Today      int         `json:"today"` // venus aujourd'hui (depuis 6 h)
+	Today      int         `json:"today"` // venus aujourd'hui (depuis minuit)
 	Week       int         `json:"week"`  // venus ces 7 derniers jours
 	Month      int         `json:"month"` // venus ces 30 derniers jours
 	Jurors     int         `json:"jurors"`
@@ -489,7 +496,7 @@ func (g *Game) AdminStats() AdminStats {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	now := g.now()
-	today := DayKey(now)
+	today := calendarDay(now)
 	s := AdminStats{Now: now, Players: len(g.st.Players), Days: make([]DayStats, 0, statsSpan), Waves: []WaveStats{}}
 
 	for d, a := range g.st.Activity {
@@ -498,12 +505,15 @@ func (g *Game) AdminStats() AdminStats {
 		}
 		s.Trades += a.Trades
 	}
-	day0 := now.In(Paris).Add(-BoosterHour * time.Hour) // comme DayKey, en heure de Paris (changements d'heure)
+	day0 := now.In(Paris) // jours du calendrier, en heure de Paris (changements d'heure)
 	for i := statsSpan - 1; i >= 0; i-- {
 		d := day0.AddDate(0, 0, -i).Format("2006-01-02")
-		ds := DayStats{Day: d, Boosters: g.st.Boosters[d]}
+		ds := DayStats{Day: d, Boosters: g.st.Boosters[d]} // jours d'avant la 2.4.4 : de 6 h à 6 h
 		if a := g.st.Activity[d]; a != nil {
 			ds.Activity = *a
+			if a.Opened > 0 {
+				ds.Boosters = a.Opened
+			}
 		}
 		s.Days = append(s.Days, ds)
 	}
@@ -539,7 +549,7 @@ func (g *Game) AdminStats() AdminStats {
 	}
 
 	for _, p := range g.st.Players {
-		if DayKey(p.Seen) == today {
+		if calendarDay(p.Seen) == today {
 			s.Today++
 		}
 		if now.Sub(p.Seen) < 7*24*time.Hour {

@@ -223,3 +223,68 @@ func TestDayPodium(t *testing.T) {
 		t.Fatalf("podium du jour après la sortie : %+v", v.Leaders.Today)
 	}
 }
+
+// Heure de Paris partout : une série du jury classée vendredi à 00 h 20 compte vendredi, dans les
+// statistiques comme pour le podium du jour et les cadeaux du soir (jamais jeudi). L'heure d'hiver
+// (UTC+1) fait que 00 h 20 à Paris est encore jeudi en UTC : c'est le cas piégeux.
+func TestParisMidnight(t *testing.T) {
+	g, clk, _ := newGame(t)
+	g.st.Season.Enabled = true
+	fri := func(h, m int) time.Time { return time.Date(2026, 11, 27, h, m, 0, 0, Paris) } // vendredi
+	if utc := fri(0, 20).UTC(); utc.Day() != 26 {
+		t.Fatalf("hypothèse du test : 00 h 20 à Paris doit être jeudi en UTC (%v)", utc)
+	}
+	g.st.Waves = []*Wave{{N: 1, JuryFrom: fri(0, 0).Add(-48 * time.Hour), JuryUntil: fri(20, 0), ReleaseAt: fri(0, 0).Add(72 * time.Hour), Size: 50}}
+	a := mustJoin(t, g, "a", "Alice A.")
+	v := mustJoin(t, g, "v", "Vic V.")
+	g.st.Cards["k1"] = &Card{ID: "k1", Num: 1, Title: "k1", Author: a, Status: StatusAccepted, Validated: fri(0, 10), Decided: fri(0, 10)}
+	clk.t = fri(0, 20)
+	g.activity(clk.now()).Series++
+	g.st.Players[v].Ballots[1] = []Ballot{{Cards: []string{"x"}, Rank: []string{"x"}, At: fri(0, 20)}}
+	if g.st.Activity["2026-11-27"] == nil || g.st.Activity["2026-11-26"] != nil {
+		t.Fatalf("statistiques : %v", g.st.Activity)
+	}
+	clk.t = fri(9, 0)
+	if d := g.dayRanking(dayStart(clk.now()), clk.now()); len(d) != 1 || d[0].id != a {
+		t.Fatalf("podium du jour de vendredi : %+v", d)
+	}
+	clk.t = fri(0, 0).Add(25 * time.Hour) // samedi 1 h : le soir de vendredi est passé
+	nights, _ := g.launchRewards(g.st.Waves[0], clk.now(), false)
+	if n := nights[a]; len(n) != 1 || n[0].Day != "2026-11-27" {
+		t.Fatalf("soir compté : %+v", n)
+	}
+}
+
+// Scores du jour (administration) : la place au podium du jour, les points gagnés depuis minuit,
+// et seulement les cartes qui ont bougé, avec ce qu'elles valaient avant (nil : validée aujourd'hui).
+func TestAdminDayScores(t *testing.T) {
+	g, clk, _ := newGame(t)
+	g.st.Season.Enabled = true
+	day := func(d, h int) time.Time { return time.Date(2026, 11, 24+d, h, 0, 0, 0, Paris) }
+	g.st.Waves = []*Wave{{N: 1, JuryFrom: day(1, 0), JuryUntil: day(4, 20), ReleaseAt: day(5, 6), Size: 50}}
+	louis := mustJoin(t, g, "l", "Louis L.")
+	marie := mustJoin(t, g, "m", "Marie M.")
+	n := 0
+	add := func(author string, at time.Time, k int) {
+		for i := 0; i < k; i++ {
+			n++
+			id := fmt.Sprintf("k%d", n)
+			g.st.Cards[id] = &Card{ID: id, Num: n, Title: id, Author: author, Status: StatusAccepted, Validated: at, Decided: at}
+		}
+	}
+	add(louis, day(1, 9), 10) // hier
+	add(marie, day(2, 9), 3)  // aujourd'hui
+	add(louis, day(2, 10), 1)
+	clk.t = day(2, 15)
+	s := g.AdminScores()
+	if !s.DayFrom.Equal(day(2, 0)) || len(s.Day) != 2 {
+		t.Fatalf("scores du jour : depuis %v, %+v", s.DayFrom, s.Day)
+	}
+	m, l := s.Day[0], s.Day[1]
+	if m.Pseudo != "Marie M." || m.Place != 1 || m.Gain != 3 || len(m.Cards) != 3 || m.Cards[0].Before != nil || m.Cards[0].After == nil || m.Cards[0].Delta != 1 {
+		t.Fatalf("Marie : %+v", m)
+	}
+	if l.Pseudo != "Louis L." || l.Place != 2 || l.Gain != 1 || len(l.Cards) != 1 {
+		t.Fatalf("Louis (ses 10 cartes d'hier ne bougent pas) : %+v", l)
+	}
+}

@@ -421,6 +421,116 @@ type ScoresAdmin struct {
 	JudgeWave int                `json:"penaltyWave,omitempty"`
 	Podium    int                `json:"podium"`
 	DayGifts  bool               `json:"dayGifts,omitempty"` // le podium de la journée donne des boosters bonus à minuit
+	Day       []DayScoreRow      `json:"day"`                // podium du jour : points gagnés depuis minuit, carte par carte
+	DayFrom   time.Time          `json:"dayFrom"`            // minuit (Paris)
+}
+
+// DayValue : ce que valait une carte à un instant (scores du jour).
+type DayValue struct {
+	Points  float64 `json:"points"`
+	Rarity  Rarity  `json:"rarity,omitempty"`
+	Planned bool    `json:"planned,omitempty"`
+	Few     bool    `json:"few,omitempty"`
+	Out     bool    `json:"out,omitempty"`
+	Penalty bool    `json:"penalty,omitempty"`
+	Printed bool    `json:"printed,omitempty"`
+}
+
+// DayCard : une carte dont la valeur a changé depuis minuit (Before nil : elle ne comptait pas
+// encore, validée aujourd'hui ; After nil : elle ne compte plus).
+type DayCard struct {
+	Title  string    `json:"title"`
+	Delta  float64   `json:"delta"`
+	Before *DayValue `json:"before,omitempty"`
+	After  *DayValue `json:"after,omitempty"`
+}
+
+// DayScoreRow : un créateur au podium du jour (Place 0 : rien gagné, ou des points perdus).
+type DayScoreRow struct {
+	Pseudo string    `json:"pseudo"`
+	Place  int       `json:"place,omitempty"`
+	Tied   bool      `json:"tied,omitempty"`
+	Gain   float64   `json:"gain"`
+	Cards  []DayCard `json:"cards"`
+}
+
+func dayValue(v cardValue) *DayValue {
+	return &DayValue{Points: v.points, Rarity: v.rarity, Planned: v.planned, Few: v.few, Out: v.out, Penalty: v.penalty, Printed: v.printed}
+}
+
+// dayScores : le podium du jour (de from à to) et, pour chacun, les cartes qui ont bougé.
+func (g *Game) dayScores(from, to time.Time) []DayScoreRow {
+	after, _, _ := g.valuation(to)
+	before, _, _ := g.valuation(from)
+	place, same := map[string]int{}, map[int]int{}
+	order := map[string]int{}
+	for i, d := range g.dayRanking(from, to) {
+		place[d.id], order[d.id] = d.place, i
+		same[d.place]++
+	}
+	rows := map[string]*DayScoreRow{}
+	ids := map[string]bool{}
+	for id := range after {
+		ids[id] = true
+	}
+	for id := range before {
+		ids[id] = true
+	}
+	for id := range ids {
+		c := g.st.Cards[id]
+		p := g.st.Players[c.Author]
+		if p == nil || p.Muted {
+			continue
+		}
+		b, okB := before[id]
+		a, okA := after[id]
+		delta := a.points - b.points
+		if delta == 0 && okA == okB {
+			continue
+		}
+		dc := DayCard{Title: c.Title, Delta: delta}
+		if okB {
+			dc.Before = dayValue(b)
+		}
+		if okA {
+			dc.After = dayValue(a)
+		}
+		row := rows[p.ID]
+		if row == nil {
+			row = &DayScoreRow{Pseudo: p.Pseudo, Place: place[p.ID], Tied: same[place[p.ID]] > 1, Cards: []DayCard{}}
+			rows[p.ID] = row
+		}
+		row.Gain += delta
+		row.Cards = append(row.Cards, dc)
+	}
+	out := make([]DayScoreRow, 0, len(rows))
+	keys := make([]string, 0, len(rows))
+	for id, r := range rows {
+		sort.SliceStable(r.Cards, func(i, j int) bool {
+			if r.Cards[i].Delta != r.Cards[j].Delta {
+				return r.Cards[i].Delta > r.Cards[j].Delta
+			}
+			return r.Cards[i].Title < r.Cards[j].Title
+		})
+		keys = append(keys, id)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		a, b := rows[keys[i]], rows[keys[j]]
+		if (a.Place > 0) != (b.Place > 0) {
+			return a.Place > 0
+		}
+		if a.Place > 0 {
+			return order[keys[i]] < order[keys[j]]
+		}
+		if a.Gain != b.Gain {
+			return a.Gain > b.Gain
+		}
+		return a.Pseudo < b.Pseudo
+	})
+	for _, k := range keys {
+		out = append(out, *rows[k])
+	}
+	return out
 }
 
 // AdminScores : tous les créateurs (au moins une carte proposée), les classés d'abord, dans
@@ -441,6 +551,8 @@ func (g *Game) AdminScores() ScoresAdmin {
 	for _, d := range g.dayRanking(dayStart(now), now) {
 		today[d.id], dayPlace[d.id] = d.gain, d.place
 	}
+	out.DayFrom = dayStart(now)
+	out.Day = g.dayScores(out.DayFrom, now)
 	ranked := g.rank(vals)
 	place, order, sameCount := map[string]int{}, map[string]int{}, map[int]int{}
 	for i, cr := range ranked {

@@ -28,7 +28,8 @@ var Paris = func() *time.Location {
 	return time.FixedZone("CET", 3600)
 }()
 
-// BoosterHour : heure (Paris) à laquelle commence un jour de jeu (statistiques, rythme des raretés).
+// BoosterHour : heure (Paris) à laquelle commence un jour de jeu (rythme des raretés seulement ; les
+// statistiques et les scores suivent le jour du calendrier, de minuit à minuit).
 const BoosterHour = 6
 
 const (
@@ -345,8 +346,11 @@ func (g *Game) Tick() {
 			(c.Status == StatusRemoved && now.Sub(c.RemovedAt) > removedPurge)
 		if old && !c.Purged {
 			purge = append(purge, c.Img, c.Thumb)
+			if c.Video != "" {
+				purge = append(purge, c.Video)
+			}
 			g.st.Used -= c.Bytes
-			c.Purged, c.Img, c.Thumb, c.Bytes = true, "", "", 0
+			c.Purged, c.Img, c.Thumb, c.Video, c.Bytes = true, "", "", "", 0
 			g.dirty = true
 		}
 	}
@@ -471,9 +475,9 @@ func DayKey(t time.Time) string {
 }
 
 // calendarDay : jour calendaire à Paris (quotas de propositions).
-// activity : compteurs du jour de jeu de t (créés au besoin).
+// activity : compteurs du jour du calendrier de t, heure de Paris (créés au besoin).
 func (g *Game) activity(t time.Time) *Activity {
-	d := DayKey(t)
+	d := calendarDay(t)
 	a := g.st.Activity[d]
 	if a == nil {
 		a = &Activity{}

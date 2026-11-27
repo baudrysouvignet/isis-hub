@@ -10,7 +10,7 @@ import { prefs } from '../core/store.js';
 import { hubBarColor } from '../core/theme.js';
 import { seen, markSeen } from '../core/seen.js';
 import { api, adminApi, TcgError } from './api.js';
-import { cardEl, ic, mark, rchip, RLABEL, CATS, REPLICA, tier, sheet, sheetOpen, tbtn, meter, dayLong, dateShort, hourText, ago, untilText, plural, placeholderArt, pips } from './ui.js';
+import { cardEl, ic, mark, rchip, RLABEL, CATS, REPLICA, tier, sheet, sheetOpen, tbtn, meter, dayLong, dateShort, hourText, ago, untilText, plural, placeholderArt, pips, trackOf } from './ui.js';
 import { shield } from './shield.js';
 import { openBooster, showRecap, packEl } from './open.js';
 import { renderCreate, createForm, proposalsList } from './create.js';
@@ -786,7 +786,7 @@ export function createTCG(o) {
   function rewardsPanel(rw) {
     if (!rw || (!rw.participant && !rw.nights?.length && !rw.packs?.length)) {
       if (!rw?.preview) return null;
-      return h('section.trw', {}, h('div.trw-head', {}, h('div', {}, h('h2', { text: 'Récompenses de lancement' }), h('p', { text: 'Chaque soir de jury, à minuit, le podium du jour compte (les points gagnés dans la journée, chaque journée repart de zéro) : 1er → booster bonus de 5 cartes, 2e → 4, 3e → 3, du 4e au 13e → 1. Et un booster de 4 cartes pour chaque participant (une carte validée ou une série du jury). Tu les ouvriras le jour du lancement.' }))), h('p.trw-note', { text: 'Rien pour l’instant : propose une carte ou joue une série du jury pour participer.' }));
+      return h('section.trw', {}, h('div.trw-head', {}, h('div', {}, h('h2', { text: 'Récompenses de lancement' }), h('p', { text: `Chaque soir de jury, à minuit, le podium du jour compte (les points gagnés dans la journée, chaque journée repart de zéro) : 1er → booster bonus de 5 cartes, 2e → 4, 3e → 3, du 4e au 13e → 1. Et un booster de ${rw?.partSize ?? 2} cartes pour chaque participant (une carte validée ou une série du jury). Tu les ouvriras le jour du lancement.` }))), h('p.trw-note', { text: 'Rien pour l’instant : propose une carte ou joue une série du jury pour participer.' }));
     }
     const live = !rw.preview;
     const left = live && rw.until ? Math.max(0, new Date(rw.until) - Date.now()) : 0;
@@ -819,11 +819,11 @@ export function createTCG(o) {
     for (const n of rw.nights ?? []) why.append(h('li', {}, h('span.trw-rank', { text: placeTxt(n.rank) }), h('span', {}, 'Soir du ', h('b', { text: dayLong(n.day + 'T12:00:00') }), ' (podium du jour, à minuit)'), h('span.trw-n', { text: `+${n.size}` })));
     sec.append(why);
     const counted = rw.maxNights ? ` Seuls tes ${rw.maxNights} meilleurs soirs comptent.` : '';
-    sec.append(h('p.trw-note', { text: live ? `Valables jusqu’au ${dayLong(rw.until)} à ${hourText(rw.until)}, puis ils expirent.${counted}` : `Chaque soir de jury, à minuit, le podium du jour (les points gagnés dans la journée) : 1er → 5 cartes, 2e → 4, 3e → 3, du 4e au 13e → 1 ; et 4 cartes pour chaque participant.${counted} Le classement ne montre que des places, jamais de score.` }));
+    sec.append(h('p.trw-note', { text: live ? `Valables jusqu’au ${dayLong(rw.until)} à ${hourText(rw.until)}, puis ils expirent.${counted}` : `Chaque soir de jury, à minuit, le podium du jour (les points gagnés dans la journée) : 1er → 5 cartes, 2e → 4, 3e → 3, du 4e au 13e → 1 ; et ${rw.partSize ?? 2} cartes pour chaque participant.${counted} Le classement ne montre que des places, jamais de score.` }));
     if (live && open.length) sec.append(h('div.trw-acts', {}, tbtn(open.length > 1 ? `Ouvrir un booster bonus (${open.length})` : 'Ouvrir le booster bonus', 'gift', 'tbtn--primary', (e) => openPack(open[0], e.currentTarget))));
     return sec;
   }
-  const allPackSizeOf = (rw) => (rw.packs ?? []).find((p) => p.kind === 'all')?.size ?? 4;
+  const allPackSizeOf = (rw) => (rw.packs ?? []).find((p) => p.kind === 'all')?.size ?? rw.partSize ?? 2;
 
   // ---------------------------------------------------------------- fiche d'une carte
   function openCard(card, serial, replicaView) {
@@ -844,6 +844,28 @@ export function createTCG(o) {
     row('Vague', `Vague ${c.wave}${w?.releaseAt ? ` · ${dateShort(w.releaseAt)}` : ''} · n° ${String(c.no).padStart(3, '0')}`);
     const inColl = [mine.length ? plural(mine.length, 'exemplaire') : '', replicas ? plural(replicas, 'réplique') : ''].filter(Boolean).join(' · ');
     row('Dans ta collection', inColl || 'Pas encore');
+    // Musique de la carte : jamais d'elle-même, seulement si l'on appuie sur lecture.
+    let audio = null;
+    const track = c.removed ? null : trackOf(st, c.music);
+    if (track) {
+      const label = h('span', { text: 'Écouter' });
+      const play = h('button.tbtn.tbtn--ghost.tbtn--sm.tdet-play', { type: 'button', attrs: { 'aria-pressed': 'false' } }, ic('sound', 'ic ic--sm'), label);
+      play.addEventListener('click', () => {
+        if (audio) {
+          audio.pause();
+          audio = null;
+          label.textContent = 'Écouter';
+          play.setAttribute('aria-pressed', 'false');
+          return;
+        }
+        audio = new Audio(track.url);
+        audio.loop = true;
+        audio.play().catch(() => (audio = null));
+        label.textContent = 'Arrêter';
+        play.setAttribute('aria-pressed', 'true');
+      });
+      row('Musique', h('span.tdet-music', {}, play, h('span', { text: track.credit ? `${track.title} · ${track.credit}` : track.title })));
+    }
     const acts = h('div.tdet-acts');
     if (!mine.length && st) {
       const wished = st.wish.includes(c.id);
@@ -863,7 +885,7 @@ export function createTCG(o) {
     if (st && !c.mine && !c.removed) acts.append(tbtn('Signaler', 'flag', 'tbtn--ghost tbtn--sm', () => reportSheet(c)));
     const replicaNote = asReplica ? h('p.tdet-replica', {}, ic('replica', 'ic ic--sm'), h('span', { text: `${REPLICA} : ${c.run === 1 ? 'l’exemplaire unique' : `les ${c.run} exemplaires numérotés`} étaient déjà tirés. Elle complète ta collection mais ne s’échange pas ; « Je la cherche » reste possible pour un vrai exemplaire.` })) : null;
     const info = h('div.tdet-info', {}, h('p.tk', { text: CATS[c.cat] ?? '' }), h('h2.tdet-h', { text: c.title }), c.desc ? h('p.tdet-desc', { text: c.desc }) : null, dl, replicaNote, acts);
-    const s = sheet('detail', c.title, h(`div.tdet.tdet--${c.rarity}`, {}, h('div.tdet-stage', {}, h('span.tdet-glow'), el), info));
+    const s = sheet('detail', c.title, h(`div.tdet.tdet--${c.rarity}`, {}, h('div.tdet-stage', {}, h('span.tdet-glow'), el), info), { onClose: () => audio?.pause() });
     return s;
   }
 

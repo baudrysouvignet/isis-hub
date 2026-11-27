@@ -125,6 +125,9 @@ func New(root fs.FS, opt Options) (*Site, error) {
 		// blob: : pièces jointes affichées dans le Hub (images et PDF reconnus à leurs premiers
 		// octets, voir web/js/ui/attachments.js). Rien d'autre n'est chargé dans un cadre.
 		"img-src 'self' data: blob:",
+		// Vidéos de 2 s et musiques des cartes du TCG (servies par le Hub) ; blob: : l'aperçu de
+		// l'extrait dans l'atelier, avant l'envoi.
+		"media-src 'self' blob:",
 		"frame-src blob:",
 		"font-src 'self'",
 		"connect-src " + connect,

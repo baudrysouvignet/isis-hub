@@ -415,8 +415,8 @@ func (s *Service) handlePropose(w http.ResponseWriter, r *http.Request, pid stri
 		failErr(w, err)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, MaxImgBytes+MaxThumbBytes+16<<10)
-	if err := r.ParseMultipartForm(1 << 20); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, MaxImgBytes+MaxThumbBytes+MaxVideoBytes+16<<10)
+	if err := r.ParseMultipartForm(2 << 20); err != nil {
 		fail(w, http.StatusBadRequest, "Envoi incomplet ou trop lourd.")
 		return
 	}
@@ -468,17 +468,39 @@ func (s *Service) handlePropose(w http.ResponseWriter, r *http.Request, pid stri
 		failErr(w, err)
 		return
 	}
+	// Extrait vidéo et musique : seulement si la vague qui reçoit la carte les ouvre (vérifié avant
+	// d'enregistrer quoi que ce soit, puis de nouveau par Propose).
+	files := []Image{img, thumb}
+	var video Image
+	if f, _, ferr := r.FormFile("video"); ferr == nil {
+		b, rerr := io.ReadAll(io.LimitReader(f, MaxVideoBytes+1))
+		f.Close()
+		if rerr != nil {
+			failErr(w, ErrVideo)
+			return
+		}
+		if video, err = CheckVideo(b); err != nil {
+			failErr(w, err)
+			return
+		}
+		files = append(files, video)
+	}
+	music := strings.TrimSpace(r.FormValue("music"))
+	if err := s.Game.MediaAllowed(video.Name != "", music); err != nil {
+		failErr(w, err)
+		return
+	}
 	if s.Game.Blobs == nil {
 		fail(w, http.StatusServiceUnavailable, "Stockage des photos indisponible.")
 		return
 	}
-	for _, im := range []Image{img, thumb} {
+	for _, im := range files {
 		if err := s.Game.Blobs.Put(im.Name, im.Data, im.Ctype); err != nil {
 			fail(w, http.StatusBadGateway, "Enregistrement de la photo impossible pour l’instant : réessaie.")
 			return
 		}
 	}
-	id, err := s.Game.Propose(pid, NewProposal{Title: title, Desc: desc, Cat: cat, People: people, Img: img.Name, Thumb: thumb.Name, Bytes: int64(len(img.Data) + len(thumb.Data))})
+	id, err := s.Game.Propose(pid, NewProposal{Title: title, Desc: desc, Cat: cat, People: people, Img: img.Name, Thumb: thumb.Name, Video: video.Name, Music: music, Bytes: int64(len(img.Data) + len(thumb.Data) + len(video.Data))})
 	if err != nil {
 		failErr(w, err)
 		return
@@ -568,6 +590,21 @@ func (s *Service) serveAdmin(w http.ResponseWriter, r *http.Request, action stri
 	switch {
 	case action == "overview" && r.Method == http.MethodGet:
 		reply(w, http.StatusOK, s.Game.AdminOverview())
+	case action == "tracks" && r.Method == http.MethodGet:
+		w.Header().Set("Cache-Control", "no-store")
+		reply(w, http.StatusOK, s.Game.AdminTracks())
+	case action == "track" && r.Method == http.MethodPost:
+		s.adminAddTrack(w, r)
+	case strings.HasPrefix(action, "track/") && strings.HasSuffix(action, "/delete") && r.Method == http.MethodPost:
+		file, err := s.Game.DeleteTrack(strings.TrimSuffix(strings.TrimPrefix(action, "track/"), "/delete"))
+		if err != nil {
+			failErr(w, err)
+			return
+		}
+		if s.Game.Blobs != nil {
+			s.Game.Blobs.Delete(file)
+		}
+		ok(w)
 	case action == "rewards" && r.Method == http.MethodGet:
 		w.Header().Set("Cache-Control", "no-store")
 		reply(w, http.StatusOK, s.Game.AdminRewards())
@@ -690,4 +727,44 @@ func (s *Service) serveAdmin(w http.ResponseWriter, r *http.Request, action stri
 	default:
 		fail(w, http.StatusNotFound, "inconnu")
 	}
+}
+
+// adminAddTrack : un morceau ajouté à la bibliothèque (multipart : file, title, credit).
+func (s *Service) adminAddTrack(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, MaxTrackBytes+16<<10)
+	if err := r.ParseMultipartForm(MaxTrackBytes + 16<<10); err != nil {
+		failErr(w, ErrAudio)
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
+	f, _, err := r.FormFile("file")
+	if err != nil {
+		failErr(w, ErrAudio)
+		return
+	}
+	b, err := io.ReadAll(io.LimitReader(f, MaxTrackBytes+1))
+	f.Close()
+	if err != nil {
+		failErr(w, ErrAudio)
+		return
+	}
+	a, err := CheckAudio(b)
+	if err != nil {
+		failErr(w, err)
+		return
+	}
+	if s.Game.Blobs == nil {
+		fail(w, http.StatusServiceUnavailable, "Stockage indisponible.")
+		return
+	}
+	if err := s.Game.Blobs.Put(a.Name, a.Data, a.Ctype); err != nil {
+		fail(w, http.StatusBadGateway, "Enregistrement impossible pour l’instant : réessaie.")
+		return
+	}
+	t, err := s.Game.AddTrack(r.FormValue("title"), r.FormValue("credit"), a)
+	if err != nil {
+		failErr(w, err)
+		return
+	}
+	reply(w, http.StatusCreated, t)
 }

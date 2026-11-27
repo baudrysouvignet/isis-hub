@@ -29,7 +29,7 @@ const (
 var ErrImage = errors.New("image refusée")
 
 // NameRE : nom d'objet d'une image (empreinte + extension).
-var NameRE = regexp.MustCompile(`^[0-9a-f]{40}\.(webp|jpg)$`)
+var NameRE = regexp.MustCompile(`^[0-9a-f]{40}\.(webp|jpg|mp4|webm|mp3|m4a|ogg)$`)
 
 // Image : image vérifiée, prête à être stockée.
 type Image struct {
@@ -351,6 +351,10 @@ func ServeImage(w http.ResponseWriter, r *http.Request, b Blobs, name string) {
 	if err != nil {
 		h.Set("Cache-Control", "no-store")
 		http.Error(w, "image indisponible", http.StatusBadGateway)
+		return
+	}
+	if mediaType(name) != "" {
+		serveMedia(w, r, data, name) // vidéo, musique : requêtes partielles (Range)
 		return
 	}
 	h.Set("Content-Type", ctypeOf(name))

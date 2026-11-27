@@ -314,7 +314,7 @@ connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
    à minuit moins score à la minuit d'avant, reconstitués d'après la date de validation de chaque
    carte et la date des séries du jury) ; chaque journée repart de zéro. 1er → booster bonus de 5
    cartes, 2e → 4, 3e → 3, du 4e au 13e → 1, ex æquo compris ; chaque participant (une carte validée
-   ou une série du jury) reçoit 4 cartes. Les 3 meilleurs soirs d'un joueur comptent. Attribués
+   ou une série du jury) reçoit 2 cartes. Les 3 meilleurs soirs d'un joueur comptent. Attribués
    d'eux-mêmes à la sortie de la vague 1, valables 24 h, au même taux de tirage que les boosters du
    jour, et comptés d'avance dans le rythme des cartes numérotées. Pendant le jury, les joueurs voient
    le podium du jour à côté du classement global, et ce qu'ils ont gagné à ce jour ; l'administration
@@ -322,6 +322,13 @@ connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
    `TCG_SIM=1 go test ./internal/tcg/ -run 'TestLaunchSimulation|TestDailyPodiumSimulation' -v`.
    Avant le lancement, l'administration peut **essayer une ouverture** (booster du jour ou bonus,
    avec une réplique) depuis la page d'attente : raretés inventées, rien n'est enregistré.
+   Rythme des raretés simulé (110 boosters par jour) : `TCG_SIM=1 go test ./internal/tcg/ -run TestDropRates -v`.
+9. **Vidéo et musique** (`internal/tcg/media.go`), seulement pour les vagues où l'administration
+   les ouvre : une **vidéo de 2 s** à la place de la photo (découpée et recadrée dans la page,
+   640 × 480, 800 kbit/s, MP4 ou WebM, **sans son** ; environ 170 Ko, la photo de la carte est sa
+   première image) et une **musique** choisie dans une bibliothèque que l'administration remplit
+   elle-même (morceaux libres de droits : jamais envoyés par les joueurs). La vidéo se joue sans son
+   sur les grandes cartes ; la musique seulement si l'on appuie sur lecture.
 
 **Ce que le serveur garde** (`tcg.json` du volume `/data`, droits 600, copie quotidienne dans
 `tcg-backups/`, 14 jours) : pseudo, collection, propositions, votes, signalements et échanges de

@@ -10,6 +10,16 @@
 
 export const CHANGELOG = [
   {
+    version: '2.4.4',
+    date: '2026-11-27',
+    title: 'TCG : le podium du jour compte davantage',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
+    short: ['Récompenses de lancement : le booster de participation passe à 2 cartes ; les podiums du jour comptent davantage.'],
+    details: [
+      'Récompenses de lancement : chaque participant (une carte validée ou une série du jury) reçoit un booster bonus de 2 cartes au lieu de 4. Les boosters des podiums du jour ne changent pas (1er → 5 cartes, 2e → 4, 3e → 3, du 4e au 13e → 1) : sur les soirs du jury, ils pèsent désormais autant que la participation. Les raretés sortent au même rythme : le jeu compte toujours les cartes bonus d’avance.',
+    ],
+  },
+  {
     version: '2.4.3',
     date: '2026-11-26',
     title: 'TCG : un podium du jour pour les boosters bonus',

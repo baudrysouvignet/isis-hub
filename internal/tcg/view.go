@@ -23,6 +23,8 @@ type CardView struct {
 	Cat     string `json:"cat"`
 	Img     string `json:"img,omitempty"`
 	Thumb   string `json:"thumb,omitempty"`
+	Video   string `json:"video,omitempty"` // extrait de 2 s, sans son
+	Music   string `json:"music,omitempty"` // morceau (View.Tracks)
 	Author  string `json:"author"`
 	Mine    bool   `json:"mine,omitempty"`
 	Wave    int    `json:"wave"`
@@ -47,7 +49,9 @@ type WaveView struct {
 	PerDay         int       `json:"perDay,omitempty"` // quota de propositions propre à la vague
 	Printed        bool      `json:"printed"`
 	Total          int       `json:"total"`
-	Discovered     int       `json:"discovered"` // cartes déjà tirées au moins une fois (défi de la promo)
+	Discovered     int       `json:"discovered"`      // cartes déjà tirées au moins une fois (défi de la promo)
+	Video          bool      `json:"video,omitempty"` // les cartes de la vague peuvent avoir un extrait vidéo
+	Music          bool      `json:"music,omitempty"` // et une musique de la bibliothèque
 }
 
 // Stats : chiffres de la page d'attente.
@@ -72,7 +76,7 @@ type Public struct {
 func (g *Game) waveViews() []WaveView {
 	out := make([]WaveView, 0, len(g.st.Waves))
 	for _, w := range g.st.Waves {
-		v := WaveView{N: w.N, ProposalsUntil: w.ProposalsUntil, JuryFrom: w.JuryFrom, JuryUntil: w.JuryUntil, ReleaseAt: w.ReleaseAt, Size: w.Size, PerDay: w.PerDay, Printed: w.Printed, Total: len(w.Cards)}
+		v := WaveView{N: w.N, ProposalsUntil: w.ProposalsUntil, JuryFrom: w.JuryFrom, JuryUntil: w.JuryUntil, ReleaseAt: w.ReleaseAt, Size: w.Size, PerDay: w.PerDay, Printed: w.Printed, Total: len(w.Cards), Video: w.Video, Music: w.Music}
 		for _, id := range w.Cards {
 			if c := g.st.Cards[id]; c != nil && c.Issued > 0 {
 				v.Discovered++
@@ -113,7 +117,7 @@ func (g *Game) pseudo(pid string) string {
 
 func (g *Game) cardView(c *Card, me string) CardView {
 	v := CardView{
-		ID: c.ID, Title: c.Title, Desc: c.Desc, Cat: c.Cat, Img: ImgURL(c.Img), Thumb: ImgURL(c.Thumb),
+		ID: c.ID, Title: c.Title, Desc: c.Desc, Cat: c.Cat, Img: ImgURL(c.Img), Thumb: ImgURL(c.Thumb), Video: ImgURL(c.Video), Music: c.Music,
 		Author: g.pseudo(c.Author), Mine: c.Author == me && me != "", Wave: c.Wave, No: c.No, Rarity: c.Rarity,
 		Run: c.Run, Issued: c.Issued, FirstBy: g.pseudo(c.FirstBy),
 	}
@@ -122,7 +126,7 @@ func (g *Game) cardView(c *Card, me string) CardView {
 	}
 	if c.Status == StatusRemoved {
 		// Carte retirée : ceux qui l'ont gardent l'exemplaire, sans l'image ni le texte.
-		v.Removed, v.Img, v.Thumb, v.Desc = true, "", "", ""
+		v.Removed, v.Img, v.Thumb, v.Video, v.Music, v.Desc = true, "", "", "", "", ""
 		v.Title = "Carte retirée"
 		if c.Reason == "personne" {
 			// Une personne sur la photo a retiré son accord : l'exemplaire reste, sans photo ni texte.
@@ -137,7 +141,7 @@ func (g *Game) cardView(c *Card, me string) CardView {
 
 // candidateView : carte au jury (auteur masqué, rareté inconnue).
 func (g *Game) candidateView(c *Card) CardView {
-	return CardView{ID: c.ID, Title: c.Title, Desc: c.Desc, Cat: c.Cat, Img: ImgURL(c.Img), Thumb: ImgURL(c.Thumb)}
+	return CardView{ID: c.ID, Title: c.Title, Desc: c.Desc, Cat: c.Cat, Img: ImgURL(c.Img), Thumb: ImgURL(c.Thumb), Video: ImgURL(c.Video), Music: c.Music}
 }
 
 // ProposalView : une proposition du joueur, avec son statut.
@@ -257,6 +261,7 @@ type View struct {
 	Appear    []AppearView     `json:"appear"`  // cartes où je suis indiqué (accord à donner)
 	Leaders   Leaderboard      `json:"leaders"` // classement des créateurs : podium et ma place
 	Rewards   *RewardsView     `json:"rewards,omitempty"`
+	Tracks    []TrackView      `json:"tracks"` // bibliothèque de musiques (création, lecture des cartes)
 }
 
 // Initials : deux lettres pour l'avatar (« Léa M. » → LM).
@@ -288,7 +293,7 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 		return View{}, false
 	}
 	now := g.now()
-	if DayKey(p.Seen) != DayKey(now) { // première venue de la journée : un visiteur de plus
+	if calendarDay(p.Seen) != calendarDay(now) { // première venue de la journée (calendrier) : un visiteur de plus
 		g.activity(now).Visitors++
 		p.Seen = now
 		g.dirty = true
@@ -307,6 +312,7 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 		Trades: []TradeView{}, Invites: []InviteView{}, Proposals: []ProposalView{}, Cards: []CardView{},
 		Appear:  g.appearances(p),
 		Leaders: g.leaderboard(pid),
+		Tracks:  g.trackViews(),
 	}
 	v.Me.BoosterReady = v.Phase == "live" && !now.Before(v.Me.NextBooster)
 	v.Me.BoosterSize, v.Me.PerCycle = boosterSize, boostersPerCycle

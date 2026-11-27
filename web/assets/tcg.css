@@ -2092,3 +2092,30 @@ html:not(.tcg-veil) .tju-pod b { transition: filter .35s ease; }
 .tlb-tab.is-on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, .25), inset 0 0 0 1px var(--line); }
 .tlb-gifts { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; padding: 10px 14px; border-radius: 14px; background: rgba(245, 196, 81, .07); border: 1px solid rgba(245, 196, 81, .2); color: var(--text-2); font-size: 13px; }
 .tlb-gifts .ic { flex: none; color: #F5C451; }
+
+/* Cartes animées : l'extrait de 2 s, sans son, par-dessus la photo (grandes cartes) ; un repère
+   ▶ sur les petites. */
+.tc-art .tc-vid { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; background: transparent; }
+.tc-vid-badge { position: absolute; right: 6px; bottom: 6px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: rgba(4, 12, 15, .62); box-shadow: 0 0 0 1px rgba(255, 255, 255, .25); pointer-events: none; }
+.tc-vid-badge i { width: 0; height: 0; margin-left: 2px; border-left: 6px solid #fff; border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+.tc-art.is-blur .tc-vid { filter: blur(4px) saturate(.7); }
+
+/* Atelier : photo ou vidéo de 2 s (vagues qui l'ouvrent), musique de la bibliothèque. */
+.tcr-mode { display: flex; gap: 6px; margin-bottom: 10px; }
+.tcr-clip { display: grid; gap: 10px; margin-top: 10px; }
+.tcr-clip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.tcr-clip-note { color: var(--text-3); font-size: 12.5px; }
+.tcr-start input { flex: 1 1 160px; }
+.tcr-start-t { min-width: 46px; color: var(--text-2); font: 650 12.5px/1 var(--font); font-variant-numeric: tabular-nums; text-align: right; }
+.tcr-src { position: fixed; left: 0; bottom: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+.tcr-music-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tcr-music { flex: 1 1 220px; min-width: 0; }
+.tdet-music { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* Administration · bibliothèque de musiques. */
+.tad-tracks { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.tad-tracks li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+.tad-tracks .tad-it { padding-right: 0; }
+.tad-tracks-acts { display: flex; gap: 6px; }
+/* Captures d'écran (shield.js) : la vidéo d'une carte se floute comme sa photo. */
+html:not(.tcg-veil) .tc-art .tc-vid { transition: filter .35s ease; }
+.tcg-veil .tc-art .tc-vid { filter: blur(18px) saturate(.5) brightness(.85); }

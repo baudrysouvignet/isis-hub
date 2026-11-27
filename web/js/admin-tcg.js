@@ -253,7 +253,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       chart,
       h('h4.tad-sub.tad-sub--sm', { text: 'Par vague' }),
       table,
-      h('p.tad-help', { text: `Boosters : ouverts pendant la vague, de sa sortie à la suivante. Journées de 6 h à 6 h, comme les boosters ; venues, inscriptions, propositions, séries et échanges sont comptés jour par jour ${since}. Rien que des nombres : aucun pseudo, rien qui dise qui est venu.` }),
+      h('p.tad-help', { text: `Boosters : ouverts pendant la vague, de sa sortie à la suivante. Jours du calendrier, de minuit à minuit (heure de Paris) ; venues, inscriptions, propositions, séries et échanges sont comptés jour par jour ${since}. Rien que des nombres : aucun pseudo, rien qui dise qui est venu.` }),
     );
   }
 
@@ -357,7 +357,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
 
   // ---------------------------------------------------------------- récompenses de lancement
   // Chaque soir de jury (minuit), le classement des créateurs : 1er 5 cartes, 2e 4, 3e 3, 4e-13e 1 ;
-  // 4 cartes par participant. Avant la sortie : à ce jour. Après : attribuées, et ouvertes.
+  // un booster par participant (r.partSize cartes). Avant la sortie : à ce jour. Après : attribuées, et ouvertes.
   async function loadRewards() {
     let r;
     try {
@@ -418,7 +418,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
       h(
         'div.tad-rewards',
         {},
-        h('p.tad-help', { text: `${plural(r.cards, 'carte bonus', 'cartes bonus')} pour ${plural(rows.length, 'joueur')} sur ${n0(r.players)}. Chaque soir où la promo a voté, à minuit, le podium du jour (les points gagnés dans la journée, chaque journée repart de zéro) : 1er 5 cartes, 2e 4, 3e 3, du 4e au 13e 1, ex æquo compris ; 4 cartes par participant (carte validée ou série du jury). ${r.maxNights} meilleurs soirs au plus par joueur. Attribuées d’elles-mêmes à la sortie de la vague 1, valables 24 h.` }),
+        h('p.tad-help', { text: `${plural(r.cards, 'carte bonus', 'cartes bonus')} pour ${plural(rows.length, 'joueur')} sur ${n0(r.players)}. Chaque soir où la promo a voté, à minuit, le podium du jour (les points gagnés dans la journée, chaque journée repart de zéro) : 1er 5 cartes, 2e 4, 3e 3, du 4e au 13e 1, ex æquo compris ; ${r.partSize ?? 2} cartes par participant (carte validée ou série du jury). ${r.maxNights} meilleurs soirs au plus par joueur. Attribuées d’elles-mêmes à la sortie de la vague 1, valables 24 h.` }),
         nights ? h('h4.tad-sub.tad-sub--sm', { text: 'Podium de chaque journée (points gagnés ce jour-là, à minuit)' }) : null,
         nights,
         rows.length ? h('h4.tad-sub.tad-sub--sm', { text: rewardsAll || rows.length <= FIRST ? 'Cartes bonus par joueur' : `Cartes bonus · les ${FIRST} premiers sur ${rows.length}` }) : null,
@@ -439,6 +439,7 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
   const rlabels = (r, n) => (n > 1 ? `${RLABEL[r]}s` : RLABEL[r]);
   const nth = (n) => (n === 1 ? '1er' : `${n}e`);
   let scores = null;
+  let scoreMode = null; // day (podium du jour) | all (depuis le début)
 
   async function loadScores() {
     if (!scores) scoresView.replaceChildren(h('p.tad-help', { text: 'Chargement du détail des scores…' }));
@@ -489,9 +490,60 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     return parts.join(' · ');
   }
 
+  /** Pourquoi une carte a gagné ou perdu des points aujourd'hui (scores du jour). */
+  function dayWhy(c) {
+    const desc = (v) => (v.printed ? `en jeu · ${RLABEL[v.rarity]}` : v.planned && !v.few ? `rareté prévue ${RLABEL[v.rarity]}` : v.planned ? `rareté prévue ${RLABEL[v.rarity]}, pas encore assez classée` : v.out ? 'pas retenue dans l’aperçu' : 'validée');
+    const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+    if (!c.before) return ['Validée aujourd’hui', desc(c.after) === 'validée' ? '' : desc(c.after), c.after.penalty ? 'dernier quart du jury' : ''].filter(Boolean).join(' · ');
+    if (!c.after) return 'Ne compte plus (bloquée ou retirée)';
+    const b = c.before;
+    const a = c.after;
+    const parts = [];
+    if (!b.penalty && a.penalty) parts.push('entrée dans le dernier quart du jury');
+    if (b.penalty && !a.penalty) parts.push('sortie du dernier quart du jury');
+    if (b.few && !a.few && a.planned) parts.push(`assez classée au jury : compte selon sa rareté prévue (${RLABEL[a.rarity]})`);
+    else if (b.rarity && a.rarity && b.rarity !== a.rarity) parts.push(`rareté prévue ${RLABEL[b.rarity]} → ${RLABEL[a.rarity]}`);
+    if (!b.printed && a.printed) parts.push(`imprimée · ${RLABEL[a.rarity]}`);
+    if (b.out !== a.out) parts.push(a.out ? 'sortie de l’aperçu (au-delà de la taille de la vague)' : 'entrée dans l’aperçu de la vague');
+    return cap(parts.join(' · ') || `${pts(b.points)} → ${pts(a.points)}`);
+  }
+
+  /** Résumé du jour d'un créateur : « 3 validées aujourd'hui +3 · 2 montées au jury +8 · 1 en baisse −4 ». */
+  function dayBreakdown(row) {
+    const sum = (list) => pts(list.reduce((t, c) => t + c.delta, 0));
+    const fresh = row.cards.filter((c) => !c.before);
+    const up = row.cards.filter((c) => c.before && c.delta > 0);
+    const down = row.cards.filter((c) => c.before && c.delta < 0);
+    return [
+      fresh.length ? `${plural(fresh.length, 'validée aujourd’hui', 'validées aujourd’hui')} ${sum(fresh)}` : '',
+      up.length ? `${plural(up.length, 'carte en hausse', 'cartes en hausse')} ${sum(up)}` : '',
+      down.length ? `${plural(down.length, 'carte en baisse', 'cartes en baisse')} ${sum(down)}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }
+
   function renderScores() {
     const s = scores;
     const rows = s.rows ?? [];
+    const dayRows = s.day ?? [];
+    scoreMode ??= s.dayGifts ? 'day' : 'all';
+    const daily = scoreMode === 'day';
+    const modes = h(
+      'div.tad-seg.tad-sc-modes',
+      { attrs: { role: 'tablist', 'aria-label': 'Scores' } },
+      ...[
+        ['day', 'Aujourd’hui'],
+        ['all', 'Depuis le début'],
+      ].map(([k, label]) => {
+        const b = h(`button.tad-seg-b${k === scoreMode ? '.is-on' : ''}`, { type: 'button', text: label, attrs: { role: 'tab', 'aria-selected': String(k === scoreMode) } });
+        b.addEventListener('click', () => {
+          scoreMode = k;
+          renderScores();
+        });
+        return b;
+      }),
+    );
     const ranked = rows.filter((r) => r.rank);
     const penalized = rows.reduce((a, r) => a + r.cards.filter((c) => c.penalty).length, 0);
     const rankText = (r) => (r.rank ? `${nth(r.rank)}${r.tied ? ' ex æquo' : ''}` : 'Hors classement');
@@ -514,7 +566,39 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     const search = h('input.input.tad-sc-search', { type: 'search', placeholder: 'Rechercher un joueur', value: scoreQuery, attrs: { 'aria-label': 'Rechercher un joueur' } });
     const count = h('span.tad-help');
     const ul = h('ul.tad-sc-list', { attrs: { 'aria-label': 'Créateurs' } });
+    const paintDay = () => {
+      const q = fold(scoreQuery.trim());
+      const shownRows = q ? dayRows.filter((r) => fold(r.pseudo).includes(q)) : dayRows;
+      const onPodium = dayRows.filter((r) => r.place).length;
+      count.textContent = q ? `${plural(shownRows.length, 'créateur trouvé', 'créateurs trouvés')} sur ${n0(dayRows.length)}` : `${plural(dayRows.length, 'créateur a bougé', 'créateurs ont bougé')} depuis minuit · ${plural(onPodium, 'au podium du jour', 'au podium du jour')}`;
+      ul.replaceChildren(
+        ...shownRows.map((r) =>
+          h(
+            'li',
+            {},
+            h(
+              `details.tad-sc${r.place && r.place <= s.podium ? '.is-podium' : ''}${r.place ? '' : '.is-out'}`,
+              {},
+              h(
+                'summary',
+                {},
+                h('span.tad-sc-rank', { text: r.place ? `${nth(r.place)}${r.tied ? ' ex æquo' : ''} du jour` : r.gain < 0 ? 'En baisse' : 'Rien gagné' }),
+                h('span.tad-sc-who', {}, h('b', { text: r.pseudo }), h('span', { text: dayBreakdown(r) || 'Aucune carte n’a bougé' })),
+                h(`span.tad-sc-pts${r.gain < 0 ? '.is-neg' : ''}`, {}, pts(r.gain), h('small', { text: 'aujourd’hui' })),
+              ),
+              h(
+                'ol.tad-sc-cards',
+                { attrs: { 'aria-label': `Cartes de ${r.pseudo} qui ont bougé aujourd’hui` } },
+                ...r.cards.map((c) => h('li', {}, h('span.tad-sc-c', {}, h('b', { text: c.title || 'Sans titre' }), h('span', { text: dayWhy(c) })), h(`span.tad-sc-p${c.delta > 0 ? '.is-pos' : c.delta < 0 ? '.is-neg' : '.is-zero'}`, { text: pts(c.delta) }))),
+              ),
+            ),
+          ),
+        ),
+      );
+      if (!shownRows.length) ul.append(h('li.tad-help', { text: dayRows.length ? 'Aucun joueur ne correspond.' : 'Personne n’a encore gagné ni perdu de points depuis minuit.' }));
+    };
     const paint = () => {
+      if (daily) return paintDay();
       const q = fold(scoreQuery.trim());
       const shownRows = q ? rows.filter((r) => fold(r.pseudo).includes(q)) : rows;
       count.textContent = q ? `${plural(shownRows.length, 'créateur trouvé', 'créateurs trouvés')} sur ${n0(rows.length)}` : `${plural(rows.length, 'créateur')} · ${plural(ranked.length, 'classé', 'classés')}`;
@@ -551,6 +635,16 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
     });
     paint();
 
+    const leader = dayRows.find((r) => r.place === 1);
+    const minis = daily
+      ? h(
+          'div.tad-minis',
+          {},
+          h('div.tad-mini', {}, h('span', { text: 'En tête aujourd’hui' }), h('b', { text: leader ? pts(leader.gain) : '–' }), h('small', { text: leader ? `points · ${dayRows.filter((r) => r.place === 1).map((r) => r.pseudo).join(', ')}` : 'personne pour l’instant' })),
+          h('div.tad-mini', {}, h('span', { text: 'Au podium du jour' }), h('b', { text: n0(dayRows.filter((r) => r.place && r.place <= s.podium).length) }), h('small', { text: s.dayGifts ? 'boosters bonus à minuit' : 'pas de cadeau ce soir' })),
+          h('div.tad-mini', {}, h('span', { text: 'Depuis' }), h('b', { text: s.dayFrom ? hourText(s.dayFrom) : '0 h' }), h('small', { text: s.dayFrom ? `minuit, ${dayLong(s.dayFrom)} (heure de Paris)` : 'minuit' })),
+        )
+      : null;
     scoresView.replaceChildren(
       h(
         'header.tad-launch-head',
@@ -561,6 +655,8 @@ export function setupTcgAdmin({ root, onCount, onLeave }) {
           await loadScores();
         }),
       ),
+      modes,
+      minis ??
       h(
         'div.tad-minis',
         {},

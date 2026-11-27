@@ -275,7 +275,8 @@ func (g *Game) OpenBooster(pid string) ([]Pull, error) {
 	p.CycleAt, p.CycleN = start, n+1
 	p.Booster, p.BoosterAt = DayKey(now), now
 	p.LastDraw = pulls
-	g.st.Boosters[DayKey(now)]++
+	g.st.Boosters[DayKey(now)]++                // rythme des raretés (jour de jeu)
+	g.activity(now).Opened++                    // statistiques (jour du calendrier)
 	for i := len(g.st.Waves) - 1; i >= 0; i-- { // vague en cours : la dernière sortie
 		if g.st.Waves[i].Printed {
 			g.st.Waves[i].Opened++
@@ -518,6 +519,8 @@ type NewProposal struct {
 	Title, Desc, Cat string
 	People           []string // personnes sur la photo indiquées par l'auteur (CleanPeople), à confirmer par l'administration
 	Img, Thumb       string
+	Video            string // extrait de 2 s (media.go), si la vague l'ouvre
+	Music            string // morceau de la bibliothèque, si la vague l'ouvre
 	Bytes            int64
 }
 
@@ -629,10 +632,19 @@ func (g *Game) Propose(pid string, in NewProposal) (string, error) {
 	if err := g.checkProposal(pid); err != nil {
 		return "", err
 	}
+	if in.Video != "" || in.Music != "" {
+		w := g.proposalWave(g.now())
+		if in.Video != "" && (w == nil || !w.Video) {
+			return "", userErr(http.StatusBadRequest, "Les vidéos ne sont pas ouvertes pour cette vague : envoie ta carte avec une photo.")
+		}
+		if in.Music != "" && (w == nil || !w.Music || g.track(in.Music) == nil) {
+			return "", userErr(http.StatusBadRequest, "Cette musique n’est pas disponible pour cette vague.")
+		}
+	}
 	g.st.NextNum++
 	c := &Card{
 		ID: "c" + itoa(g.st.NextNum), Num: g.st.NextNum, Author: pid,
-		Title: title, Desc: desc, Cat: cat, Img: in.Img, Thumb: in.Thumb, Bytes: in.Bytes,
+		Title: title, Desc: desc, Cat: cat, Img: in.Img, Thumb: in.Thumb, Video: in.Video, Music: in.Music, Bytes: in.Bytes,
 		Status: StatusPending, Created: g.now(),
 	}
 	c.Tags = g.newTags(pid, in.People) // aucun mail avant la validation (askable)
@@ -661,8 +673,13 @@ func (g *Game) ImageShown(name string) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	for _, c := range g.st.Cards {
-		if (c.Img == name || c.Thumb == name) && c.Status != StatusBlocked && c.Status != StatusRemoved {
+		if (c.Img == name || c.Thumb == name || c.Video == name) && c.Status != StatusBlocked && c.Status != StatusRemoved {
 			return true
+		}
+	}
+	for _, t := range g.st.Tracks {
+		if t.File == name {
+			return true // musique de la bibliothèque
 		}
 	}
 	return false
