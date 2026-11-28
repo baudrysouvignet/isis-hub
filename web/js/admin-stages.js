@@ -1,6 +1,6 @@
 // Administration · rubrique Stages : dépôt du fichier JSON (format isis-hub-stages, voir README),
-// aperçu sur cet appareil, ouverture à tout le monde, suppression, et journal des fiches ouvertes
-// (qui, quelle structure, quand ; 90 jours) pour repérer une aspiration en masse.
+// aperçu sur cet appareil, ouverture à tout le monde, suppression. Rien sur qui consulte : la
+// fréquentation de la rubrique est dans l'onglet Fréquentation, anonyme comme celle du Hub.
 
 import { $, h, toast } from './core/dom.js';
 import { prefs } from './core/store.js';
@@ -28,7 +28,6 @@ export function setupStagesAdmin({ root, onLeave }) {
       return handle(err);
     }
     render();
-    loadLog();
   }
 
   function render() {
@@ -47,7 +46,7 @@ export function setupStagesAdmin({ root, onLeave }) {
         ? 'Aperçu actif : l’onglet Stages se montre sur cet appareil seulement ; le serveur ne sert les données qu’aux identifiants de l’administration tant que la rubrique est fermée.'
         : 'Tant que la rubrique est fermée, personne ne voit rien : ni onglet, ni tuile.';
     root.replaceChildren(
-      h('p.hint', { text: 'Rubrique Stages : tous les stages des étudiants d’ISIS, sur une carte, avec les sujets, les maîtres de stage et les contacts RH (adresses e-mail comprises). Réservée aux comptes de l’université connectés ; chaque fiche ouverte est notée au journal ci-dessous (90 jours).' }),
+      h('p.hint', { text: 'Rubrique Stages : tous les stages des étudiants d’ISIS, sur une carte, avec les sujets, les maîtres de stage et les contacts RH (adresses e-mail comprises). Réservée aux comptes de l’université connectés. Rien n’est gardé sur qui consulte ni sur ce qui est ouvert : la fréquentation de la rubrique est comptée anonymement, dans l’onglet Fréquentation.' }),
       h(
         'div.adm-amb.adm-stg',
         {},
@@ -57,7 +56,6 @@ export function setupStagesAdmin({ root, onLeave }) {
       ),
       h('p.hint', { text: note }),
       h('div.adm-stg-err', { hidden: true, attrs: { role: 'alert' }, data: { stgErr: '' } }),
-      h('section.adm-stg-log', { data: { stgLog: '' } }, h('h3.adm-st-title', { text: 'Journal des fiches ouvertes' }), h('p.hint', { text: s.hasData ? 'Chargement…' : 'Rien pour l’instant.' })),
       file,
     );
   }
@@ -72,34 +70,6 @@ export function setupStagesAdmin({ root, onLeave }) {
       svg.append(p);
     }
     return svg;
-  }
-
-  async function loadLog() {
-    const box = $('[data-stg-log]', root);
-    if (!box || !status?.hasData) return;
-    let log;
-    try {
-      log = await adminApi.log(150);
-    } catch (err) {
-      return handle(err);
-    }
-    const head = h('h3.adm-st-title', { text: `Journal des fiches ouvertes · ${plural(log.total, 'ouverture')} sur 90 jours` });
-    if (!log.total) return box.replaceChildren(head, h('p.hint', { text: 'Aucune fiche ouverte pour l’instant.' }));
-    const top = h(
-      'table.adm-stg-table',
-      {},
-      h('caption', { text: 'Comptes les plus actifs, 7 derniers jours' }),
-      h('thead', {}, h('tr', {}, h('th', { text: 'Identifiant' }), h('th', { text: 'Fiches ouvertes' }), h('th', { text: 'Structures différentes' }), h('th', { text: 'Dernières 24 h' }))),
-      h('tbody', {}, ...log.top.map((u) => h('tr', {}, h('td', { text: u.login }), h('td', { text: String(u.opens) }), h('td', { text: String(u.distinct) }), h('td', { text: String(u.today) })))),
-    );
-    const recent = h(
-      'table.adm-stg-table',
-      {},
-      h('caption', { text: `Dernières ouvertures (${log.recent.length})` }),
-      h('thead', {}, h('tr', {}, h('th', { text: 'Quand' }), h('th', { text: 'Identifiant' }), h('th', { text: 'Structure' }))),
-      h('tbody', {}, ...log.recent.map((e) => h('tr', {}, h('td', { text: dateFmt.format(new Date(e.at)) }), h('td', { text: e.login }), h('td', { text: e.name || e.co })))),
-    );
-    box.replaceChildren(head, h('div.adm-stg-tables', {}, top, recent));
   }
 
   function showError(msg) {
@@ -129,7 +99,6 @@ export function setupStagesAdmin({ root, onLeave }) {
       status = await adminApi.upload(text);
       toast(`Fichier déposé : ${plural(status.stages, 'stage')}, ${plural(status.companies, 'structure')}.`, 'check');
       render();
-      loadLog();
     } catch (err) {
       if (err instanceof StagesError && err.status === 403) return onLeave();
       showError(`Fichier refusé par le serveur : ${err.message}`);
@@ -145,7 +114,6 @@ export function setupStagesAdmin({ root, onLeave }) {
       window.open('./#stages', '_blank', 'noopener');
     }
     render();
-    loadLog();
   }
 
   async function toggleOpen(e) {
@@ -159,11 +127,10 @@ export function setupStagesAdmin({ root, onLeave }) {
       handle(err);
     }
     render();
-    loadLog();
   }
 
   async function removeData(e) {
-    if (!confirm('Supprimer les données des stages du serveur ? La rubrique est fermée et le fichier effacé ; le journal reste 90 jours. Il faudra redéposer un fichier pour la rouvrir.')) return;
+    if (!confirm('Supprimer les données des stages du serveur ? La rubrique est fermée et le fichier effacé. Il faudra redéposer un fichier pour la rouvrir.')) return;
     e.currentTarget.disabled = true;
     try {
       status = await adminApi.remove();

@@ -16,6 +16,17 @@
 
 export const CHANGELOG = [
   {
+    version: '3.0.1',
+    date: '2026-11-28',
+    title: 'Stages : plus aucune trace de ce que tu consultes',
+    quiet: true, // au journal seulement, sans pop-up « Nouveautés »
+    only: 'stages',
+    short: ['Stages : ni ton identifiant ni les fiches que tu ouvres ne sont gardés.'],
+    details: [
+      'Stages : le serveur ne garde plus rien sur qui consulte la rubrique : ni identifiant, ni fiches ouvertes. Seules les ouvertures de la rubrique sont comptées, comme les visites du Hub (un jeton du jour, illisible et oublié le lendemain). Ce qui avait été noté auparavant est effacé.',
+    ],
+  },
+  {
     version: '3.0.0',
     date: '2026-11-28',
     title: 'La rubrique Stages',
@@ -30,7 +41,7 @@ export const CHANGELOG = [
         ['Les contacts', 'Sur la fiche d’une structure : les étudiants passés là, leurs sujets, les maîtres de stage et les RH, avec leur adresse.'],
         ['Ta tuile Stages', 'Sur le tableau de bord : où sont allés les étudiants de ton année, et les structures qui en accueillent le plus.'],
       ],
-      privacy: 'Réservé aux comptes de l’université connectés. Les adresses se lisent fiche par fiche, et chaque fiche ouverte est notée 90 jours (écran Transparence).',
+      privacy: 'Réservé aux comptes de l’université connectés. Rien n’est gardé sur toi : ni ton identifiant, ni ce que tu consultes.',
       go: { label: 'Voir les stages', to: 'stages' },
     },
     short: [
@@ -41,7 +52,7 @@ export const CHANGELOG = [
       'Stages : un nouvel onglet en haut de l’écran. La carte de France montre où sont allés les étudiants d’ISIS : choisis une région, un département puis une ville. En liste ou sur la carte, cherche une structure, une ville, une mission ou une personne, et filtre par niveau, année, promo, secteur, type de structure, durée, stages gratifiés ou avec un contact.',
       'Stages : la fiche d’une structure liste les étudiants passés là et leurs sujets, les maîtres de stage et les contacts RH avec leur adresse (copie ou écris en un geste), le site et le standard. La fiche d’un stage donne les dates, la durée, les missions et l’encadrement.',
       'Stages : la tuile du tableau de bord montre où sont allés les étudiants de ton année, et « Comme moi » filtre la carte sur ton niveau.',
-      'Confidentialité : la rubrique demande d’être connecté avec ton compte de l’université. La recherche ne contient aucune adresse : celles d’une structure ne se lisent qu’en ouvrant sa fiche, et chaque fiche ouverte est notée avec ton identifiant pendant 90 jours, pour repérer une aspiration en masse. Pas d’export, 12 structures par page. L’écran Transparence le dit.',
+      'Confidentialité : la rubrique demande d’être connecté avec ton compte de l’université. La recherche ne contient aucune adresse : celles d’une structure ne se lisent qu’en ouvrant sa fiche. Pas d’export, 12 structures par page. Rien n’est gardé sur toi : ni ton identifiant, ni les fiches que tu ouvres ; seules les ouvertures de la rubrique sont comptées, comme les visites du Hub (un jeton du jour, oublié le lendemain).',
     ],
     onlyDetails: {
       tcg: [

@@ -31,7 +31,7 @@ import { setupMailRules } from './ui/mailrules.js';
 import { setupInstall } from './ui/install.js';
 import { setupChangelog } from './ui/changelog.js';
 import { seen, whenKnown, adoptLocal, forgetLocal } from './core/seen.js';
-import { countVisit } from './core/stats.js';
+import { countVisit, countStages } from './core/stats.js';
 import { watchUpdates } from './core/update.js';
 import { initMailPrefs, resetMailPrefs } from './core/mailprefs.js';
 import * as UD from './core/userdata.js';
@@ -456,6 +456,8 @@ function setupDashboard() {
       if (schedule.isExpanded()) schedule.collapse();
     },
     onAvailable: () => bento?.refresh(),
+    // Fréquentation de la rubrique, anonyme comme celle du Hub (jeton du jour, rien de consulté).
+    onVisit: () => countStages(),
   });
   setupMenus();
   bento = setupBento();

@@ -34,6 +34,26 @@ function connected(signedIn) {
   });
 }
 
+/**
+ * Rubrique Stages ouverte : comptée une fois par chargement de la page, avec le même jeton du jour
+ * (un compte compte une fois par jour, sans rien dire de qui il est). Rien de ce qui y est consulté.
+ */
+export async function countStages() {
+  if (sent.has('stages')) return;
+  sent.add('stages');
+  await connected(true);
+  const token = await UD.visitToken(todayKey()).catch(() => null);
+  const body = { first: false, page: 'stages' };
+  if (token) body.token = token;
+  fetch('api/ping', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    credentials: 'omit',
+    keepalive: true,
+  }).catch(() => {});
+}
+
 // Une fois par ouverture de la page et par état (visiteur, puis étudiant s'il se connecte ensuite).
 const sent = new Set();
 export async function countVisit({ signedIn = false, promo = '' } = {}) {

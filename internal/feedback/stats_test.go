@@ -143,3 +143,41 @@ func TestStatsWritesAreDeferred(t *testing.T) {
 		t.Fatal("les 100 visites doivent être écrites par Flush")
 	}
 }
+
+// Rubrique Stages : ouvertures et comptes distincts du jour, à part des visites du Hub, avec le
+// même jeton du jour (aucun identifiant), oublié le lendemain.
+func TestStatsStagesPage(t *testing.T) {
+	dir := t.TempDir()
+	st, _ := OpenStats(dir)
+	day := time.Date(2026, 11, 28, 9, 0, 0, 0, paris)
+	st.now = func() time.Time { return day }
+	a, b := "AAAAAAAAAAAAAAAAAAAAAA", "BBBBBBBBBBBBBBBBBBBBBB"
+	st.Record(Visit{First: true, Token: a, Class: "FIE4", Device: "phone", Mode: "app"}) // le Hub
+	st.Record(Visit{Page: "stages", Token: a})
+	st.Record(Visit{Page: "stages", Token: a}) // même compte, rouverte
+	st.Record(Visit{Page: "stages", Token: b})
+	d := st.Summary().Today
+	if d.Stages != 3 || d.StagesAccounts != 2 {
+		t.Fatalf("Stages : %+v", d)
+	}
+	if d.Visits != 1 || d.Accounts != 1 {
+		t.Fatalf("les ouvertures de Stages ne comptent pas comme des visites du Hub : %+v", d)
+	}
+	if (Visit{Page: "autre"}).valid() {
+		t.Fatal("page inconnue acceptée")
+	}
+	st.Flush()
+	again, _ := OpenStats(dir)
+	again.now = st.now
+	again.Record(Visit{Page: "stages", Token: b})
+	if again.Summary().Today.StagesAccounts != 2 {
+		t.Fatal("un compte déjà compté aujourd'hui ne l'est pas deux fois après redémarrage")
+	}
+	day = day.AddDate(0, 0, 1)
+	again.Record(Visit{Page: "stages", Token: a})
+	again.Flush()
+	raw, _ := os.ReadFile(filepath.Join(dir, "stats.json"))
+	if strings.Contains(string(raw), b) {
+		t.Fatal("les jetons de la veille doivent disparaître")
+	}
+}

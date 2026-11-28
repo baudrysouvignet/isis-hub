@@ -5,9 +5,9 @@ téléphone. Tout est lu **en direct sur les portails de l'université**, et le 
 de ce qui transite par lui. Le serveur conserve seulement : les retours que les étudiants
 choisissent d'envoyer depuis « Une idée ? » (seule donnée qui peut être reliée à quelqu'un, et
 seulement sans « Envoyer anonymement »), une sauvegarde chiffrée et anonyme de ce qu'ils créent dans
-le Hub, et des compteurs de fréquentation anonymes. Deux rubriques à part gardent davantage, et le
-disent dans l'écran Transparence : le TCG (réservé aux étudiants) et, une fois ouverte, la rubrique
-Stages (fichier déposé par l'administration, et journal des fiches ouvertes pendant 90 jours).
+le Hub, et des compteurs de fréquentation anonymes. Le TCG (réservé aux étudiants) garde davantage,
+et le dit dans l'écran Transparence. La rubrique Stages ne garde rien sur qui la consulte : seul le
+fichier déposé par l'administration, et ses ouvertures comptées comme les visites du Hub.
 
 ```bash
 DOMAIN=hub.exemple.fr docker compose up -d --build
@@ -61,9 +61,7 @@ Les autres verrous :
 - **Cache chiffré** : cours Moodle, correspondances et notes sont mis en cache par matière (cours
   suivis 6 h, correspondance 7 jours, notes 30 min) pour ne pas solliciter Moodle à chaque clic. Le
   cache est chiffré avec la même clé que la session et effacé à la déconnexion.
-- **Presque rien côté serveur** : ni compte, ni base de données, ni journal des connexions. Seule
-  exception, la rubrique Stages une fois ouverte : elle note quelles fiches ouvre chaque
-  identifiant, pendant 90 jours (voir « Stages »). Seuls les retours
+- **Presque rien côté serveur** : ni compte, ni base de données, ni journal. Seuls les retours
   « Une idée ? » sont gardés (fichier `feedback.json` du volume `/data`), sans adresse IP ; l'auteur
   est celui que la page déclare (non vérifié) ou anonyme. « Mes propositions » marche sans compte :
   la page garde un jeton secret, le serveur n'en conserve que l'empreinte. Le conteneur tourne en lecture
@@ -267,9 +265,14 @@ avant toi ».
   ticket CAS que le serveur fait valider par l'université (cookie `hub_stg`, HttpOnly, 30 jours,
   effacé à la déconnexion). La recherche et la carte (`/api/stages/index`) ne contiennent **aucune
   adresse e-mail**. Les contacts d'une structure viennent d'un second appel, un par fiche ouverte
-  (`/api/stages/structure/<id>`), et chaque ouverture est notée au **journal** (identifiant,
-  structure, date), gardé 90 jours et lisible dans l'onglet *Stages* de l'administration. Pas de
-  quota de consultation, pas d'export, 12 structures par page. L'écran Transparence le dit.
+  (`/api/stages/structure/<id>`). Pas d'export, 12 structures par page.
+- **Rien sur les personnes.** Le serveur ne garde ni l'identifiant de qui consulte, ni ce qui est
+  ouvert : une session n'est qu'une empreinte de jeton, une date d'expiration et « administrateur
+  ou non » (pour l'aperçu). Les limites de débit sont tenues en mémoire, par session. Seule
+  l'ouverture de la rubrique est comptée, comme une visite du Hub (`/api/ping` avec
+  `page: "stages"` et le jeton du jour, oublié le lendemain) : dans `/admin`, onglet
+  *Fréquentation*, mesures « Rubrique Stages ». Le journal de la 3.0.0 et les identifiants de ses
+  sessions sont effacés au démarrage depuis la 3.0.1.
 - **Fichier déposé** (`stages.json` du dossier de données) : format `isis-hub-stages`, version 1.
   Le serveur le vérifie en entier avant de le garder : liens entre les listes, dates, adresses,
   sites en `http(s)` seulement, aucun caractère de contrôle, 12 Mo au plus.
@@ -621,7 +624,7 @@ internal/feedback/  retours « Une idée ? », raccourcis, répartition des clas
 internal/calendar/  calendriers filtrés par groupe, langue, parcours (abonnement des agendas)
 internal/crous/     menu du midi du Resto U' de Castres (Croustillant, secours CROUS), relu toutes les 15 min
 internal/tcg/       TCG de la promo : joueurs, cartes, vagues, jury, boosters, échanges, images (R2 ou disque)
-internal/stages/    rubrique Stages : fichier déposé, sessions (ticket CAS), recherche sans e-mail, journal
+internal/stages/    rubrique Stages : fichier déposé, sessions (ticket CAS, sans identifiant), recherche sans e-mail
 internal/cas/       validation d'un ticket CAS par l'université, compte étudiant ou non
 web/data/           classes.json : ressources ADE et règles de filtrage, lues par la page et le serveur
 web/                la page (servie telle quelle)

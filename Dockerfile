@@ -13,7 +13,7 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY web ./web
 COPY test/fixtures/calendars ./test/fixtures/calendars
-ARG VERSION=3.0.0
+ARG VERSION=3.0.1
 ENV CGO_ENABLED=0
 RUN go vet -mod=vendor ./... && go test -mod=vendor ./... \
  && GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -mod=vendor -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o /out/isis-hub ./cmd/isis-hub \

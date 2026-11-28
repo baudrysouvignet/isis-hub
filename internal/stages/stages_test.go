@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -179,11 +181,23 @@ func TestFlow(t *testing.T) {
 		t.Fatalf("contacts de e1 : %+v", fiche.Contacts)
 	}
 	lea.must("GET", "/api/stages/structure/e9", nil, 404)
-	var log LogView
-	json.Unmarshal(admin.must("GET", "/api/stages/admin/log", nil, 200), &log)
-	if log.Total != 1 || log.Recent[0].Login != "lmartin" || log.Recent[0].Name != "Centre Hospitalier de Castres" || log.Top[0].Opens != 1 {
-		t.Fatalf("journal : %+v", log)
+	admin.must("GET", "/api/stages/admin/log", nil, 404) // plus de journal
+
+	// Rien sur la personne : ni son identifiant, ni ce qu'elle a ouvert, dans aucun fichier.
+	noTrace := func(when string) {
+		t.Helper()
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			b, _ := os.ReadFile(filepath.Join(dir, e.Name()))
+			if bytes.Contains(bytes.ToLower(b), []byte("lmartin")) || bytes.Contains(bytes.ToLower(b), []byte("bsouvign")) {
+				t.Fatalf("%s : identifiant gardé dans %s", when, e.Name())
+			}
+		}
+		if _, err := os.Stat(filepath.Join(dir, "stages-log.jsonl")); err == nil {
+			t.Fatalf("%s : journal présent", when)
+		}
 	}
+	noTrace("après consultation")
 
 	// Requêtes sans l'en-tête maison ou d'un autre site : refusées.
 	r := httptest.NewRequest("POST", "/api/stages/join", strings.NewReader(`{"ticket":"ST-x-123456789"}`))
@@ -200,17 +214,10 @@ func TestFlow(t *testing.T) {
 	lea.svc = svc2
 	lea.must("GET", "/api/stages/index", nil, 200)
 
-	// Journal : les entrées de plus de 90 jours sont effacées.
-	now = now.Add(91 * 24 * time.Hour)
-	svc2.Store.mu.Lock()
-	svc2.Store.pruneLog()
-	svc2.Store.mu.Unlock()
-	json.Unmarshal(admin.withSvc(svc2).must("GET", "/api/stages/admin/log", nil, 200), &log)
-	if log.Total != 0 {
-		t.Fatalf("journal après 91 jours : %d entrées", log.Total)
-	}
+	noTrace("après redémarrage")
 
 	// Session expirée (30 jours) ; « Se déconnecter » ; suppression des données.
+	now = now.Add(31 * 24 * time.Hour)
 	lea.must("GET", "/api/stages/index", nil, 401)
 	lea.must("POST", "/api/stages/join", map[string]any{"ticket": "ST-lmartin-223456789"}, 200)
 	lea.must("POST", "/api/stages/leave", map[string]any{}, 200)
@@ -222,3 +229,26 @@ func TestFlow(t *testing.T) {
 }
 
 func (c *client) withSvc(s *Service) *client { c.svc = s; return c }
+
+// Passage de la 3.0.0 : le journal des fiches ouvertes et l'identifiant gardé dans chaque session
+// sont effacés au démarrage ; les sessions restent valables.
+func TestForgetsOldTraces(t *testing.T) {
+	dir := t.TempDir()
+	exp := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
+	os.WriteFile(filepath.Join(dir, "stages-state.json"), []byte(`{"enabled":false,"sessions":{"abc":{"u":"lmartin","exp":"`+exp+`"}}}`), 0o600)
+	os.WriteFile(filepath.Join(dir, "stages-log.jsonl"), []byte(`{"t":"2026-11-28T10:00:00Z","u":"lmartin","e":"e1"}`+"\n"), 0o600)
+	st, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "stages-log.jsonl")); !os.IsNotExist(err) {
+		t.Fatal("journal de la 3.0.0 encore là")
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "stages-state.json"))
+	if bytes.Contains(b, []byte("lmartin")) || !bytes.Contains(b, []byte(`"abc"`)) {
+		t.Fatalf("état réécrit : %s", b)
+	}
+	if len(st.st.Sessions) != 1 {
+		t.Fatalf("sessions : %+v", st.st.Sessions)
+	}
+}

@@ -4,8 +4,9 @@
 //
 // Fermée tant que l'administration ne l'ouvre pas. Les données ne viennent que du serveur, à une
 // session ouverte par un ticket CAS : l'index (recherche, carte) n'a aucune adresse e-mail, les
-// contacts d'une structure se lisent fiche par fiche (chaque ouverture est inscrite au journal du
-// serveur, 90 jours). Rien n'est gardé sur l'appareil.
+// contacts d'une structure se lisent fiche par fiche. Rien n'est gardé, ni sur l'appareil ni sur le
+// serveur, de qui consulte ni de ce qui est ouvert : seule l'ouverture de la rubrique est comptée,
+// anonymement, comme une visite du Hub (onVisit).
 
 import { $, $$, h, icon, toast, motionOK, EASE } from '../core/dom.js';
 import { prefs } from '../core/store.js';
@@ -112,7 +113,8 @@ const AWAY = {
 };
 
 /**
- * o : { app, modes, isSignedIn(), onLogin(), getTicket(), promo(), beforeOpen(), onAvailable(on) }
+ * o : { app, modes, isSignedIn(), onLogin(), getTicket(), promo(), beforeOpen(), onAvailable(on),
+ * onVisit() }
  */
 export function createStages(o) {
   const page = $('#stages');
@@ -187,6 +189,7 @@ export function createStages(o) {
     el: page,
     onEnter() {
       open = true;
+      o.onVisit?.();
       history.replaceState(null, '', `${location.pathname}${location.search}#stages`);
       if (motionOK()) page.animate({ opacity: [0, 1], transform: ['translateY(8px)', 'none'] }, { duration: 300, easing: EASE });
       show();
@@ -303,7 +306,7 @@ export function createStages(o) {
       h(
         'span',
         {},
-        `Données : ${plural(model.count, 'stage')}${ix.source ? ` (${ix.source})` : ''}, nettoyées le ${builtOn}${m.merged ? ` : ${m.merged} doublons réunis` : ''}${m.mergedContacts ? `, ${m.mergedContacts} contacts saisis deux fois réunis` : ''}. Seules les informations utiles pour chercher un stage sont gardées. Pas d’export : 12 structures par page, contacts lisibles fiche par fiche, chaque fiche ouverte est notée (90 jours). Carte : Natural Earth (domaine public), communes INSEE, coordonnées GeoNames (CC BY 4.0).`,
+        `Données : ${plural(model.count, 'stage')}${ix.source ? ` (${ix.source})` : ''}, nettoyées le ${builtOn}${m.merged ? ` : ${m.merged} doublons réunis` : ''}${m.mergedContacts ? `, ${m.mergedContacts} contacts saisis deux fois réunis` : ''}. Seules les informations utiles pour chercher un stage sont gardées. Pas d’export : 12 structures par page, contacts lisibles fiche par fiche. Rien n’est gardé sur ce que tu consultes. Carte : Natural Earth (domaine public), communes INSEE, coordonnées GeoNames (CC BY 4.0).`,
       ),
     );
   }

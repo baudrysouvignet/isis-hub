@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,8 +20,11 @@ import (
 //	POST join   {ticket}     ticket CAS validé par l'université → session de cet appareil (cookie)
 //	POST leave               oublie la session
 //	GET  index               recherche et carte (sans aucune adresse e-mail)
-//	GET  structure/<id>      contacts d'une structure, avec leurs adresses ; inscrit au journal
-//	… admin/…                administration (session /admin) : état, dépôt, ouverture, journal
+//	GET  structure/<id>      contacts d'une structure, avec leurs adresses
+//	… admin/…                administration (session /admin) : état, dépôt, ouverture
+//
+// Rien n'est gardé sur qui consulte la rubrique ni sur ce qu'il ouvre : la session ne connaît pas
+// l'identifiant (le ticket CAS prouve seulement que c'est un compte de l'université).
 type Service struct {
 	Store *Store
 	// CASValidate fait valider un ticket de service par le CAS (internal/cas).
@@ -43,12 +45,12 @@ const cookieName = "hub_stg"
 
 // Init prépare les limites de débit (à appeler une fois).
 func (s *Service) Init() *Service {
-	// Pas de quota de consultation : la protection repose sur la connexion CAS et le journal. Ces
-	// plafonds, très au-dessus d'un usage humain, ne protègent que le serveur.
+	// Pas de quota de consultation : la protection repose sur la connexion CAS. Ces plafonds, très
+	// au-dessus d'un usage humain, ne protègent que le serveur (en mémoire, par session).
 	s.joins = visitor.NewLimiter(300, 15*time.Minute)    // par adresse (tout un campus derrière une IP)
 	s.joinAll = visitor.NewLimiter(2000, 15*time.Minute) // au total (protège le CAS de l'université)
-	s.reads = visitor.NewLimiter(240, 10*time.Minute)    // index, par compte
-	s.opens = visitor.NewLimiter(1500, 10*time.Minute)   // fiches, par compte
+	s.reads = visitor.NewLimiter(240, 10*time.Minute)    // index, par session
+	s.opens = visitor.NewLimiter(1500, 10*time.Minute)   // fiches, par session
 	s.uploads = visitor.NewLimiter(40, time.Hour)        // dépôts, administration
 	s.origins = map[string]bool{}
 	for _, o := range s.AllowedOrigins {
@@ -134,13 +136,14 @@ func (s *Service) setCookie(w http.ResponseWriter, value string, maxAge int) {
 	})
 }
 
-func (s *Service) session(r *http.Request) (session, string, bool) {
+// session : la session du cookie, son jeton et son empreinte.
+func (s *Service) session(r *http.Request) (session, string, string, bool) {
 	c, err := r.Cookie(cookieName)
 	if err != nil {
-		return session{}, "", false
+		return session{}, "", "", false
 	}
-	v, ok := s.Store.Session(c.Value)
-	return v, c.Value, ok
+	v, key, ok := s.Store.Session(c.Value)
+	return v, c.Value, key, ok
 }
 
 func (s *Service) admin(r *http.Request) bool { return s.IsAdmin != nil && s.IsAdmin(r) }
@@ -157,17 +160,17 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !s.guard(w, r) {
 			return
 		}
-		if _, tok, ok := s.session(r); ok {
+		if _, tok, _, ok := s.session(r); ok {
 			s.Store.EndSession(tok)
 		}
 		s.setCookie(w, "", -1)
 		reply(w, http.StatusOK, map[string]bool{"ok": true})
 	case p == "index" && r.Method == http.MethodGet:
-		sess, ok := s.reader(w, r)
+		key, ok := s.reader(w, r)
 		if !ok {
 			return
 		}
-		if !s.reads.Allow(sess.Login) {
+		if !s.reads.Allow(key) {
 			fail(w, http.StatusTooManyRequests, "Trop de demandes : réessaie dans quelques minutes.")
 			return
 		}
@@ -175,18 +178,16 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Write(s.Store.Index())
 	case strings.HasPrefix(p, "structure/") && r.Method == http.MethodGet:
-		sess, ok := s.reader(w, r)
+		key, ok := s.reader(w, r)
 		if !ok {
 			return
 		}
-		if !s.opens.Allow(sess.Login) {
+		if !s.opens.Allow(key) {
 			fail(w, http.StatusTooManyRequests, "Trop de fiches ouvertes d’affilée : réessaie dans quelques minutes.")
 			return
 		}
-		list, found, err := s.Store.Contacts(strings.TrimPrefix(p, "structure/"), sess.Login)
+		list, found := s.Store.Contacts(strings.TrimPrefix(p, "structure/"))
 		switch {
-		case err != nil:
-			fail(w, http.StatusServiceUnavailable, "indisponible pour l’instant")
 		case !found:
 			fail(w, http.StatusNotFound, "structure introuvable")
 		default:
@@ -200,17 +201,18 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // reader : session valable et rubrique ouverte (ou aperçu d'un identifiant de l'administration).
-func (s *Service) reader(w http.ResponseWriter, r *http.Request) (session, bool) {
-	sess, _, ok := s.session(r)
+// Rend l'empreinte de la session (limites de débit en mémoire).
+func (s *Service) reader(w http.ResponseWriter, r *http.Request) (string, bool) {
+	sess, _, key, ok := s.session(r)
 	if !ok {
 		fail(w, http.StatusUnauthorized, "Connecte-toi pour voir les stages.")
-		return session{}, false
+		return "", false
 	}
 	if s.Store.Index() == nil || (!s.Store.Enabled() && !sess.Admin) {
 		fail(w, http.StatusNotFound, "La rubrique Stages n’est pas ouverte.")
-		return session{}, false
+		return "", false
 	}
-	return sess, true
+	return key, true
 }
 
 func (s *Service) handleJoin(w http.ResponseWriter, r *http.Request) {
@@ -238,7 +240,7 @@ func (s *Service) handleJoin(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "La rubrique Stages n’est pas ouverte.")
 		return
 	}
-	tok, err := s.Store.NewSession(strings.ToLower(id.User), admin)
+	tok, err := s.Store.NewSession(admin) // l'identifiant n'est pas gardé
 	if err != nil {
 		fail(w, http.StatusServiceUnavailable, "indisponible pour l’instant")
 		return
@@ -255,12 +257,6 @@ func (s *Service) handleAdmin(w http.ResponseWriter, r *http.Request, p string) 
 	switch {
 	case p == "status" && r.Method == http.MethodGet:
 		reply(w, http.StatusOK, s.Store.Status())
-	case p == "log" && r.Method == http.MethodGet:
-		n, _ := strconv.Atoi(r.URL.Query().Get("n"))
-		if n <= 0 || n > 1000 {
-			n = 200
-		}
-		reply(w, http.StatusOK, s.Store.Log(n))
 	case p == "upload":
 		if !s.guard(w, r) {
 			return

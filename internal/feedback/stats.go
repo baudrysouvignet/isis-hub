@@ -12,6 +12,10 @@ package feedback
 //   - class  : classe choisie (FIE4…), device : téléphone / tablette / ordinateur,
 //              mode : application installée ou navigateur.
 //
+// À l'ouverture de la rubrique Stages, la page envoie de même { page: "stages", token } : une
+// ouverture de plus, et un compte de plus s'il ne l'avait pas encore ouverte ce jour-là (jetons
+// du jour à part, oubliés au changement de jour). Rien de ce qui y est consulté.
+//
 // Le serveur garde des compteurs par jour, jamais croisés entre eux (une classe n'est pas reliée à
 // un appareil). Les jetons du jour servent seulement à ne pas compter deux fois un compte : ils
 // sont oubliés au changement de jour. Ni identifiant, ni adresse IP, ni navigateur précis, ni heure.
@@ -37,12 +41,16 @@ type Day struct {
 	Classes  map[string]int `json:"classes,omitempty"`  // visiteurs distincts par classe
 	Devices  map[string]int `json:"devices,omitempty"`  // phone | tablet | desktop
 	Modes    map[string]int `json:"modes,omitempty"`    // app | browser
+	// Rubrique Stages (depuis la 3.0.1) : ouvertures, et comptes distincts qui l'ont ouverte.
+	Stages         int `json:"stages,omitempty"`
+	StagesAccounts int `json:"stagesAccounts,omitempty"`
 }
 
 type statsFile struct {
 	Days      map[string]Day `json:"days"`
 	TokenDay  string         `json:"tokenDay,omitempty"`
 	TokensDay []string       `json:"tokens,omitempty"` // jetons du jour en cours, oubliés le lendemain
+	TokensStg []string       `json:"tokensStages,omitempty"`
 }
 
 type Stats struct {
@@ -51,7 +59,8 @@ type Stats struct {
 	days   map[string]Day // « AAAA-MM-JJ »
 	tokDay string
 	tokens map[string]struct{}
-	dirty  bool // compteurs changés depuis la dernière écriture
+	stgTok map[string]struct{} // comptes du jour déjà comptés sur la rubrique Stages
+	dirty  bool                // compteurs changés depuis la dernière écriture
 	now    func() time.Time
 }
 
@@ -85,7 +94,7 @@ func OpenStats(dir string) (*Stats, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	s := &Stats{path: filepath.Join(dir, "stats.json"), days: map[string]Day{}, tokens: map[string]struct{}{}, now: time.Now}
+	s := &Stats{path: filepath.Join(dir, "stats.json"), days: map[string]Day{}, tokens: map[string]struct{}{}, stgTok: map[string]struct{}{}, now: time.Now}
 	go func() {
 		for range time.Tick(statsFlushEvery) {
 			s.Flush()
@@ -103,6 +112,9 @@ func OpenStats(dir string) (*Stats, error) {
 		s.days, s.tokDay = f.Days, f.TokenDay
 		for _, t := range f.TokensDay {
 			s.tokens[t] = struct{}{}
+		}
+		for _, t := range f.TokensStg {
+			s.stgTok[t] = struct{}{}
 		}
 		return s, nil
 	}
@@ -122,10 +134,12 @@ type Visit struct {
 	Class  string `json:"class,omitempty"`
 	Device string `json:"device,omitempty"`
 	Mode   string `json:"mode,omitempty"`
+	Page   string `json:"page,omitempty"` // "stages" : ouverture de la rubrique Stages
 }
 
 func (v Visit) valid() bool {
-	return (v.Token == "" || tokenRE.MatchString(v.Token)) &&
+	return (v.Page == "" || v.Page == "stages") &&
+		(v.Token == "" || tokenRE.MatchString(v.Token)) &&
 		(v.Class == "" || classKeyRE.MatchString(v.Class)) &&
 		(v.Device == "" || devicesOK[v.Device]) &&
 		(v.Mode == "" || modesOK[v.Mode])
@@ -156,9 +170,20 @@ func (s *Stats) Record(v Visit) error {
 	defer s.mu.Unlock()
 	k := s.today()
 	if s.tokDay != k { // nouveau jour : les jetons d'hier sont oubliés
-		s.tokDay, s.tokens = k, map[string]struct{}{}
+		s.tokDay, s.tokens, s.stgTok = k, map[string]struct{}{}, map[string]struct{}{}
 	}
 	d := s.days[k]
+	if v.Page == "stages" {
+		// Rubrique Stages : une ouverture, et un compte de plus s'il ne l'avait pas ouverte ce jour.
+		d.Stages++
+		if _, seen := s.stgTok[v.Token]; v.Token != "" && !seen && len(s.stgTok) < maxTokensDay {
+			s.stgTok[v.Token] = struct{}{}
+			d.StagesAccounts++
+		}
+		s.days[k] = d
+		s.dirty = true
+		return nil
+	}
 	d.Visits++
 	if v.First {
 		d.Unique++
@@ -207,6 +232,9 @@ func (s *Stats) Flush() error {
 		f.TokensDay = make([]string, 0, len(s.tokens))
 		for t := range s.tokens {
 			f.TokensDay = append(f.TokensDay, t)
+		}
+		for t := range s.stgTok {
+			f.TokensStg = append(f.TokensStg, t)
 		}
 	}
 	raw, err := json.Marshal(f)

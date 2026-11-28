@@ -1656,14 +1656,6 @@ dialog.launch:not([open]) { display: none; }
 .adm-stg-art { background: linear-gradient(160deg, #0B6E7F, #08505D); }
 .adm-stg-err { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--err-soft, rgba(220, 60, 50, .1)); color: var(--err, #B42318); font: 550 13px/1.45 var(--font); overflow-wrap: anywhere; }
 .adm-stg-err[hidden] { display: none; }
-.adm-stg-log { margin-top: 18px; }
-.adm-stg-tables { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 16px; align-items: start; }
-.adm-stg-table { width: 100%; border-collapse: collapse; font: 500 13px/1.4 var(--font); color: var(--text); }
-.adm-stg-table caption { text-align: left; padding: 0 0 8px; font: 650 13px/1.3 var(--font); color: var(--text-2); }
-.adm-stg-table th { text-align: left; padding: 6px 8px; font: 650 11.5px/1.3 var(--font); color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--line); }
-.adm-stg-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
-.adm-stg-table tbody tr:last-child td { border-bottom: 0; }
-@media (max-width: 900px) { .adm-stg-tables { grid-template-columns: minmax(0, 1fr); } }
 .adm-stg .adm-amb-state.is-on { background: var(--brand-soft); color: var(--brand); }
 
 /* Écran « nouvelle version » 3.0.0 : la carte des stages et une fiche de structure (SVG et CSS) */

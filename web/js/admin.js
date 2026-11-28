@@ -450,6 +450,9 @@ const METRICS = {
   guests: { unit: 'visiteurs sans connexion', get: (d) => d.guests ?? 0 },
   unique: { unit: 'appareils distincts', get: (d) => d.unique ?? 0 },
   visits: { unit: 'ouvertures', get: (d) => d.visits ?? 0 },
+  // Rubrique Stages : comptée depuis la 3.0.1, anonymement comme le Hub (jeton du jour).
+  stagesAccounts: { unit: 'comptes sur Stages', get: (d) => d.stagesAccounts ?? 0, since: '2026-11-28' },
+  stages: { unit: 'ouvertures de Stages', get: (d) => d.stages ?? 0, since: '2026-11-28' },
 };
 const DEVICES = { phone: 'Téléphone', tablet: 'Tablette', desktop: 'Ordinateur' };
 const APP_MODES = { app: 'Application installée', browser: 'Navigateur' };
@@ -565,7 +568,8 @@ function renderStats() {
   const rows = days.map((d) => ({ date: d.date, v: get(d) }));
   // Mesures par compte, classe ou appareil : rien avant le premier jour compté ainsi.
   const byAccount = Boolean(st.cls) || ['visitors', 'accounts', 'guests'].includes(st.metric);
-  const counted = byAccount ? rows.filter((r) => r.date >= since) : rows;
+  const from = st.cls ? since : (metric.since ?? (byAccount ? since : ''));
+  const counted = from ? rows.filter((r) => r.date >= from) : rows;
   const sum = counted.reduce((n, r) => n + r.v, 0);
   const peak = counted.reduce((m, r) => (r.v > m.v ? r : m), { v: 0, date: '' });
   $('[data-st="today"]').textContent = nf.format(rows.at(-1)?.v ?? 0);
@@ -574,7 +578,9 @@ function renderStats() {
   $('[data-st-range]').textContent = counted.length ? `sur ${counted.length} jour${counted.length > 1 ? 's' : ''}` : 'pas encore de données';
   $('[data-st="peak"]').textContent = peak.date ? nf.format(peak.v) : '–';
   $('[data-st="peakday"]').textContent = peak.date ? dayFmt.format(atNoon(peak.date)) : '';
-  $('[data-st="total"]').textContent = nf.format(days.reduce((n, d) => n + (d.visits ?? 0), 0));
+  // Ouvertures sur la période : du Hub, ou de la rubrique Stages quand c'est elle qu'on regarde.
+  const opens = st.metric.startsWith('stages') && !st.cls ? (d) => d.stages ?? 0 : (d) => d.visits ?? 0;
+  $('[data-st="total"]').textContent = nf.format(days.reduce((n, d) => n + opens(d), 0));
   $('[data-st-chart-title]').textContent = `${unit[0].toUpperCase()}${unit.slice(1)}, par jour`;
   const before = byAccount && rows[0]?.date < since;
   // Avant le comptage par compte : un trou (pas un zéro), avec les appareils distincts en fond.

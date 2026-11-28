@@ -31,14 +31,13 @@ export const api = {
   leave: () => post('leave'),
   /** Recherche et carte : sans aucune adresse e-mail. */
   index: () => call('index'),
-  /** Contacts d'une structure, avec leurs adresses (ouverture inscrite au journal). */
+  /** Contacts d'une structure, avec leurs adresses (rien n'est noté). */
   structure: (id) => call(`structure/${encodeURIComponent(id)}`),
 };
 
 /** Administration (session /admin). */
 export const adminApi = {
   status: () => call('admin/status'),
-  log: (n = 200) => call(`admin/log?n=${n}`),
   enabled: (on) => post('admin/enabled', { on }),
   remove: () => post('admin/delete'),
   /** Fichier choisi : envoyé tel quel (le serveur le lit, le vérifie et le garde). */

@@ -4,7 +4,8 @@
 // Ce sont des données personnelles (noms des étudiants, contacts des structures) : elles ne sont
 // servies qu'à une session ouverte par un ticket CAS que le serveur fait valider par l'université.
 // La recherche (index) ne contient aucune adresse e-mail ; les contacts d'une structure viennent
-// d'un second appel, un par fiche ouverte, et chaque ouverture est inscrite au journal (90 jours).
+// d'un second appel, un par fiche ouverte. Rien n'est gardé sur qui consulte, ni sur ce qu'il
+// ouvre : seule la fréquentation de la rubrique est comptée, anonymement (comme celle du Hub).
 package stages
 
 import (
