@@ -4,19 +4,29 @@
    comme dans hub.css. Les ajouts propres à l'appli sont en fin de fichier. */
 
 /* ==========================================================================
-   En-tête v9 : bascule Hub / TCG, Transparence rangée dans le compte
+   En-tête v10 : bascule Hub / Stages (les deux rubriques d'ISIS Hub), lien TCG à part (une autre
+   appli d'ISIS, à droite, après un séparateur), Transparence rangée dans le compte.
+   Grille à trois colonnes : la bascule est dans le flux, jamais posée par-dessus le reste. Si la
+   place manque, la colonne du milieu se décale au lieu de passer sous le lien TCG ou les boutons
+   du compte : rien ne se chevauche et tout reste cliquable, à toutes les largeurs.
    ========================================================================== */
-.top { position: sticky; }
+.top { position: sticky; display: grid; grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr); }
+.top-left { grid-column: 1; justify-self: start; }
+.top > .mode-sw { grid-column: 2; }
+.top-right { grid-column: 3; justify-self: end; margin-left: 0; }
 .mode-sw {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  position: relative; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr;
   padding: 3px; border-radius: 13px; background: var(--sunken); border: 1px solid var(--line);
 }
+.mode-sw[hidden], .mode-tab[hidden], .tcg-go[hidden], .top-sep[hidden] { display: none; }
+/* Curseur : largeur d'un onglet (1 ou 2 visibles), sous l'onglet choisi ; aucun dans le jeu. */
 .mode-thumb {
-  position: absolute; z-index: 0; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 2);
+  position: absolute; z-index: 0; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--tabs, 2));
   border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-1);
-  transition: transform .5s var(--spring), background .4s var(--ease);
+  transform: translateX(calc(var(--at, 0) * 100%));
+  transition: transform .5s var(--spring), background .4s var(--ease), opacity .25s var(--ease);
 }
+.mode-sw.is-none .mode-thumb { opacity: 0; }
 .mode-tab {
   position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   height: 32px; padding: 0 16px; border: 0; border-radius: 10px; background: none;
@@ -24,14 +34,16 @@
 }
 .mode-tab[aria-selected="true"] { color: var(--text); }
 .mode-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.mode-sw.is-none .mode-tab:hover { color: var(--text); }
+.app.is-stg .mode-thumb { background: var(--brand); box-shadow: 0 6px 18px -8px var(--brand); }
+.app.is-stg .mode-tab--stg { color: var(--brand-ink); }
+/* Indicateurs du jeu, posés sur le lien TCG (ils ne l'élargissent pas) */
 .mode-dot {
-  position: absolute; top: 5px; right: 7px; width: 7px; height: 7px; border-radius: 50%;
-  background: #FF7A59; box-shadow: 0 0 0 2px var(--sunken); animation: modeDot 2s ease-in-out infinite;
+  position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%;
+  background: #FF7A59; box-shadow: 0 0 0 2px var(--bg); animation: modeDot 2s ease-in-out infinite;
 }
 @keyframes modeDot { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.35); } }
-.app.is-tcg .mode-thumb { transform: translateX(100%); background: linear-gradient(135deg, #1C8FA0, #6B4BD6); box-shadow: 0 6px 18px -6px rgba(107, 75, 214, .8); }
-.app.is-tcg .mode-tab--tcg { color: #FFFFFF; }
-.app.is-tcg .mode-dot, .app.is-tcg .hub-only { display: none; }
+.app.is-tcg .mode-dot, .app.is-tcg .hub-only, .app.is-stg .hub-only { display: none; }
 .hub-only { display: contents; }
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 ::view-transition-new(root) { z-index: 2; }
@@ -717,7 +729,7 @@
   .tcr-preview .tc { --w: 260px; }
 }
 @media (max-width: 759.98px) {
-  .mode-sw { position: relative; left: auto; top: auto; transform: none; margin-left: 2px; }
+  .mode-sw { margin-left: 2px; }
   .mode-tab { height: 36px; padding: 0 11px; gap: 5px; }
   .tcg { padding: 14px 12px 112px; }
   .tv-h1, .th-h1 { font-size: 25px; }
@@ -1054,8 +1066,8 @@
 @media (max-width: 759.98px) {
   .tsh--ghost .twel .tbtn { width: 100%; }
 }
-/* En-tête : la bascule Hub / TCG reste au centre ; sous 1280 px, les boutons du Hub n'ont plus que
-   leur icône (nom donné par aria-label) pour lui laisser la place. */
+/* En-tête : la bascule Hub / Stages reste au centre ; sous 1280 px, les boutons du Hub n'ont plus
+   que leur icône (nom donné par aria-label) pour laisser la place au lien TCG. */
 @media (max-width: 1279.98px) {
   .top .label-md { display: none; }
   .top .fb-btn, .top [data-menu="view-menu"] { width: 36px; padding: 0; justify-content: center; }
@@ -1474,21 +1486,19 @@ html[data-vt="out"]::view-transition-new(root) { z-index: 1; }
   .tcr-preview .tc, .tcr-live-dot { animation: none; }
 }
 
-/* Bascule Hub / TCG sur téléphone (v2.1.0). « bientôt » en étiquette posée sur l'onglet TCG : elle
-   ne l'élargit plus, les deux onglets gardent la même largeur (le curseur couvre exactement
-   l'onglet choisi) et l'en-tête tient dans l'écran ; le logo n'est plus écrasé sous la bascule. */
+/* Téléphone : la bascule (deux onglets de même largeur) suit le logo, le lien TCG et le compte sont
+   à droite ; « bientôt » est une étiquette posée sur le lien TCG (elle ne l'élargit pas). */
 @media (max-width: 759.98px) {
   .top-left { flex: none; }
   .mode-sw { flex: none; grid-auto-columns: minmax(0, 1fr); }
-  .mode-soon {
-    position: absolute; top: -8px; right: -5px; z-index: 2; margin: 0; padding: 3px 5px;
-    background: #FFB86B; color: #3A1D00; font-size: 8.5px; letter-spacing: .02em; box-shadow: 0 0 0 2px var(--bg);
-  }
-  .app.is-tcg .mode-soon { background: #FFB86B; color: #3A1D00; }
+}
+.tcg-go .mode-soon {
+  position: absolute; top: -8px; right: -6px; z-index: 2; margin: 0; padding: 3px 5px;
+  background: #FFB86B; color: #3A1D00; font-size: 8.5px; letter-spacing: .02em; box-shadow: 0 0 0 2px var(--bg);
 }
 @media (max-width: 399.98px) {
   .mode-tab { padding: 0 11px; }
-  .mode-tab > .ic { display: none; } /* « Hub » et « TCG » suffisent : l'en-tête tient dès 320 px */
+  .mode-tab > .ic { display: none; } /* « Hub » et « Stages » suffisent : l'en-tête tient dès 320 px */
 }
 @media (max-width: 359.98px) {
   .top { padding: 0 8px; gap: 6px; }

@@ -136,6 +136,9 @@ function draw(img, s, w, hgt, into = null) {
 
 /** En-tête, formulaire et aperçu ; « Mes propositions » en dessous. */
 export function createForm(ctx, { launch = false, heading = 'h1' } = {}) {
+  // Propositions closes (date de la vague passée) : plus de formulaire, seulement le suivi de mes
+  // cartes. Le serveur refuse de toute façon une carte envoyée après la date.
+  if ((ctx.st ?? ctx.pub)?.proposalsClosed) return closedWorkshop(ctx, { launch, heading });
   // Formulaire commencé (photo, texte, personnes) : la page peut être redessinée (rafraîchissement,
   // retour sur l'onglet…), on rend le MÊME formulaire, rien de ce qui a été saisi n'est perdu.
   if (ctx.draftForm) return ctx.draftForm;
@@ -763,6 +766,25 @@ export function proposalsList(ctx, launch) {
 }
 
 /** Vue « Créer » du dock. */
+/** Atelier fermé : la date « propositions jusqu'au » est passée. */
+function closedWorkshop(ctx, { launch, heading }) {
+  const waves = (ctx.st ?? ctx.pub)?.waves ?? [];
+  const w = waves.find((x) => !x.printed && x.proposalsUntil && new Date(x.proposalsUntil) <= Date.now());
+  const since = w ? ` depuis le ${dateShort(w.proposalsUntil).replace('.', '')}` : '';
+  const head = h(
+    'header.tv-head.tcr-head',
+    {},
+    h(
+      'div',
+      {},
+      h('p.tk', { text: 'Atelier' }),
+      h(`${heading}.tv-h1`, { tabIndex: -1, text: 'Propositions closes' }),
+      h('p.tcr-lead', { text: `Les propositions${w ? ` de la vague ${w.n}` : ''} sont closes${since}. ${launch ? 'Place au jury de lancement, puis au lancement.' : 'Place au jury.'} L’atelier rouvrira avec la prochaine vague.` }),
+    ),
+  );
+  return h('div.tcr-host', {}, head, h('section.tcr', {}, proposalsList(ctx, launch)));
+}
+
 export function renderCreate(ctx) {
   return h('section.tcr-page', {}, createForm(ctx, { launch: ctx.phase === 'soon' }));
 }

@@ -142,15 +142,17 @@ func TestConsentFlow(t *testing.T) {
 
 	// Retirer une personne qui ne répond pas : la carte repart, sans être bloquée.
 	third := propose(ines, "En amphi", 3)
-	admin.must("POST", "/api/tcg/admin/card/"+third, map[string]any{"action": "validate", "people": "z@univ-jfc.fr"}, 200)
-	admin.must("POST", "/api/tcg/admin/card/"+third, map[string]any{"action": "untag", "key": svc.Game.mailKey("z@univ-jfc.fr")}, 200)
+	// Un enseignant ne peut pas être indiqué : il n'a pas accès au TCG pour donner son accord.
+	admin.must("POST", "/api/tcg/admin/card/"+third, map[string]any{"action": "validate", "people": "jean.dupont@univ-jfc.fr"}, 400)
+	admin.must("POST", "/api/tcg/admin/card/"+third, map[string]any{"action": "validate", "people": "z@etud.univ-jfc.fr"}, 200)
+	admin.must("POST", "/api/tcg/admin/card/"+third, map[string]any{"action": "untag", "key": svc.Game.mailKey("z@etud.univ-jfc.fr")}, 200)
 	if p := ines.mine()[0]; p.Status != StatusAccepted {
 		t.Fatalf("après retrait de la personne : %s", p.Status)
 	}
 	// « Valider sans attendre » : une carte en attente passe au jury.
 	clk.add(time.Minute)
 	fourth := propose(ines, "Au labo", 4)
-	admin.must("POST", "/api/tcg/admin/card/"+fourth, map[string]any{"action": "validate", "people": "y@univ-jfc.fr"}, 200)
+	admin.must("POST", "/api/tcg/admin/card/"+fourth, map[string]any{"action": "validate", "people": "y@etud.univ-jfc.fr"}, 200)
 	admin.must("POST", "/api/tcg/admin/card/"+fourth, map[string]any{"action": "force"}, 200)
 	if p := ines.mine()[0]; p.Status != StatusAccepted {
 		t.Fatalf("validation forcée : %s", p.Status)

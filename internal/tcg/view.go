@@ -68,9 +68,12 @@ type Public struct {
 	Season string         `json:"season"`
 	Runs   map[Rarity]int `json:"runs"`
 	PerDay int            `json:"perDay"`
-	Waves  []WaveView     `json:"waves"`
-	Stats  Stats          `json:"stats"`
-	Now    time.Time      `json:"now"`
+	// ProposalsClosed : la vague à venir ne reçoit plus de propositions (sa date est passée) et
+	// aucune autre vague ne les reçoit encore. L'atelier « Créer » est alors fermé.
+	ProposalsClosed bool       `json:"proposalsClosed,omitempty"`
+	Waves           []WaveView `json:"waves"`
+	Stats           Stats      `json:"stats"`
+	Now             time.Time  `json:"now"`
 }
 
 func (g *Game) waveViews() []WaveView {
@@ -105,7 +108,8 @@ func (g *Game) stats() Stats {
 func (g *Game) PublicView() Public {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return Public{Phase: g.phase(), Season: g.st.Season.Name, Runs: g.st.Season.Runs, PerDay: g.perDay(g.now()), Waves: g.waveViews(), Stats: g.stats(), Now: g.now()}
+	now := g.now()
+	return Public{Phase: g.phase(), Season: g.st.Season.Name, Runs: g.st.Season.Runs, PerDay: g.perDay(now), ProposalsClosed: g.proposalsClosed(now), Waves: g.waveViews(), Stats: g.stats(), Now: now}
 }
 
 func (g *Game) pseudo(pid string) string {
@@ -302,7 +306,7 @@ func (g *Game) PlayerView(pid string) (View, bool) {
 		g.dirty = true
 	}
 	v := View{
-		Public: Public{Phase: g.phase(), Season: g.st.Season.Name, Runs: g.st.Season.Runs, PerDay: g.perDay(now), Waves: g.waveViews(), Stats: g.stats(), Now: now},
+		Public: Public{Phase: g.phase(), Season: g.st.Season.Name, Runs: g.st.Season.Runs, PerDay: g.perDay(now), ProposalsClosed: g.proposalsClosed(now), Waves: g.waveViews(), Stats: g.stats(), Now: now},
 		Me: Me{
 			ID: p.ID, Pseudo: p.Pseudo, Initials: Initials(p.Pseudo), Muted: p.Muted, Created: p.Created,
 			MailLinked: p.MailKey != "", Admin: p.Admin,

@@ -77,6 +77,7 @@ function sizesFor(hidden) {
       edt: [on('mail') ? 8 : 12, 11],
       mail: [on('edt') ? 4 : 12, 11],
       ...rowSizes(['notes', 'moodle', 'rendus'], hidden, 5),
+      stages: [12, 4],
       links: [12, 1],
     };
   }
@@ -86,6 +87,7 @@ function sizesFor(hidden) {
     notes: [on('mail') ? 6 : 12, 9],
     moodle: [on('rendus') ? 6 : 12, 7],
     rendus: [on('moodle') ? 6 : 12, 7],
+    stages: [12, 6],
     links: [12, 1],
   };
 }
@@ -123,7 +125,8 @@ export function setupBento() {
       const size = sizesFor(view.hidden);
       for (const t of tiles()) {
         const id = t.dataset.tile;
-        t.hidden = Boolean(view.hidden[id]);
+        // data-off : tuile d'une rubrique fermée (Stages tant que l'administration ne l'ouvre pas).
+        t.hidden = Boolean(view.hidden[id]) || t.hasAttribute('data-off');
         t.classList.remove(...[...t.classList].filter((c) => /^(cw|rh)-\d+$/.test(c)));
         t.classList.add(`cw-${size[id][0]}`, `rh-${size[id][1]}`);
       }
@@ -143,7 +146,7 @@ export function setupBento() {
   $$('[data-show-tile]').forEach((c) =>
     c.addEventListener('change', () => {
       view.hidden[c.dataset.showTile] = !c.checked;
-      if (tiles().every((t) => view.hidden[t.dataset.tile])) {
+      if (tiles().every((t) => view.hidden[t.dataset.tile] || t.hasAttribute('data-off'))) {
         view.hidden[c.dataset.showTile] = false; // au moins une tuile reste visible
         c.checked = true;
         return;

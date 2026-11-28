@@ -7,8 +7,50 @@
 //            non `quiet` désormais : un visuel (template[data-launch-art-tpl=<art>]), un titre, une
 //            phrase, 3 étapes au plus, et le bouton « Accéder » (go.to : où il mène, voir main.js).
 //            Boutons : Accéder, Quitter, Voir le changelog.
+//            launch.requires : la fonction présentée n'est pas encore ouverte à tous (TCG, Stages) :
+//            l'écran attend qu'elle le soit, sans rien marquer vu. Une étape [titre, texte, only]
+//            n'est montrée que si `only` est ouvert pour ce compte.
+//   only : entrée montrée (journal, pop-up) seulement si la fonction est ouverte pour ce compte
+//          (« stages » : rubrique ouverte ; « tcg » : jeu ouvert et compte étudiant).
+//   onlyDetails : { tcg: [...] } lignes du détail montrées seulement à qui voit cette fonction.
 
 export const CHANGELOG = [
+  {
+    version: '3.0.0',
+    date: '2026-11-28',
+    title: 'La rubrique Stages',
+    only: 'stages', // au journal et à l'écran une fois la rubrique ouverte
+    launch: {
+      art: 'stages',
+      requires: 'stages',
+      title: 'Les stages d’ISIS, sur une carte',
+      sub: 'Où sont allés les étudiants d’ISIS, ce qu’ils y ont fait, et qui contacter.',
+      steps: [
+        ['La carte des stages', 'Région, département puis ville : chaque structure qui a accueilli un étudiant d’ISIS, avec les missions. « Comme moi » garde les stages de ton année.'],
+        ['Les contacts', 'Sur la fiche d’une structure : les étudiants passés là, leurs sujets, les maîtres de stage et les RH, avec leur adresse.'],
+        ['Ta tuile Stages', 'Sur le tableau de bord : où sont allés les étudiants de ton année, et les structures qui en accueillent le plus.'],
+      ],
+      privacy: 'Réservé aux comptes de l’université connectés. Les adresses se lisent fiche par fiche, et chaque fiche ouverte est notée 90 jours (écran Transparence).',
+      go: { label: 'Voir les stages', to: 'stages' },
+    },
+    short: [
+      'Stages : tous les stages des étudiants d’ISIS sur une carte de France, avec les missions et les contacts.',
+      'En-tête : deux onglets, Hub et Stages.',
+    ],
+    details: [
+      'Stages : un nouvel onglet en haut de l’écran. La carte de France montre où sont allés les étudiants d’ISIS : choisis une région, un département puis une ville. En liste ou sur la carte, cherche une structure, une ville, une mission ou une personne, et filtre par niveau, année, promo, secteur, type de structure, durée, stages gratifiés ou avec un contact.',
+      'Stages : la fiche d’une structure liste les étudiants passés là et leurs sujets, les maîtres de stage et les contacts RH avec leur adresse (copie ou écris en un geste), le site et le standard. La fiche d’un stage donne les dates, la durée, les missions et l’encadrement.',
+      'Stages : la tuile du tableau de bord montre où sont allés les étudiants de ton année, et « Comme moi » filtre la carte sur ton niveau.',
+      'Confidentialité : la rubrique demande d’être connecté avec ton compte de l’université. La recherche ne contient aucune adresse : celles d’une structure ne se lisent qu’en ouvrant sa fiche, et chaque fiche ouverte est notée avec ton identifiant pendant 90 jours, pour repérer une aspiration en masse. Pas d’export, 12 structures par page. L’écran Transparence le dit.',
+    ],
+    onlyDetails: {
+      tcg: [
+        'TCG : le jeu a son propre lien dans l’en-tête, à droite, à côté de ton compte. On revient au Hub par l’onglet Hub.',
+        'TCG : passée la date des propositions d’une vague, l’atelier se ferme (plus de formulaire, seulement le suivi de tes cartes) jusqu’à la vague suivante.',
+        'TCG : seules des adresses étudiantes peuvent être indiquées sur une photo.',
+      ],
+    },
+  },
   {
     version: '2.4.4',
     date: '2026-11-27',

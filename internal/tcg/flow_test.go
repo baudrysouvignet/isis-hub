@@ -18,6 +18,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"isishub/internal/cas"
 )
 
 type api struct {
@@ -166,13 +168,13 @@ func newService(t *testing.T, dir string, clk *clock) *Service {
 	g.now = clk.now
 	return (&Service{
 		Game: g,
-		CASValidate: func(_ context.Context, ticket string) (string, error) {
+		CASValidate: func(_ context.Context, ticket string) (cas.Identity, error) {
 			// Faux CAS : « ST-<identifiant>-… ».
 			parts := strings.Split(ticket, "-")
 			if len(parts) < 3 {
-				return "", fmt.Errorf("refusé")
+				return cas.Identity{}, fmt.Errorf("refusé")
 			}
-			return parts[1], nil
+			return cas.Identity{User: parts[1]}, nil
 		},
 		IsAdmin:        func(r *http.Request) bool { return strings.Contains(r.Header.Get("Cookie"), "hub_admin=ok") },
 		AllowedOrigins: []string{"https://hub.test"},
@@ -575,14 +577,18 @@ func TestWaveOneQuota(t *testing.T) {
 	if _, err := g.Propose(a, NewProposal{Title: "Onzième", Desc: "Une de trop ce jour-là.", Cat: "lieu"}); err == nil || !strings.Contains(err.Error(), "10 cartes") {
 		t.Fatalf("11e proposition : %v", err)
 	}
-	// Propositions de la vague 1 terminées : réglage de la saison (3 par jour).
+	// Propositions de la vague 1 terminées : l'atelier est fermé jusqu'à la vague suivante (le
+	// réglage de la saison, 3 par jour, reprendra alors).
 	clk.t = start.Add(5*24*time.Hour + time.Hour)
-	if pv := g.PublicView(); pv.PerDay != 3 {
-		t.Fatalf("quota après la vague 1 : %d", pv.PerDay)
+	if pv := g.PublicView(); pv.PerDay != 3 || !pv.ProposalsClosed {
+		t.Fatalf("après la vague 1 : quota %d, closes %v", pv.PerDay, pv.ProposalsClosed)
 	}
 	v, _ := g.PlayerView(a)
-	if v.Me.ProposalsLeft != 3 {
-		t.Fatalf("restantes le jour suivant : %d", v.Me.ProposalsLeft)
+	if v.Me.ProposalsLeft != 0 {
+		t.Fatalf("restantes après la date : %d", v.Me.ProposalsLeft)
+	}
+	if _, err := g.Propose(a, NewProposal{Title: "Trop tard", Desc: "Après la date de la vague 1.", Cat: "lieu"}); err == nil {
+		t.Fatal("proposition acceptée après la date de la vague 1")
 	}
 }
 

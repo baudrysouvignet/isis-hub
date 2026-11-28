@@ -19,6 +19,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"isishub/internal/cas"
 )
 
 type clock struct {
@@ -554,11 +556,11 @@ func TestHTTPFlow(t *testing.T) {
 	g.SaveWave(WaveInput{ReleaseAt: clk.now().Add(48 * time.Hour), Size: 10})
 	svc := (&Service{
 		Game: g,
-		CASValidate: func(ctx context.Context, ticket string) (string, error) {
+		CASValidate: func(ctx context.Context, ticket string) (cas.Identity, error) {
 			if ticket == "ST-bon-ticket-123" {
-				return "lmartin", nil
+				return cas.Identity{User: "lmartin"}, nil
 			}
-			return "", fmt.Errorf("refusé")
+			return cas.Identity{}, fmt.Errorf("refusé")
 		},
 		IsAdmin:        func(r *http.Request) bool { return r.Header.Get("Cookie") == "hub_admin=ok" },
 		AllowedOrigins: []string{"https://hub.test"},

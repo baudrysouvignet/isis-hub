@@ -34,9 +34,11 @@ import (
 	"time"
 
 	"isishub/internal/calendar"
+	"isishub/internal/cas"
 	"isishub/internal/crous"
 	"isishub/internal/feedback"
 	"isishub/internal/site"
+	"isishub/internal/stages"
 	"isishub/internal/tcg"
 	"isishub/internal/wisp"
 	"isishub/web"
@@ -214,8 +216,24 @@ func serve() error {
 	}()
 	tcgAPI := (&tcg.Service{
 		Game:           game,
-		CASValidate:    feedback.CASValidator(env("CAS_URL", "https://auth.univ-jfc.fr"), feedback.ENTService),
+		CASValidate:    cas.Validator(env("CAS_URL", "https://auth.univ-jfc.fr"), cas.ENTService),
+		StudentOnly:    true,
 		IsAdmin:        api.IsAdmin,
+		AllowedOrigins: origins,
+		TrustProxy:     os.Getenv("TRUST_PROXY") == "1",
+		SecureCookie:   strings.HasPrefix(os.Getenv("PUBLIC_ORIGIN"), "https://"),
+	}).Init()
+
+	// Rubrique Stages : fermée tant que l'administration ne l'ouvre pas (données déposées en JSON).
+	stagesStore, err := stages.Open(env("DATA_DIR", "data"))
+	if err != nil {
+		return fmt.Errorf("stages : %w", err)
+	}
+	stagesAPI := (&stages.Service{
+		Store:          stagesStore,
+		CASValidate:    cas.Validator(env("CAS_URL", "https://auth.univ-jfc.fr"), cas.ENTService),
+		IsAdmin:        api.IsAdmin,
+		IsAdminUser:    api.IsAdminUser,
 		AllowedOrigins: origins,
 		TrustProxy:     os.Getenv("TRUST_PROXY") == "1",
 		SecureCookie:   strings.HasPrefix(os.Getenv("PUBLIC_ORIGIN"), "https://"),
@@ -226,6 +244,10 @@ func serve() error {
 	mux.Handle("/api/tcg/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.Headers(w.Header())
 		tcgAPI.ServeHTTP(w, r)
+	}))
+	mux.Handle("/api/stages/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.Headers(w.Header())
+		stagesAPI.ServeHTTP(w, r)
 	}))
 	mux.Handle("/calendar/", calendars)
 	// Page d'administration : elle n'existe que pour une session administrateur. Sinon, retour à

@@ -1,10 +1,11 @@
 // ISIS · TCG : « Qui est sur la photo ? » — adresses en étiquettes, avec les suggestions de
-// l'annuaire de l'université (comme le champ « Cc » d'un mail). Adresses de l'université seulement.
+// l'annuaire de l'université (comme le champ « Cc » d'un mail). Adresses étudiantes seulement : le
+// TCG est réservé aux étudiants, et c'est dans le jeu que la personne donne son accord.
 
 import { h } from '../core/dom.js';
 
 export const MAX_PEOPLE = 10;
-const UNIV_MAIL = /^[a-z0-9][a-z0-9._%+-]{0,63}@([a-z0-9-]+\.)*univ-jfc\.fr$/;
+const UNIV_MAIL = /^[a-z0-9][a-z0-9._%+-]{0,63}@etud\.univ-jfc\.fr$/;
 export const isUnivMail = (a) => UNIV_MAIL.test(a);
 const isStudent = (p) => p.cat === 'etud' || /@etud\./i.test(p.email);
 /** Étudiants d'abord (ordre d'origine gardé à l'intérieur de chaque groupe). */
@@ -86,7 +87,7 @@ export function peoplePicker({ search, recent, initial = [], id = 'tad-people', 
     addr = addr.trim().toLowerCase();
     if (!addr) return true;
     if (!isUnivMail(addr)) {
-      note.textContent = `« ${addr} » : seules les adresses de l’université (…@univ-jfc.fr) sont acceptées.`;
+      note.textContent = `« ${addr} » : seules les adresses étudiantes (…@etud.univ-jfc.fr) sont acceptées.`;
       note.hidden = false;
       return false;
     }

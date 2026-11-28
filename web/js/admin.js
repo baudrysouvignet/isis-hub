@@ -8,6 +8,7 @@
 import { $, $$, h, toast, motionOK, EASE } from './core/dom.js';
 import { setupGradesAdmin } from './admin-grades.js';
 import { setupTcgAdmin } from './admin-tcg.js';
+import { setupStagesAdmin } from './admin-stages.js';
 import { applyTheme } from './core/theme.js';
 import { prefs } from './core/store.js';
 
@@ -59,6 +60,7 @@ function selectTab(v, focus) {
   }
   for (const p of $$('[data-adm-panel]')) p.hidden = p.dataset.admPanel !== v;
   if (v === 'tcg') tcgAdmin.show();
+  if (v === 'stages') stagesAdmin.show();
   history.replaceState(null, '', v === 'feedback' ? location.pathname : `#${v}`);
 }
 tabs.forEach((b, i) => {
@@ -653,6 +655,8 @@ const gradesAdmin = setupGradesAdmin({ api, getClasses: () => classes });
 
 // TCG : lancement, vagues, modération des cartes (admin-tcg.js).
 const tcgAdmin = setupTcgAdmin({ root: $('[data-tcg-admin]'), onCount: (n) => tabCount('tcg', n), onLeave: leave });
+// Rubrique Stages : dépôt du fichier, ouverture, journal (admin-stages.js).
+const stagesAdmin = setupStagesAdmin({ root: $('[data-stages-admin]'), onLeave: leave });
 const fromHash = location.hash.slice(1);
 if (tabs.some((b) => b.dataset.admTab === fromHash)) selectTab(fromHash);
 

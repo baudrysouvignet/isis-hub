@@ -14,12 +14,19 @@ const tag = (v) => (v.startsWith('0.') ? `bêta v${v}` : `v${v}`);
 export function setupChangelog({ onLaunch, canLaunch = () => true } = {}) {
   const newsDialog = $('dialog[data-news]');
   const launchDialog = $('dialog[data-launch]');
+  // Fonction pas ouverte pour ce compte (rubrique Stages fermée, TCG pour un compte du personnel) :
+  // ni l'entrée, ni l'étape, ni la ligne qui en parlent.
+  const shown = (only) => !only || canLaunch(only);
+  // Dernière version que ce compte peut voir : c'est elle qu'on marque vue. Une version qui présente
+  // une fonction encore fermée (3.0.0 tant que Stages l'est) n'est pas marquée : son écran viendra.
+  const latestShown = () => CHANGELOG.find((e) => shown(e.only) && (!e.launch?.requires || canLaunch(e.launch.requires)))?.version ?? LATEST;
+  const detailsOf = (e) => [...e.details, ...Object.entries(e.onlyDetails ?? {}).flatMap(([k, lines]) => (shown(k) ? lines : []))];
   let go = null; // destination du bouton « Accéder », suivie une fois la fenêtre fermée
   let current = null;
   const launch = modal(launchDialog, {
     onOpen: () => requestAnimationFrame(() => (launchDialog.scrollTop = 0)),
     onClose() {
-      markSeen('changelog', LATEST);
+      markSeen('changelog', latestShown());
       const to = go;
       go = null;
       if (to === 'log') openLog();
@@ -45,7 +52,7 @@ export function setupChangelog({ onLaunch, canLaunch = () => true } = {}) {
     $('[data-launch-title]', launchDialog).textContent = L.title;
     $('[data-launch-sub]', launchDialog).textContent = L.sub ?? '';
     $('[data-launch-steps]', launchDialog).replaceChildren(
-      ...(L.steps ?? []).slice(0, 3).map(([t, d], i) =>
+      ...(L.steps ?? []).filter(([, , only]) => shown(only)).slice(0, 3).map(([t, d], i) =>
         h('li', {}, h('span.launch-n', { text: String(i + 1) }), h('div', {}, h('h3', { text: t }), h('p', { text: d })))),
     );
     const priv = $('[data-launch-privacy]', launchDialog);
@@ -58,19 +65,19 @@ export function setupChangelog({ onLaunch, canLaunch = () => true } = {}) {
   }
 
   const logDialog = $('dialog[data-changelog]');
-  const news = modal(newsDialog, { onClose: () => markSeen('changelog', LATEST) });
-  const log = modal(logDialog, { onClose: () => markSeen('changelog', LATEST) });
+  const news = modal(newsDialog, { onClose: () => markSeen('changelog', latestShown()) });
+  const log = modal(logDialog, { onClose: () => markSeen('changelog', latestShown()) });
 
   function openLog() {
     $('[data-changelog-list]', logDialog).replaceChildren(
-      ...CHANGELOG.map((e, i) =>
+      ...CHANGELOG.filter((e) => shown(e.only)).map((e, i) =>
         h('section.log-entry', {},
           h('header.log-head', {},
             h('span.log-ver', { text: tag(e.version) }),
             i === 0 ? h('span.log-now', { text: 'actuelle' }) : null,
             h('time', { text: when(e.date), attrs: { datetime: e.date } })),
           h('h3.log-title', { text: e.title }),
-          h('ul.log-points', {}, e.details.map((d) => h('li', { text: d })))),
+          h('ul.log-points', {}, detailsOf(e).map((d) => h('li', { text: d })))),
       ),
     );
     if (newsDialog.open) news.close();
@@ -100,8 +107,8 @@ export function setupChangelog({ onLaunch, canLaunch = () => true } = {}) {
      */
     maybeShow({ newcomer }) {
       const last = seen('changelog');
-      if (newcomer) return void markSeen('changelog', LATEST);
-      const entries = unseen(last);
+      if (newcomer) return void markSeen('changelog', latestShown());
+      const entries = unseen(last).filter((e) => shown(e.only));
       if (!entries.length) return;
       // Version qui présente une fonction pas encore ouverte (TCG masqué) : rien n'est montré ni
       // marqué vu ; l'écran apparaîtra le jour où la fonction s'ouvre.
@@ -110,7 +117,7 @@ export function setupChangelog({ onLaunch, canLaunch = () => true } = {}) {
       const wait = setInterval(() => {
         if (tourActive() || document.querySelector('dialog[open]')) return;
         clearInterval(wait);
-        if (seen('changelog') === LATEST) return;
+        if (seen('changelog') === latestShown()) return;
         // Écran « nouvelle version » de la plus récente ; les précédentes sont dans le changelog.
         if (entries[0].launch && launchDialog) openLaunch(entries[0]);
         else openNews(entries);

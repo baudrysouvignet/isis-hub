@@ -21,7 +21,7 @@ services:
     build:
       context: .
       args:
-        VERSION: "2.4.4-test"
+        VERSION: "3.0.0-test"
     image: isis-hub:test
     container_name: isis-hub-test
     restart: "no"

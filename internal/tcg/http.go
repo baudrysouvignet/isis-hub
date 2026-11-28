@@ -12,14 +12,18 @@ import (
 	"strings"
 	"time"
 
+	"isishub/internal/cas"
 	"isishub/internal/visitor"
 )
 
 // Service : l'API du jeu, sous /api/tcg/.
 type Service struct {
 	Game *Game
-	// CASValidate fait valider un ticket de service par le CAS et rend l'identifiant.
-	CASValidate func(ctx context.Context, ticket string) (string, error)
+	// CASValidate fait valider un ticket de service par le CAS et rend l'identité (internal/cas).
+	CASValidate func(ctx context.Context, ticket string) (cas.Identity, error)
+	// StudentOnly : seuls les étudiants (adresse …@etud.univ-jfc.fr) rejoignent le jeu ; les
+	// identifiants de l'administration (ADMIN_USERS) aussi.
+	StudentOnly bool
 	// IsAdmin : la requête porte une session administrateur (cookie de /admin).
 	IsAdmin        func(r *http.Request) bool
 	AllowedOrigins []string
@@ -375,6 +379,7 @@ func (s *Service) handleJoin(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Ticket string `json:"ticket"`
 		Pseudo string `json:"pseudo"`
+		Email  string `json:"email"` // adresse de la messagerie, lue par la page (étudiant ?)
 	}
 	if !s.readJSON(w, r, 2<<10, &in) {
 		return
@@ -387,9 +392,16 @@ func (s *Service) handleJoin(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "ticket invalide")
 		return
 	}
-	login, err := s.CASValidate(r.Context(), in.Ticket)
+	id, err := s.CASValidate(r.Context(), in.Ticket)
+	login := id.User
 	if err != nil || login == "" {
 		fail(w, http.StatusForbidden, "Identité non confirmée par l’université : reconnecte-toi au Hub.")
+		return
+	}
+	// Le TCG est réservé aux étudiants : un compte du personnel ne le rejoint pas (son Hub ne
+	// montre d'ailleurs rien du jeu). L'administration du jeu garde son accès.
+	if s.StudentOnly && !id.Student(in.Email) && (s.Game.IsAdmin == nil || !s.Game.IsAdmin(login)) {
+		fail(w, http.StatusForbidden, "Le TCG est réservé aux étudiants (adresse …@etud.univ-jfc.fr).")
 		return
 	}
 	tok, created, err := s.Game.Join(login, in.Pseudo)

@@ -31,7 +31,7 @@ test('pop-up : première fois de la 1.0.3 à la 1.0.5, puis seulement les versio
 test('journal public : aucune entrée sur l’administration', () => {
   for (const e of CHANGELOG) {
     assert.equal(e.admin, undefined, e.version);
-    for (const line of [e.title, ...e.short, ...e.details]) assert.doesNotMatch(line, /administration|admin\b/i, `${e.version} : ${line}`);
+    for (const line of [e.title, ...e.short, ...e.details, ...Object.values(e.onlyDetails ?? {}).flat(), ...(e.launch?.steps ?? []).flatMap(([t, d]) => [t, d])]) assert.doesNotMatch(line, /administration|admin\b/i, `${e.version} : ${line}`);
   }
 });
 

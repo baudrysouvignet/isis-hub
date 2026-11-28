@@ -44,6 +44,8 @@ import { fetchContent, renderLinks } from './ui/content.js';
 import { setupTransparency, versionLabel } from './ui/transparency.js';
 import { startTour, tourActive } from './ui/tour.js';
 import { createTCG } from './tcg/app.js';
+import { createStages } from './stages/app.js';
+import { createModes } from './ui/modes.js';
 
 // Thème (clair, sombre, ou comme l'appareil) : appliqué tout de suite, choisi dans le menu du compte.
 applyTheme();
@@ -236,12 +238,32 @@ const guessPromo = () => state.promo ?? (classOf(savedPromo) ? savedPromo : 'FIA
 
 async function loadUser() {
   state.user ??= await mail.connect();
+  noteStudent();
   return state.user;
+}
+
+// TCG réservé aux étudiants : reconnus à l'adresse de leur messagerie (…@etud.univ-jfc.fr). Un
+// compte du personnel voit le Hub, mais rien du jeu. Avant que la messagerie ne réponde, la dernière
+// réponse connue pour ce compte (pas de bouton qui apparaît puis disparaît). Le serveur vérifie de
+// son côté (internal/tcg, StudentOnly).
+const STUDENT_MAIL = /@etud\.univ-jfc\.fr$/i;
+function isStudent() {
+  if (!state.signedIn) return false;
+  const email = state.user?.email;
+  if (email) return STUDENT_MAIL.test(email);
+  const known = prefs.get('student');
+  return Boolean(known && known.u === state.username && known.ok);
+}
+function noteStudent() {
+  if (!state.user?.email) return;
+  prefs.set('student', { u: state.username, ok: STUDENT_MAIL.test(state.user.email) });
+  tcg?.syncAccess();
 }
 
 function renderHeader() {
   app.dataset.auth = state.signedIn ? 'in' : 'out';
   $$('[data-tcg-leave]').forEach((b) => (b.hidden = !state.signedIn));
+  tcg?.syncAccess(); // lien TCG : étudiants connectés seulement
   const detail = state.promo ? choiceLabel(state.promo, state.choice) : '';
   $$('[data-class-chip]').forEach((el) => (el.textContent = state.promo ?? ''));
   $$('[data-class-label]').forEach((el) => (el.textContent = [state.promo, detail].filter(Boolean).join(' · ')));
@@ -267,6 +289,8 @@ let bento;
 let rendus;
 let moodleView;
 let tcg;
+let stages;
+let modes;
 
 function setupDashboard() {
   if (dashboardReady) return;
@@ -347,12 +371,16 @@ function setupDashboard() {
   const launchTargets = {
     moodle: () => moodleView?.openHome(null),
     tcg: () => tcg.enter(),
+    stages: () => stages?.enter(),
     dark: () => {
       setTheme('dark');
       toast('Mode sombre activé · menu du compte → Thème pour revenir à Auto', 'check');
     },
   };
-  changelog = setupChangelog({ onLaunch: (to) => launchTargets[to]?.(), canLaunch: (what) => what !== 'tcg' || Boolean(tcg?.visible()) });
+  // Une version qui présente une fonction fermée pour ce compte (Stages pas encore ouvert, TCG pour
+  // un compte du personnel) attend : ni écran, ni ligne du journal à son sujet.
+  const opened = { tcg: () => Boolean(tcg?.visible()), stages: () => Boolean(stages?.available()) };
+  changelog = setupChangelog({ onLaunch: (to) => launchTargets[to]?.(), canLaunch: (what) => opened[what]?.() ?? true });
   $$('[data-compose]').forEach((b) => b.addEventListener('click', () => composer.open()));
   moodleView = createMoodleView({
     app,
@@ -379,10 +407,14 @@ function setupDashboard() {
   });
   courses = createMoodle({ matcher, schedule, onSessionLost: sessionLost, onLogin: openLogin, onCourses: (list) => moodleView.setEnrolled(list) });
   rendus = createDeadlines({ onSessionLost: sessionLost, onLogin: openLogin });
-  // TCG de la promo : bascule Hub / TCG de l'en-tête. L'identité de l'étudiant est prouvée par un
+  // Rubriques de l'en-tête : Hub et Stages (bascule), TCG (lien à part, autre appli d'ISIS).
+  modes = createModes({ app });
+  // TCG de la promo : lien TCG de l'en-tête, pour les étudiants. L'identité est prouvée par un
   // ticket CAS (pour l'ENT, comme l'administration) que le serveur fait valider par l'université.
   tcg = createTCG({
     app,
+    modes,
+    allowed: isStudent,
     isSignedIn: () => state.signedIn,
     userName: () => state.user?.name || '',
     // Connexion demandée depuis le jeu : on y revient après (« #tcg », lu par enterDashboard).
@@ -408,8 +440,26 @@ function setupDashboard() {
       if (state.signedIn) loadUser().then(() => tcg?.mailReady(), () => {});
     },
   });
+  // Rubrique Stages : fermée tant que l'administration ne l'ouvre pas (tuile et onglet cachés).
+  stages = createStages({
+    app,
+    modes,
+    isSignedIn: () => state.signedIn,
+    onLogin: () => openLogin(),
+    getTicket: adminTicket,
+    promo: () => state.promo,
+    beforeOpen: () => {
+      closeMenus();
+      mails.close();
+      notes.close();
+      if (moodleView?.isOpen()) moodleView.close();
+      if (schedule.isExpanded()) schedule.collapse();
+    },
+    onAvailable: () => bento?.refresh(),
+  });
   setupMenus();
   bento = setupBento();
+  stages.checkStatus();
   fetchContent().then((content) => {
     renderLinks(content);
     bento.refresh();
@@ -447,7 +497,8 @@ async function welcome() {
   adoptLocal();
   const newcomer = !seen('tour');
   if (newcomer) setTimeout(() => !document.querySelector('dialog[open]') && state.screen === 'dash' && startTour(app), 600);
-  await tcg?.whenReady(); // la 2.0.0 attend de savoir si le TCG est ouvert
+  // La 2.0.0 attend de savoir si le TCG est ouvert, la 3.0.0 si la rubrique Stages l'est.
+  await Promise.all([tcg?.whenReady(), stages?.whenReady()]);
   changelog.maybeShow({ newcomer });
   install.maybeOffer(); // après la visite guidée : installer l'application sur le téléphone
 }
@@ -481,6 +532,10 @@ async function enterDashboard(promoChanged = true) {
   }
   // Lien vers le jeu : « #tcg », ou « #echange=K7Q2 » (QR code d'un échange en face à face).
   if (!tcg.handleHash() && state.signedIn) tcg.signedIn();
+  // Rubrique Stages : la tuile se remplit, « #stages » (retour après connexion) l'ouvre.
+  if (promoChanged) stages.refresh();
+  if (state.signedIn) stages.signedIn();
+  if (location.hash === '#stages' && state.signedIn && stages.available()) stages.enter();
   // Adresse de la messagerie : « Mes apparitions » et, pour l'administrateur, mails d'accord.
   if (state.signedIn) loadUser().then(() => tcg.mailReady(), () => {});
 }
@@ -498,6 +553,7 @@ function sessionLost() {
   state.signedIn = false;
   state.user = null;
   tcg?.leave(); // pas connecté = pas de TCG
+  stages?.signedOut(); // ni de stages
   jar.clear();
   vault.clear();
   clearCache();
@@ -535,6 +591,8 @@ async function logout() {
   prefs.set('feedback', null); // « Mes propositions » : rien ne reste pour la personne suivante
   await tcg?.signedOut(); // session de jeu de cet appareil oubliée (cookie effacé par le serveur)
   tcg?.leave();
+  await stages?.signedOut(); // session de la rubrique Stages oubliée, données effacées de la page
+  prefs.set('student', null);
   welcomed = false;
   resetMailPrefs();
   notes?.load(state.promo, state.choice);
@@ -607,6 +665,7 @@ document.addEventListener('keydown', (e) => {
   if (document.querySelector('dialog[open]') || tourActive()) return; // géré par « cancel » du dialog
   if (composer?.isOpen()) return; // géré par le compositeur
   if (tcg?.isOpen()) return; // feuilles et ouverture du booster : gérées par le TCG
+  if (stages?.isOpen() && !document.activeElement?.closest?.('details.stg-f')) return stages.escape();
   if (moodleView?.isOpen()) return moodleView.close();
   if (mails?.isOpen()) return mails.close();
   if (notes?.isOpen()) return notes.close();

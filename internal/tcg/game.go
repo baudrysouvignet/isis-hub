@@ -540,6 +540,21 @@ func (g *Game) perDay(now time.Time) int {
 	return g.st.Season.PerDay
 }
 
+// proposalsClosed : la vague à venir n'accepte plus de propositions (date « propositions
+// jusqu'au » passée) et aucune autre vague ne les reçoit. Sans vague à venir (jeu lancé, la
+// suivante pas encore créée), les propositions restent ouvertes : elles attendront la prochaine.
+func (g *Game) proposalsClosed(now time.Time) bool {
+	if g.proposalWave(now) != nil {
+		return false
+	}
+	for _, w := range g.st.Waves {
+		if !w.Printed {
+			return true
+		}
+	}
+	return false
+}
+
 // keyOf : empreinte de l'identifiant du joueur pid ("" si inconnue).
 func (g *Game) keyOf(pid string) string {
 	for k, id := range g.st.Keys {
@@ -566,6 +581,9 @@ func (g *Game) proposalsLeft(pid string, now time.Time) int {
 			}
 		}
 	}
+	if g.proposalsClosed(now) {
+		return 0
+	}
 	if left := g.perDay(now) - n; left > 0 {
 		return left
 	}
@@ -586,6 +604,9 @@ func (g *Game) checkProposal(pid string) error {
 	}
 	if g.phase() == "off" {
 		return userErr(http.StatusConflict, "Les propositions ne sont pas ouvertes.")
+	}
+	if g.proposalsClosed(g.now()) {
+		return userErr(http.StatusConflict, "Les propositions de cette vague sont closes : l’atelier rouvrira avec la prochaine vague.")
 	}
 	if p.Muted {
 		return userErr(http.StatusForbidden, "Tes propositions sont suspendues par l’administration.")

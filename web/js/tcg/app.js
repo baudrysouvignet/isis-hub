@@ -1,13 +1,13 @@
-// ISIS · TCG : bascule Hub / TCG de l'en-tête, navigation du jeu (dock), page d'attente avant le
+// ISIS · TCG : lien TCG de l'en-tête (une autre appli d'ISIS, réservée aux étudiants), navigation du
+// jeu (dock), page d'attente avant le
 // lancement, accueil (booster du jour, à faire, « Dans la promo »), bienvenue et fiche d'une carte.
 //
 // Identité : pour rejoindre le jeu, la page demande au CAS un ticket à usage unique (pour l'ENT,
 // comme l'administration) que le serveur fait valider par l'université ; il n'en garde qu'une
 // empreinte (HMAC) de l'identifiant. La session de jeu de l'appareil est un cookie HttpOnly.
 
-import { $, h, toast, motionOK } from '../core/dom.js';
+import { $, $$, h, toast, motionOK } from '../core/dom.js';
 import { prefs } from '../core/store.js';
-import { hubBarColor } from '../core/theme.js';
 import { seen, markSeen } from '../core/seen.js';
 import { api, adminApi, TcgError } from './api.js';
 import { cardEl, ic, mark, rchip, RLABEL, CATS, REPLICA, tier, sheet, sheetOpen, tbtn, meter, dayLong, dateShort, hourText, ago, untilText, plural, placeholderArt, pips, trackOf } from './ui.js';
@@ -39,17 +39,18 @@ export function defaultPseudo(name = '') {
 }
 
 /**
- * o : { app, isSignedIn(), userName(), onLogin(), getTicket(), beforeOpen(), onMode(tcg) }
+ * o : { app, modes, isSignedIn(), allowed(), userName(), userEmail(), onLogin(), getTicket(),
+ * beforeOpen(), onMode(tcg) }. allowed() : compte étudiant (adresse …@etud.univ-jfc.fr) ; sinon le
+ * Hub ne montre rien du jeu.
  */
 export function createTCG(o) {
   const app = o.app;
   const hub = $('#contenu');
-  const sw = $('[data-mode-sw]');
-  const tabHub = $('#tab-hub');
-  const tabTcg = $('#tab-tcg');
+  const link = $('.tcg-go[data-open-tcg]');
+  const sep = $('[data-tcg-sep]');
+  const menuItem = $('[data-tcg-menu]');
   const dot = $('[data-tcg-ready]');
   const soonChip = $('[data-tcg-soon]');
-  const theme = $('meta[name="theme-color"]');
 
   const wrap = h('div.tcg-wrap', { data: { tcgView: '' } });
   shield(); // cartes floutées pendant les captures repérables, sans aucun message
@@ -67,7 +68,7 @@ export function createTCG(o) {
       return b;
     }),
   );
-  const main = h('main.tcg', { id: 'tcg', hidden: true, attrs: { role: 'tabpanel', 'aria-labelledby': 'tab-tcg' } }, h('div.tcg-bg', { attrs: { 'aria-hidden': 'true' } }, h('i'), h('i'), h('i')), wrap, dock);
+  const main = h('main.tcg', { id: 'tcg', hidden: true, attrs: { 'aria-label': 'TCG' } }, h('div.tcg-bg', { attrs: { 'aria-hidden': 'true' } }, h('i'), h('i'), h('i')), wrap, dock);
   hub.after(main);
 
   let pub = null; // vue publique (sans session)
@@ -90,7 +91,7 @@ export function createTCG(o) {
     st = next;
     cards.clear();
     for (const c of st?.cards ?? []) cards.set(c.id, c);
-    if (st) pub = { phase: st.phase, season: st.season, runs: st.runs, perDay: st.perDay, waves: st.waves, stats: st.stats, now: st.now };
+    if (st) pub = { phase: st.phase, season: st.season, runs: st.runs, perDay: st.perDay, proposalsClosed: st.proposalsClosed, waves: st.waves, stats: st.stats, now: st.now };
     syncHeader();
   }
 
@@ -168,7 +169,7 @@ export function createTCG(o) {
   // ---------------------------------------------------------------- rejoindre le jeu
   async function doJoin(pseudo) {
     const ticket = await o.getTicket();
-    await api.join(ticket, pseudo);
+    await api.join(ticket, pseudo, o.userEmail?.() || '');
     markSeen('tcg');
     prefs.set('tcgJoined', true);
     await loadState();
@@ -265,16 +266,19 @@ export function createTCG(o) {
   }
 
   // ---------------------------------------------------------------- en-tête et mode
+  /** Le jeu est montré : ouvert par l'administration, et compte étudiant. */
+  const shown = () => phase() !== 'off' && o.allowed();
   function syncHeader() {
     const p = phase();
-    sw.hidden = p === 'off';
+    const on = shown();
+    link.hidden = sep.hidden = menuItem.hidden = !on;
     soonChip.hidden = p !== 'soon';
     const lastBallot = st?.jury?.ballots?.[st.jury.ballots.length - 1];
     const juryPending = Boolean(lastBallot && !lastBallot.done);
     dot.hidden = !((p === 'live' && (!st || st.me.boosterReady)) || juryPending);
     dot.setAttribute('aria-label', juryPending && p !== 'live' ? 'Duels du jury à jouer' : 'Booster disponible');
     app.classList.toggle('tcg-soon', p === 'soon' || (p === 'live' && !st));
-    if (p === 'off' && open) setMode(false);
+    if (!on && open) setMode(false);
     syncDock();
   }
 
@@ -297,12 +301,13 @@ export function createTCG(o) {
   }
 
   /**
-   * Passage Hub ↔ TCG : le jeu s'ouvre en cercle depuis l'onglet « TCG » (et se referme vers lui).
-   * View Transitions quand le navigateur les connaît, sinon un voile qui fait le même geste.
+   * Passage Hub ↔ TCG : le jeu s'ouvre en cercle depuis le lien « TCG » (et se referme vers
+   * l'onglet où l'on revient). View Transitions quand le navigateur les connaît, sinon un voile qui
+   * fait le même geste.
    */
-  function reveal(tcg, apply) {
+  function reveal(tcg, apply, dest = 'hub') {
     if (!motionOK()) return apply();
-    const r = (tcg ? tabTcg : tabHub).getBoundingClientRect();
+    const r = (!tcg && o.modes.tabRect(dest)) || link.getBoundingClientRect();
     const x = r.left + r.width / 2;
     const y = r.top + r.height / 2;
     const R = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
@@ -338,29 +343,34 @@ export function createTCG(o) {
     }
   }
 
-  function setMode(tcg) {
-    if (tcg === open) return;
-    const apply = () => {
-      open = tcg;
-      app.classList.toggle('is-tcg', tcg);
-      hub.hidden = tcg;
-      main.hidden = !tcg;
-      tabHub.setAttribute('aria-selected', String(!tcg));
-      tabTcg.setAttribute('aria-selected', String(tcg));
-      tabHub.tabIndex = tcg ? -1 : 0;
-      tabTcg.tabIndex = tcg ? 0 : -1;
-      theme?.setAttribute('content', tcg ? '#061317' : hubBarColor());
-      if (tcg) render();
-      window.scrollTo(0, 0);
-    };
-    reveal(tcg, apply);
-    clearInterval(refreshTimer);
-    clearInterval(tickTimer);
-    if (tcg) {
+  // Le jeu est une rubrique du contrôleur de l'en-tête (ui/modes.js) : on y entre par le lien TCG,
+  // on en sort par un onglet de la bascule (Hub, Stages).
+  o.modes.register('tcg', {
+    el: main,
+    color: () => '#061317',
+    transition: (apply, { to }) => reveal(to === 'tcg', apply, to),
+    onEnter() {
+      open = true;
+      link.setAttribute('aria-current', 'page');
+      render();
+      clearInterval(refreshTimer);
+      clearInterval(tickTimer);
       refreshTimer = setInterval(() => document.visibilityState === 'visible' && refresh(), 60_000);
       tickTimer = setInterval(tick, 1000);
-    }
-    o.onMode?.(tcg);
+      o.onMode?.(true);
+    },
+    onLeave() {
+      open = false;
+      link.removeAttribute('aria-current');
+      clearInterval(refreshTimer);
+      clearInterval(tickTimer);
+      o.onMode?.(false);
+    },
+  });
+
+  function setMode(tcg) {
+    if (tcg === open) return;
+    o.modes.set(tcg ? 'tcg' : 'hub');
   }
 
   /**
@@ -376,6 +386,7 @@ export function createTCG(o) {
 
   async function enter(target) {
     if (!o.isSignedIn()) return requireLogin();
+    if (!o.allowed()) return toast('Le TCG est réservé aux étudiants d’ISIS.', 'lock');
     o.beforeOpen?.();
     view = target || 'home'; // le booster du jour d'abord
     setMode(true);
@@ -400,15 +411,13 @@ export function createTCG(o) {
     }
   }
 
-  tabHub.addEventListener('click', () => setMode(false));
-  tabTcg.addEventListener('click', () => (open ? go('home') : enter()));
-  sw.addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    e.preventDefault();
-    const tcg = e.key === 'ArrowRight';
-    (tcg ? tabTcg : tabHub).focus();
-    tcg ? enter() : setMode(false);
-  });
+  // Lien de l'en-tête et entrée du menu du compte : ouvrent le jeu (ou reviennent à son accueil).
+  $$('[data-open-tcg]').forEach((a) =>
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      open ? go('home') : enter();
+    }),
+  );
 
   // ---------------------------------------------------------------- navigation
   function go(v) {
@@ -546,7 +555,9 @@ export function createTCG(o) {
     // Jury de lancement ouvert : c'est l'action du moment.
     const juryOpen = w?.juryFrom && Date.now() >= new Date(w.juryFrom) && Date.now() < new Date(w.juryUntil);
     const juryCta = juryOpen ? tbtn('Vote pour tes cartes préférées', 'jury', 'tbtn--primary tbtn--xl', async () => (st || (await join())) && go('jury')) : null;
-    const propose = tbtn('Proposer une carte', 'pen', juryCta ? 'tbtn--ghost tbtn--lg' : 'tbtn--primary tbtn--xl', () => $('#tsoon-form', wrap)?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' }));
+    // Propositions closes (date passée) : plus de bouton « Proposer », l'atelier dit qu'il est fermé.
+    const closed = Boolean(d?.proposalsClosed);
+    const propose = closed ? null : tbtn('Proposer une carte', 'pen', juryCta ? 'tbtn--ghost tbtn--lg' : 'tbtn--primary tbtn--xl', () => $('#tsoon-form', wrap)?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' }));
     // Administration, avant l'ouverture du jury : essayer les duels (rien n'est enregistré).
     const tryDuels = !juryCta && st?.me?.admin ? tbtn('Essayer « Tu préfères ? »', 'jury', 'tbtn--ghost tbtn--lg', () => go('jury')) : null;
     // Administration : essayer l'ouverture (booster du jour, booster bonus, répliques) avant le lancement.
@@ -560,9 +571,9 @@ export function createTCG(o) {
         {},
         h('p.tk.tsoon-kick', {}, h('span.tsoon-live'), 'Bientôt · TCG de la promo'),
         h('h1.tsoon-h1', { tabIndex: -1 }, 'Le TCG arrive le ', h('em', { text: relDay }), '.'),
-        h('p.tsoon-lead', { text: 'Deux boosters par jour, des cartes rares, des échanges en face à face. Et toutes les cartes viennent de vous : propose les tiennes dès maintenant, les plus attendues formeront la première vague.' }),
+        h('p.tsoon-lead', { text: closed ? 'Deux boosters par jour, des cartes rares, des échanges en face à face. Toutes les cartes viennent de vous : les propositions de la première vague sont closes, place au jury puis au lancement.' : 'Deux boosters par jour, des cartes rares, des échanges en face à face. Et toutes les cartes viennent de vous : propose les tiennes dès maintenant, les plus attendues formeront la première vague.' }),
         count,
-        h('div.tsoon-ctas', {}, ...(juryCta ? [juryCta, propose] : [propose, how, tryDuels].filter(Boolean))),
+        h('div.tsoon-ctas', {}, ...(juryCta ? [juryCta, propose] : [propose, how, tryDuels]).filter(Boolean)),
         consentCtas(),
         tryOpen,
       ),
@@ -576,14 +587,17 @@ export function createTCG(o) {
     const now = Date.now();
     const t = (x) => (x ? new Date(x).getTime() : 0);
     let cur = 3;
+    let soonStep = false; // propositions closes, jury pas encore ouvert : l'étape suivante est « bientôt »
     if (w) {
-      if (w.juryFrom && now < t(w.juryFrom)) cur = 0;
-      else if (w.juryFrom && now < t(w.juryUntil)) cur = 1;
+      if (w.juryFrom && now < t(w.juryFrom)) {
+        cur = closed ? 1 : 0;
+        soonStep = closed;
+      } else if (w.juryFrom && now < t(w.juryUntil)) cur = 1;
       else if (now < t(w.releaseAt)) cur = w.juryFrom ? 2 : 0;
     }
     const perDay = d?.perDay ?? 3;
     const steps = [
-      ['pen', 'Propositions', w?.proposalsUntil ? `Jusqu’au ${dayLong(w.proposalsUntil)}. ${perDay} cartes par jour et par personne.` : `${perDay} cartes par jour et par personne, validées par un admin.`],
+      ['pen', 'Propositions', closed && w?.proposalsUntil ? `Closes depuis le ${dayLong(w.proposalsUntil)}.` : w?.proposalsUntil ? `Jusqu’au ${dayLong(w.proposalsUntil)}. ${perDay} cartes par jour et par personne.` : `${perDay} cartes par jour et par personne, validées par un admin.`],
       ['jury', 'Jury de lancement', w?.juryFrom ? `Du ${dateShort(w.juryFrom).replace('.', '')} au ${dateShort(w.juryUntil).replace('.', '')} : chaque jour, une série de « Tu préfères ? », les cartes préférées entrent dans le jeu.` : 'Chaque jour, une série de « Tu préfères ? » : les cartes préférées entrent dans le jeu.'],
       ['booster', 'Lancement', rel ? `${relDay.charAt(0).toUpperCase() + relDay.slice(1)}, ${hourText(rel)} : la Vague 1, tes premiers boosters et tes boosters bonus.` : 'La Vague 1, tes premiers boosters et tes boosters bonus.'],
       ['loop', 'Ensuite', 'Une nouvelle vague chaque semaine, avec les cartes proposées entre-temps.'],
@@ -591,7 +605,7 @@ export function createTCG(o) {
     const ol = h(
       'ol.tsoon-steps',
       { id: 'tsoon-steps' },
-      ...steps.map(([icon, title, text], i) => h(`li.tsoon-step${i === cur ? '.is-now' : ''}`, {}, h('span.tsoon-dot', {}, ic(icon, 'ic')), h('div', {}, h('p.tk', { text: `Étape ${i + 1}${i === cur ? ' · en cours' : ''}` }), h('h3', { text: title }), h('p', { text })))),
+      ...steps.map(([icon, title, text], i) => h(`li.tsoon-step${i === cur ? '.is-now' : ''}`, {}, h('span.tsoon-dot', {}, ic(icon, 'ic')), h('div', {}, h('p.tk', { text: `Étape ${i + 1}${i === cur ? (soonStep ? ' · bientôt' : ' · en cours') : ''}` }), h('h3', { text: title }), h('p', { text })))),
     );
 
     // Atelier : proposer une carte (la rareté sera révélée au lancement).
@@ -612,7 +626,7 @@ export function createTCG(o) {
     );
     const note = h('p.tsoon-note', {}, ic('info'), 'Avant le lancement, le jeu n’enregistre que tes propositions et ton pseudo. Les photos où quelqu’un est reconnaissable demandent son accord.');
     // Classement des créateurs (joueurs inscrits) : avant le lancement, les cartes validées comptent.
-    const lb = st ? leaderboard(st.leaders, { onCreate: () => $('#tsoon-form', wrap)?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' }) }) : null;
+    const lb = st ? leaderboard(st.leaders, { onCreate: closed ? null : () => $('#tsoon-form', wrap)?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' }) }) : null;
     return h('section.tsoon', {}, hero, stats, rewardsPanel(st?.rewards), lb, ol, form, tiers, note);
   }
 
@@ -965,6 +979,10 @@ export function createTCG(o) {
   function handleHash() {
     const m = location.hash.match(/^#echange=([A-Za-z0-9]{4})$/);
     if (!m && location.hash !== '#tcg' && location.hash !== '#tcg/accord') return false;
+    if (o.isSignedIn() && !o.allowed()) {
+      history.replaceState(null, '', location.pathname + location.search);
+      return false;
+    }
     if (!o.isSignedIn()) {
       // Lien du jeu sans connexion : d'abord la connexion (le lien est gardé pour après). Si
       // l'étudiant choisit de continuer sans se connecter, on n'insiste pas.
@@ -1017,8 +1035,10 @@ export function createTCG(o) {
       if (open) setMode(false);
       return true;
     },
-    /** Le TCG est-il ouvert aux étudiants (bascule visible) ? */
-    visible: () => phase() !== 'off',
+    /** Le TCG est-il montré (ouvert, et compte étudiant) ? */
+    visible: () => shown(),
+    /** L'adresse du compte est connue ou a changé : montrer ou cacher le jeu. */
+    syncAccess: () => syncHeader(),
     handleHash,
     refreshPublic: loadPublic,
     openJoin: () => openJoinSheet(ctx),

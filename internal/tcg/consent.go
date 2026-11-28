@@ -56,6 +56,10 @@ type Mailing struct {
 // Adresses de l'université seulement (étudiants et personnels) : personne d'extérieur ne peut être visé.
 var mailRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._%+-]{0,63}@([a-z0-9-]+\.)*univ-jfc\.fr$`)
 
+// Personnes sur une photo : des étudiants seulement. Le TCG leur est réservé, et c'est dans le jeu
+// qu'on donne son accord : un enseignant indiqué ne pourrait pas répondre.
+var studentMailRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._%+-]{0,63}@etud\.univ-jfc\.fr$`)
+
 // CleanPeople : adresses saisies par l'auteur (séparées par des virgules, espaces ou retours).
 func CleanPeople(raw string) ([]string, error) {
 	var out []string
@@ -64,8 +68,8 @@ func CleanPeople(raw string) ([]string, error) {
 		if a == "" || seen[a] {
 			continue
 		}
-		if !mailRE.MatchString(a) {
-			return nil, userErr(http.StatusBadRequest, "« %s » : seules les adresses de l’université (…@univ-jfc.fr) sont acceptées.", a)
+		if !studentMailRE.MatchString(a) {
+			return nil, userErr(http.StatusBadRequest, "« %s » : seules les adresses étudiantes (…@etud.univ-jfc.fr) sont acceptées : le TCG est réservé aux étudiants.", a)
 		}
 		seen[a] = true
 		out = append(out, a)

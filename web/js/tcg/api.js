@@ -34,7 +34,8 @@ const post = (path, body = {}) => call(path, { method: 'POST', body });
 export const api = {
   publicView: () => call('public'),
   state: () => call('state'),
-  join: (ticket, pseudo) => post('join', { ticket, pseudo }),
+  // email : adresse de la messagerie, lue par la page ; le serveur réserve le jeu aux étudiants.
+  join: (ticket, pseudo, email) => post('join', { ticket, pseudo, email }),
   logout: () => post('logout'),
   leave: () => post('leave'),
   booster: () => post('booster'),

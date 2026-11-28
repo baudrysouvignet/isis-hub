@@ -5,7 +5,9 @@ téléphone. Tout est lu **en direct sur les portails de l'université**, et le 
 de ce qui transite par lui. Le serveur conserve seulement : les retours que les étudiants
 choisissent d'envoyer depuis « Une idée ? » (seule donnée qui peut être reliée à quelqu'un, et
 seulement sans « Envoyer anonymement »), une sauvegarde chiffrée et anonyme de ce qu'ils créent dans
-le Hub, et des compteurs de fréquentation anonymes.
+le Hub, et des compteurs de fréquentation anonymes. Deux rubriques à part gardent davantage, et le
+disent dans l'écran Transparence : le TCG (réservé aux étudiants) et, une fois ouverte, la rubrique
+Stages (fichier déposé par l'administration, et journal des fiches ouvertes pendant 90 jours).
 
 ```bash
 DOMAIN=hub.exemple.fr docker compose up -d --build
@@ -59,7 +61,9 @@ Les autres verrous :
 - **Cache chiffré** : cours Moodle, correspondances et notes sont mis en cache par matière (cours
   suivis 6 h, correspondance 7 jours, notes 30 min) pour ne pas solliciter Moodle à chaque clic. Le
   cache est chiffré avec la même clé que la session et effacé à la déconnexion.
-- **Presque rien côté serveur** : ni compte, ni base de données, ni journal. Seuls les retours
+- **Presque rien côté serveur** : ni compte, ni base de données, ni journal des connexions. Seule
+  exception, la rubrique Stages une fois ouverte : elle note quelles fiches ouvre chaque
+  identifiant, pendant 90 jours (voir « Stages »). Seuls les retours
   « Une idée ? » sont gardés (fichier `feedback.json` du volume `/data`), sans adresse IP ; l'auteur
   est celui que la page déclare (non vérifié) ou anonyme. « Mes propositions » marche sans compte :
   la page garde un jeton secret, le serveur n'en conserve que l'empreinte. Le conteneur tourne en lecture
@@ -244,16 +248,74 @@ La répartition est vérifiée avant d'être acceptée, puis appliquée aussitô
 étudiants et à leurs abonnements d'agenda. Elle est gardée dans le volume `/data` ; tant qu'elle n'a
 pas été modifiée, c'est celle de `web/data/classes.json` qui s'applique.
 
+## Stages
+
+Rubrique **Stages**, deuxième onglet de la bascule de l'en-tête (*Hub* / *Stages*). Elle montre
+tous les stages des étudiants d'ISIS : une carte de France (région, puis département, puis ville),
+une liste, une recherche (structure, ville, mission, personne) et des filtres (« Comme moi », niveau,
+année, promo, secteur, statut, durée, gratifiés, avec contact). Chaque structure a sa fiche : les
+étudiants passés là et leurs sujets, les maîtres de stage et contacts RH **avec leurs adresses
+e-mail**, l'adresse, le site et le standard. Une tuile du tableau de bord résume « N stages de FIE x
+avant toi ».
+
+- **Fermée par défaut.** Tant que l'administration ne l'ouvre pas, ni onglet, ni tuile, ni
+  interrupteur dans *Affichage*. Dans `/admin`, onglet *Stages* : déposer le fichier JSON, vérifier
+  sur cet appareil (« Aperçu », le serveur ne sert alors les données qu'aux identifiants de
+  `ADMIN_USERS`), puis « Ouvrir à tout le monde ». « Supprimer les données » efface le fichier et
+  ferme la rubrique.
+- **Données personnelles, jamais publiques.** Elles ne sont servies qu'à une session ouverte par un
+  ticket CAS que le serveur fait valider par l'université (cookie `hub_stg`, HttpOnly, 30 jours,
+  effacé à la déconnexion). La recherche et la carte (`/api/stages/index`) ne contiennent **aucune
+  adresse e-mail**. Les contacts d'une structure viennent d'un second appel, un par fiche ouverte
+  (`/api/stages/structure/<id>`), et chaque ouverture est notée au **journal** (identifiant,
+  structure, date), gardé 90 jours et lisible dans l'onglet *Stages* de l'administration. Pas de
+  quota de consultation, pas d'export, 12 structures par page. L'écran Transparence le dit.
+- **Fichier déposé** (`stages.json` du dossier de données) : format `isis-hub-stages`, version 1.
+  Le serveur le vérifie en entier avant de le garder : liens entre les listes, dates, adresses,
+  sites en `http(s)` seulement, aucun caractère de contrôle, 12 Mo au plus.
+
+```json
+{
+  "format": "isis-hub-stages", "version": 1, "built": "2026-11-28", "source": "…",
+  "places":    [{ "id": "fr:81065", "n": "Castres", "dep": "81", "reg": "76", "x": 548.7, "y": 851.2 },
+                { "id": "abroad:montreal", "n": "Montréal", "zone": "monde", "pays": "Canada", "iso": "CA" }],
+  "companies": [{ "id": "c…", "n": "Nom", "m": "CH", "c": 3, "p": "fr:81065", "a": "adresse", "cp": "81100",
+                  "w": "www.site.fr", "t": "05 …", "s": "Santé", "st": "Hôpital public", "naf": "…",
+                  "k": ["s…"], "paid": 1, "n0": 2, "variants": [], "sites": [], "also": [] }],
+  "stages":    [{ "id": "s…", "e": "c…", "pr": 2028, "f": 3, "au": 2025, "d": "2026-04", "wk": 8,
+                  "mi": "mission", "et": "Prénom NOM", "tu": "p…", "rh": "p…", "db": "2026-04-27", "df": "2026-06-19", "g": 1 }],
+  "contacts":  [{ "id": "p…", "civ": "M.", "n": "Prénom NOM", "role": "fonction", "mail": "…", "old": [],
+                  "generic": false, "chk": false, "kinds": ["maitre", "rh"], "last": "2026-04" }]
+}
+```
+
+`x` et `y` sont les coordonnées sur la carte (Lambert 93 ramené au repère de `web/js/stages/geo.js`).
+`c` est la couleur du logo (0 à 11), `m` son monogramme ; `paid` compte les stages gratifiés, sans
+aucun montant ; `generic` signale une boîte de service (rh@, stages@…) et `chk` une adresse qui ne
+porte pas le nom de la personne. Code : `internal/stages` (serveur), `web/js/stages` (page).
+
 ## TCG de la promo
 
 Jeu de cartes à collectionner dont **toutes les cartes viennent des étudiants**. Il faut être
 connecté au Hub pour y jouer : chaque étudiant a un seul compte de jeu.
 
+**Réservé aux étudiants.** Un compte est étudiant si son adresse est `…@etud.univ-jfc.fr`. Le Hub la
+lit dans la messagerie, et un compte du personnel ne voit rien du jeu : ni lien, ni entrée de menu,
+ni lien `#tcg` ; il a accès au reste du Hub. Le serveur vérifie de son côté à l'entrée dans le jeu
+(`StudentOnly`) : l'université fait foi si le CAS publie l'adresse ou l'affiliation du compte,
+sinon c'est l'adresse lue par la page qui compte. Les identifiants de `ADMIN_USERS` gardent leur
+accès. Pour la même raison, seules des adresses étudiantes peuvent être indiquées sur une photo :
+c'est dans le jeu que la personne donne son accord.
+
 1. **Lancement depuis `/admin`, onglet *Cartes TCG*** : programmer la vague 1 (dates des
    propositions, du jury de lancement et de la sortie ; 10 propositions par jour par défaut pour
-   cette vague, puis le réglage de la saison, 3), puis cocher « TCG visible des étudiants ». La
-   bascule Hub / TCG apparaît alors avec « bientôt », et la page d'attente affiche le compte à
-   rebours jusqu'à la date de sortie de la vague 1.
+   cette vague, puis le réglage de la saison, 3), puis cocher « TCG visible des étudiants ». Le
+   lien **TCG** de l'en-tête (à droite, « Autre appli d'ISIS ») apparaît alors avec « bientôt », et
+   la page d'attente affiche le compte à rebours jusqu'à la date de sortie de la vague 1. On
+   revient au Hub par l'onglet *Hub* de la bascule. Passé « propositions jusqu'au », l'atelier
+   ferme : plus de bouton « Proposer une carte » ni de formulaire, seulement le suivi de ses
+   cartes, et le serveur refuse toute carte envoyée après la date. Les propositions rouvrent avec
+   la vague suivante.
 2. **Propositions** : photo recadrée et compressée **dans la page** (960 × 720 et vignette 320 × 240,
    WebP sinon JPEG, métadonnées retirées), titre de 28 caractères, deux phrases, catégorie, deux
    engagements sur la photo. Le serveur revérifie tout (nature et dimensions de l'image, EXIF retiré).
@@ -559,12 +621,15 @@ internal/feedback/  retours « Une idée ? », raccourcis, répartition des clas
 internal/calendar/  calendriers filtrés par groupe, langue, parcours (abonnement des agendas)
 internal/crous/     menu du midi du Resto U' de Castres (Croustillant, secours CROUS), relu toutes les 15 min
 internal/tcg/       TCG de la promo : joueurs, cartes, vagues, jury, boosters, échanges, images (R2 ou disque)
+internal/stages/    rubrique Stages : fichier déposé, sessions (ticket CAS), recherche sans e-mail, journal
+internal/cas/       validation d'un ticket CAS par l'université, compte étudiant ou non
 web/data/           classes.json : ressources ADE et règles de filtrage, lues par la page et le serveur
 web/                la page (servie telle quelle)
   js/net/           moteur TLS, cookies et redirections, coffre de session chiffré
   js/portals/       CAS, ADE, Moodle, messagerie, correspondance des cours, nettoyage des mails
   js/ui/            écrans et tuiles
   js/tcg/           TCG de la promo (accueil, ouverture du booster, collection, création, jury, échanges, QR code)
+  js/stages/        rubrique Stages (carte de France, recherche, fiches, tuile)
   assets/           styles (hub.css = maquette, intacte), police, icônes
   vendor/libcurl/   libcurl.js 0.7.5 (curl + mbedTLS en WebAssembly, LGPL-3.0)
 deploy/Caddyfile    frontal HTTPS (compose.yaml)
