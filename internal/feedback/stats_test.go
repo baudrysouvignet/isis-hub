@@ -144,40 +144,77 @@ func TestStatsWritesAreDeferred(t *testing.T) {
 	}
 }
 
-// Rubrique Stages : ouvertures et comptes distincts du jour, à part des visites du Hub, avec le
-// même jeton du jour (aucun identifiant), oublié le lendemain.
-func TestStatsStagesPage(t *testing.T) {
+// Rubriques : ouvertures et comptes distincts du jour, à part des visites du Hub, et combinaisons
+// de rubriques ouvertes par un même compte ce jour-là ; tout est oublié le lendemain.
+func TestStatsModules(t *testing.T) {
 	dir := t.TempDir()
 	st, _ := OpenStats(dir)
 	day := time.Date(2026, 11, 28, 9, 0, 0, 0, paris)
 	st.now = func() time.Time { return day }
-	a, b := "AAAAAAAAAAAAAAAAAAAAAA", "BBBBBBBBBBBBBBBBBBBBBB"
+	a, b, c := "AAAAAAAAAAAAAAAAAAAAAA", "BBBBBBBBBBBBBBBBBBBBBB", "CCCCCCCCCCCCCCCCCCCCCC"
 	st.Record(Visit{First: true, Token: a, Class: "FIE4", Device: "phone", Mode: "app"}) // le Hub
 	st.Record(Visit{Page: "stages", Token: a})
 	st.Record(Visit{Page: "stages", Token: a}) // même compte, rouverte
-	st.Record(Visit{Page: "stages", Token: b})
+	st.Record(Visit{Page: "salaires", Token: a})
+	st.Record(Visit{Page: "stages", Token: b}) // rubrique avant le Hub (ordre des envois)
+	st.Record(Visit{First: true, Token: b, Class: "FIE3"})
+	st.Record(Visit{First: true, Token: c, Class: "FIE3"})
+	st.Record(Visit{Page: "tcg", Token: c})
+	st.Record(Visit{Page: "tcg"}) // sans compte : une ouverture, pas un compte
 	d := st.Summary().Today
-	if d.Stages != 3 || d.StagesAccounts != 2 {
-		t.Fatalf("Stages : %+v", d)
+	if m := d.Mods["stages"]; m.Opens != 3 || m.Accounts != 2 {
+		t.Fatalf("Stages : %+v", d.Mods)
 	}
-	if d.Visits != 1 || d.Accounts != 1 {
-		t.Fatalf("les ouvertures de Stages ne comptent pas comme des visites du Hub : %+v", d)
+	if m := d.Mods["tcg"]; m.Opens != 2 || m.Accounts != 1 {
+		t.Fatalf("TCG : %+v", d.Mods)
 	}
-	if (Visit{Page: "autre"}).valid() {
-		t.Fatal("page inconnue acceptée")
+	if d.Visits != 3 || d.Accounts != 3 || d.Classes["FIE3"] != 2 {
+		t.Fatalf("les rubriques ne comptent pas comme des visites du Hub : %+v", d)
+	}
+	want := map[string]int{"hub+stages+salaires": 1, "hub+stages": 1, "hub+tcg": 1}
+	if len(d.Combos) != len(want) {
+		t.Fatalf("combinaisons : %v", d.Combos)
+	}
+	for k, n := range want {
+		if d.Combos[k] != n {
+			t.Fatalf("combinaisons : %v", d.Combos)
+		}
+	}
+	for _, bad := range []string{"autre", "hub"} {
+		if (Visit{Page: bad}).valid() {
+			t.Fatalf("page « %s » acceptée", bad)
+		}
 	}
 	st.Flush()
 	again, _ := OpenStats(dir)
 	again.now = st.now
 	again.Record(Visit{Page: "stages", Token: b})
-	if again.Summary().Today.StagesAccounts != 2 {
-		t.Fatal("un compte déjà compté aujourd'hui ne l'est pas deux fois après redémarrage")
+	again.Record(Visit{Page: "salaires", Token: b})
+	d = again.Summary().Today
+	if d.Mods["stages"].Accounts != 2 || d.Combos["hub+stages"] != 0 || d.Combos["hub+stages+salaires"] != 2 {
+		t.Fatalf("après redémarrage, un compte n'est pas recompté et sa combinaison suit : %+v", d)
 	}
 	day = day.AddDate(0, 0, 1)
 	again.Record(Visit{Page: "stages", Token: a})
 	again.Flush()
 	raw, _ := os.ReadFile(filepath.Join(dir, "stats.json"))
-	if strings.Contains(string(raw), b) {
+	if strings.Contains(string(raw), b) || strings.Contains(string(raw), c) {
 		t.Fatal("les jetons de la veille doivent disparaître")
+	}
+}
+
+// Les compteurs Stages de la 3.0.1 sont versés dans les rubriques.
+func TestStatsReadsStagesOf301(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "stats.json"), []byte(`{"days":{"2026-11-28":{"unique":4,"visits":9,"accounts":3,"stages":5,"stagesAccounts":2}},"tokenDay":"2026-11-28","tokens":["AAAAAAAAAAAAAAAAAAAAAA"],"tokensStages":["AAAAAAAAAAAAAAAAAAAAAA"]}`), 0o600)
+	st, err := OpenStats(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.now = func() time.Time { return time.Date(2026, 11, 28, 15, 0, 0, 0, paris) }
+	st.Record(Visit{Page: "stages", Token: "AAAAAAAAAAAAAAAAAAAAAA"})
+	d := st.Summary().Today
+	if m := d.Mods["stages"]; m.Opens != 6 || m.Accounts != 2 || d.Stages != 0 {
+		t.Fatalf("reprise : %+v", d)
 	}
 }

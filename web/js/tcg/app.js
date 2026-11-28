@@ -358,6 +358,7 @@ export function createTCG(o) {
       refreshTimer = setInterval(() => document.visibilityState === 'visible' && refresh(), 60_000);
       tickTimer = setInterval(tick, 1000);
       o.onMode?.(true);
+      o.onVisit?.(); // fréquentation anonyme (core/stats.js)
     },
     onLeave() {
       open = false;

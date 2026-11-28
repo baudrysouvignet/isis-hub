@@ -31,7 +31,8 @@ test('pop-up : première fois de la 1.0.3 à la 1.0.5, puis seulement les versio
 test('journal public : aucune entrée sur l’administration', () => {
   for (const e of CHANGELOG) {
     assert.equal(e.admin, undefined, e.version);
-    for (const line of [e.title, ...e.short, ...e.details, ...Object.values(e.onlyDetails ?? {}).flat(), ...(e.launch?.steps ?? []).flatMap(([t, d]) => [t, d])]) assert.doesNotMatch(line, /administration|admin\b/i, `${e.version} : ${line}`);
+    const closed = e.closed ? [e.closed.title, ...e.closed.short, ...e.closed.details, ...Object.values(e.closed.onlyDetails ?? {}).flat()] : [];
+    for (const line of [e.title, ...e.short, ...e.details, ...Object.values(e.onlyDetails ?? {}).flat(), ...(e.launch?.steps ?? []).flatMap(([t, d]) => [t, d]), ...closed]) assert.doesNotMatch(line, /administration|admin\b/i, `${e.version} : ${line}`);
   }
 });
 
@@ -41,4 +42,18 @@ test('pop-up : une version de correctifs (quiet) reste au journal, sans pop-up',
   assert.deepEqual(unseen('1.1.0').map((e) => e.version).filter((v) => v === '1.1.1'), [], 'qui a vu la 1.1.0 ne revoit pas de pop-up pour la 1.1.1');
   assert.ok(unseen('1.0.6').map((e) => e.version).includes('1.1.0'));
   assert.ok(unseen(null).every((e) => !e.quiet));
+});
+
+test('journal : une fonction fermée ne se montre qu’en variante discrète, sans rien d’elle', () => {
+  for (const e of CHANGELOG.filter((x) => x.closed)) {
+    assert.ok(e.only, `${e.version} : closed sans only`);
+    const c = e.closed;
+    assert.equal(c.quiet, true, `${e.version} : la variante fermée n’a pas de pop-up`);
+    assert.ok(c.title && c.short.length >= 1 && c.short.length <= 3 && c.details.length >= 1, e.version);
+    const words = { salaires: /salaire|simulateur|alumni/i, stages: /carte des stages/i, tcg: /\bTCG\b|cartes?\b/i }[e.only];
+    for (const line of [c.title, ...c.short, ...c.details]) if (words) assert.doesNotMatch(line, words, `${e.version} : « ${line} » parle de la fonction fermée`);
+  }
+  const v310 = CHANGELOG.find((e) => e.version === '3.1.0');
+  assert.equal(v310.launch.requires, 'salaires');
+  assert.equal(v310.launch.steps.length, 3);
 });

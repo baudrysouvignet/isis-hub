@@ -181,6 +181,19 @@ func (s *Store) Put(d *Dataset) error {
 	return s.saveState()
 }
 
+// Data : une copie du fichier gardé (éditeur de l'administration).
+func (s *Store) Data() *Dataset {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data == nil {
+		return nil
+	}
+	b, _ := json.Marshal(s.data)
+	var d Dataset
+	json.Unmarshal(b, &d)
+	return &d
+}
+
 // Delete efface le fichier déposé et ferme la rubrique.
 func (s *Store) Delete() error {
 	s.mu.Lock()

@@ -6,8 +6,9 @@ de ce qui transite par lui. Le serveur conserve seulement : les retours que les 
 choisissent d'envoyer depuis « Une idée ? » (seule donnée qui peut être reliée à quelqu'un, et
 seulement sans « Envoyer anonymement »), une sauvegarde chiffrée et anonyme de ce qu'ils créent dans
 le Hub, et des compteurs de fréquentation anonymes. Le TCG (réservé aux étudiants) garde davantage,
-et le dit dans l'écran Transparence. La rubrique Stages ne garde rien sur qui la consulte : seul le
-fichier déposé par l'administration, et ses ouvertures comptées comme les visites du Hub.
+et le dit dans l'écran Transparence. La rubrique Stages et le simulateur de salaire ne gardent rien
+sur qui les consulte : seulement les fichiers déposés par l'administration, et leurs ouvertures
+comptées comme les visites du Hub.
 
 ```bash
 DOMAIN=hub.exemple.fr docker compose up -d --build
@@ -188,9 +189,9 @@ code servi. D'où les moyens de vérification ci-dessous.
   par étudiant et par version ; « Voir tout le journal » ouvre le **journal des versions** détaillé,
   aussi dans le menu du compte. Le contenu est dans `web/js/core/changelog.js` : ajouter une entrée
   en tête à chaque version (`short` : 1 à 3 points pour la pop-up, `details` : tout).
-- **Fréquentation anonyme, une fois par compte et par jour** (onglet *Fréquentation* de
-  l'administration : courbe par jour, période 7 / 30 / 90 jours ou tout, mesure, filtre par classe,
-  jours de la semaine, répartitions par classe, appareil et application / navigateur). La page
+- **Fréquentation anonyme, une fois par compte et par jour** (*Vue d'ensemble* de
+  l'administration : courbe par jour et par rubrique, période 7 / 30 / 90 jours, parcours, jours de
+  la semaine, répartitions par classe, appareil et application / navigateur). La page
   envoie « première ouverture du jour sur cet appareil : oui / non », la classe (sans groupe ni
   parcours), téléphone / tablette / ordinateur, application installée ou navigateur et, pour un
   étudiant connecté, un **jeton du jour** : HMAC du jour avec une clé tirée (HKDF) de sa sauvegarde
@@ -199,13 +200,41 @@ code servi. D'où les moyens de vérification ci-dessous.
   personne ou sa sauvegarde. Le serveur ne garde que des compteurs par jour, jamais croisés entre
   eux (`stats.json`), et oublie les jetons au changement de jour. Ni identifiant ni adresse IP.
   Comptage par compte depuis le 18 novembre 2026 ; avant, seulement les appareils et ouvertures.
+- **Fréquentation par rubrique et parcours** (depuis la 3.1.0) : à l'ouverture de Stages, du
+  simulateur de salaire, du TCG, des notes ou des mails en grand, la page envoie `/api/ping` avec
+  `page` et le même jeton du jour, une fois par chargement. Le serveur compte les ouvertures et les
+  comptes distincts de chaque rubrique et, pour chaque jeton du jour, retient les rubriques ouvertes
+  ce jour-là (quelques bits) : il en tire le nombre de comptes par combinaison (« hub+stages+salaires
+  : 12 »). La *Vue d'ensemble* en déduit les parcours du jour (Hub → Stages → simulateur, Hub → TCG…).
+  Jetons et rubriques sont oubliés au changement de jour ; il ne reste que des totaux, jamais
+  croisés avec la classe ou l'appareil, et rien de ce qui est consulté.
 - **Plein écran** de l'emploi du temps : toujours en vue semaine, sans le choix Jours / Semaine.
 
 ### Administration
 
-`/admin` (retours, répartition des emplois du temps, maquettes de notes, raccourcis, fréquentation) **n'existe que pour les identifiants
-de `ADMIN_USERS`** (ex. `bsouvign`) : pour tous les autres, l'adresse renvoie à l'accueil. Pas de mot
-de passe propre à ISIS Hub.
+`/admin` **n'existe que pour les identifiants de `ADMIN_USERS`** (ex. `bsouvign`) : pour tous les
+autres, l'adresse renvoie à l'accueil. Pas de mot de passe propre à ISIS Hub. Un administrateur
+connecté au Hub a l'entrée « Accéder à l'administration » dans le menu de son compte, une fois qu'il
+a ouvert l'administration sur cet appareil (la page s'en souvient localement ; elle ne connaît pas la
+liste `ADMIN_USERS` et ne demande rien au serveur). La première fois : `/admin`.
+
+Cinq rubriques (barre de gauche, barre du bas sur téléphone), avec une pastille « à traiter » :
+
+- **Vue d'ensemble** : étudiants (ou ouvertures) par jour, aujourd'hui, pic, part sans connexion ;
+  chaque rubrique avec sa courbe et son évolution ; les **parcours** (parmi les étudiants venus sur
+  le Hub, combien ont ouvert Stages, puis le simulateur ; le TCG, les notes, les mails) et les
+  rubriques ouvertes ensemble ; qui vient (classe, appareil, application, jour de la semaine). Un
+  jour touché sur la courbe montre ses propres parcours et répartitions.
+- **Retours des étudiants** : filtres par statut, recherche, réponse visible dans « Mes propositions »,
+  note interne, suppression.
+- **Contenu du Hub** : raccourcis (ordre, ajout, retrait), ambiance de saison, répartition des
+  emplois du temps, maquettes de notes.
+- **Carrière** : Stages et simulateur de salaire. Pour chacun, le fichier déposé (remplacer,
+  télécharger le JSON gardé, supprimer), l'ouverture aux étudiants, l'aperçu sur cet appareil, et un
+  **éditeur des lignes importées** : fiches de stage incomplètes (ville, missions, dates, maître de
+  stage), réponses du sondage à vérifier, conseils à relire. Rien ne part avant « Publier », et le
+  serveur revérifie alors le fichier entier.
+- **TCG** : la console du jeu (lancement, vagues, validation, signalements).
 
 Comment l'identité est prouvée sans que le serveur voie la connexion : la page de l'administrateur,
 déjà connectée au CAS, demande un ticket de service pour l'**ENT** (service enregistré auprès du CAS ;
@@ -215,14 +244,14 @@ renvoie l'identifiant, la page ne peut pas le falsifier. Le ticket est à usage 
 reçoit jamais. Seul celui qui ouvre `/admin` envoie un ticket ; le serveur ne garde rien d'un refus.
 Session de 8 h (cookie HttpOnly, SameSite=Strict), 5 essais par quart d'heure, en-tête anti-CSRF.
 
-**Répartition des emplois du temps** : dans l'onglet *Emplois du temps*, chaque classe se règle
+**Répartition des emplois du temps** : dans *Contenu du Hub*, *Emplois du temps*, chaque classe se règle
 sans toucher au code. Pour chaque classe :
 - les ressources ADE ;
 - le mode : toutes les séances, groupe (et langue), parcours et groupe, parcours ;
 - pour les parcours : les codes de matières de la maquette, les alias de codes et le repère des
   événements communs.
 
-**Maquettes de notes** : dans l'onglet *Notes*, chaque classe a un interrupteur **Système de notes** :
+**Maquettes de notes** : dans *Contenu du Hub*, *Notes*, chaque classe a un interrupteur **Système de notes** :
 désactivé, les étudiants voient seulement un message d'attente (personnalisable, aperçu à côté) et la
 maquette en cours de saisie reste privée (`/api/grades` ne la publie pas). Pour chaque semestre, les UE
 se déplient une par une, puis leurs matières (coefficient, code ADE, évaluations prévues) ; une barre
@@ -233,7 +262,7 @@ ou plusieurs (`{ "FIA4": {...}, "FIE5": {...} }`), dates en `AAAA-MM-JJ`, `JJ/MM
 les identifiants manquants sont créés, aucune note d'étudiant n'est importée. **Export** pour
 sauvegarder ou recopier une maquette.
 
-**Toutes les maquettes** (même onglet) : **Exporter les coefficients** de toutes les classes (UE et
+**Toutes les maquettes** (même endroit) : **Exporter les coefficients** de toutes les classes (UE et
 matières, `isis-hub-coefficients`), modifier le JSON, **Importer des coefficients** : une matière se
 retrouve par son `id`, sinon par son nom dans l'UE (accents et casse ignorés) ; une ligne sans
 correspondance est signalée, une valeur invalide refuse tout. **Coefficients des matières à 1** et
@@ -253,11 +282,10 @@ tous les stages des étudiants d'ISIS : une carte de France (région, puis dépa
 une liste, une recherche (structure, ville, mission, personne) et des filtres (« Comme moi », niveau,
 année, promo, secteur, statut, durée, gratifiés, avec contact). Chaque structure a sa fiche : les
 étudiants passés là et leurs sujets, les maîtres de stage et contacts RH **avec leurs adresses
-e-mail**, l'adresse, le site et le standard. Une tuile du tableau de bord résume « N stages de FIE x
-avant toi ».
+e-mail**, l'adresse, le site et le standard.
 
-- **Fermée par défaut.** Tant que l'administration ne l'ouvre pas, ni onglet, ni tuile, ni
-  interrupteur dans *Affichage*. Dans `/admin`, onglet *Stages* : déposer le fichier JSON, vérifier
+- **Fermée par défaut.** Tant que l'administration ne l'ouvre pas, pas d'onglet. Dans `/admin`,
+  *Carrière*, *Stages* : déposer le fichier JSON, vérifier
   sur cet appareil (« Aperçu », le serveur ne sert alors les données qu'aux identifiants de
   `ADMIN_USERS`), puis « Ouvrir à tout le monde ». « Supprimer les données » efface le fichier et
   ferme la rubrique.
@@ -270,8 +298,8 @@ avant toi ».
   ouvert : une session n'est qu'une empreinte de jeton, une date d'expiration et « administrateur
   ou non » (pour l'aperçu). Les limites de débit sont tenues en mémoire, par session. Seule
   l'ouverture de la rubrique est comptée, comme une visite du Hub (`/api/ping` avec
-  `page: "stages"` et le jeton du jour, oublié le lendemain) : dans `/admin`, onglet
-  *Fréquentation*, mesures « Rubrique Stages ». Le journal de la 3.0.0 et les identifiants de ses
+  `page: "stages"` et le jeton du jour, oublié le lendemain) : dans `/admin`, *Vue d'ensemble*.
+  Le journal de la 3.0.0 et les identifiants de ses
   sessions sont effacés au démarrage depuis la 3.0.1.
 - **Fichier déposé** (`stages.json` du dossier de données) : format `isis-hub-stages`, version 1.
   Le serveur le vérifie en entier avant de le garder : liens entre les listes, dates, adresses,
@@ -296,6 +324,65 @@ avant toi ».
 `c` est la couleur du logo (0 à 11), `m` son monogramme ; `paid` compte les stages gratifiés, sans
 aucun montant ; `generic` signale une boîte de service (rh@, stages@…) et `chk` une adresse qui ne
 porte pas le nom de la personne. Code : `internal/stages` (serveur), `web/js/stages` (page).
+
+L'éditeur de *Carrière* relit le fichier gardé (`/api/stages/admin/data`) et le renvoie retouché par
+`/api/stages/admin/upload` : ville d'une structure (parmi les lieux du fichier), niveau, année,
+dates, missions, thème, étudiant, maître de stage et contact RH (parmi les contacts de la structure),
+gratification. Durée, mois de début et compteur des stages gratifiés suivent.
+
+## Simulateur de salaire
+
+Une page à part entière du Hub, à la place du tableau de bord (l'en-tête reste, l'onglet Hub reste choisi),
+ouverte depuis un bouton à gauche de la barre des raccourcis ou par `#salaires` ; « Hub », l'onglet Hub ou
+Échap ramènent au tableau de bord :
+ce que gagnent les alumni d'ISIS d'après leur sondage « Panorama des Carrières ». Le profil se coche
+critère par critère (expérience, poste, lieu, secteur, type de structure, plusieurs cases possibles) :
+salaire estimé fixe ou avec primes, équivalent net, fourchettes 1 sur 2 et 8 sur 10, effet de chaque
+critère, puis l'évolution avec les années, la carte des régions, la comparaison par poste, secteur,
+structure et entre femmes et hommes, la répartition, les primes et avantages, les conseils. Design :
+maquette « ISIS Hub · maquette Salaires ».
+
+- **Fermé par défaut.** Dans `/admin`, *Carrière*, *Simulateur de salaire* : déposer l'export brut du
+  sondage (`sondage_isis_alumni_complet.json`) ou un fichier `isis-hub-salaires` déjà retouché,
+  relire les conseils, vérifier sur cet appareil (« Aperçu »), puis ouvrir.
+- **Les réponses ne quittent jamais le serveur.** La page envoie le profil coché
+  (`POST /api/salaires/estimate`) et reçoit des groupes déjà calculés (`internal/salaires`) :
+  - un groupe n'est montré (médiane, effectif, case cochable) qu'à partir de **5 réponses**, ses
+    quartiles qu'à partir de **10** (avec 5 réponses, médiane et quartiles donneraient 3 salaires) ;
+  - une case ne se coche que si elle garde 5 réponses **à elle seule** avec le reste du profil :
+    cocher deux postes ne peut pas isoler la seule personne du second ; le serveur revérifie chaque
+    profil reçu et décoche la case d'un autre critère devenue trop rare (la page dit laquelle) ;
+  - seulement des médianes, arrondies à 500 €, jamais la moyenne d'un groupe ; les répartitions et
+    parts d'avantages sous 5 réponses sont masquées ;
+  - l'estimation vient d'un modèle appris sur toutes les réponses (régression ridge sur le
+    logarithme du salaire, choisie en mettant chaque réponse de côté), sans le sexe.
+- **À l'import, seules les tranches sont gardées** : expérience, poste, secteur, structure, lieu,
+  sexe, fixe et total (milieu de la tranche du sondage), avantages. Jamais gardés : année de diplôme
+  (seules la première et la dernière promo), années d'expérience exactes, anecdotes, statut de
+  reconstitution, boîte à idées. Les catégories de moins de 5 réponses sont fusionnées (« Autre
+  poste », « Autres régions et outre-mer »…), les réponses rangées par tranches (plus rien ne les
+  relie à leur promo). Les conseils ne gardent que leur texte et ne sont montrés qu'une fois relus.
+- **Rien sur les étudiants.** Session ouverte par un ticket CAS validé par l'université (cookie
+  `hub_sal`, HttpOnly, 30 jours) qui ne connaît pas l'identifiant ; le profil demandé n'est ni gardé
+  ni noté ; l'ouverture est comptée comme une visite (`page: "salaires"`).
+- **Fichier gardé** (`salaires.json`) : format `isis-hub-salaires`, version 1, vérifié en entier.
+
+```json
+{
+  "format": "isis-hub-salaires", "version": 1, "source": "…", "extracted": "2026-11-28",
+  "promos": [2010, 2025], "grouped": 19,
+  "dims": { "poste": ["Développeur / Ingénieur", "…", "Autre poste"], "secteur": ["…"], "structure": ["…"],
+            "region": ["Occitanie", "Île-de-France", "International", "…"], "sexe": ["Homme", "Femme"] },
+  "adv":  ["Tickets Resto", "Télétravail", "…"],
+  "rows": [{ "id": "a1", "xp": 0, "poste": 0, "secteur": 1, "structure": 2, "region": 0, "sexe": 1,
+             "base": 37500, "total": 38500, "adv": [0, 1] }],
+  "tips": [{ "id": "t1", "t": "Négociez votre premier salaire.", "on": true }]
+}
+```
+
+`xp` est l'indice de la tranche (`0-1 an`, `2-3 ans`, `4-5 ans`, `6-9 ans`, `10+ ans`) ; les autres
+champs, l'indice de la catégorie dans `dims` ; `adv`, les indices dans `adv`. La carte reprend la
+géométrie de la rubrique Stages. Code : `internal/salaires` (serveur), `web/js/salaires` (page).
 
 ## TCG de la promo
 
@@ -625,6 +712,7 @@ internal/calendar/  calendriers filtrés par groupe, langue, parcours (abonnemen
 internal/crous/     menu du midi du Resto U' de Castres (Croustillant, secours CROUS), relu toutes les 15 min
 internal/tcg/       TCG de la promo : joueurs, cartes, vagues, jury, boosters, échanges, images (R2 ou disque)
 internal/stages/    rubrique Stages : fichier déposé, sessions (ticket CAS, sans identifiant), recherche sans e-mail
+internal/salaires/  simulateur de salaire : import du sondage réduit aux tranches, calculs et seuils de discrétion, sessions
 internal/cas/       validation d'un ticket CAS par l'université, compte étudiant ou non
 web/data/           classes.json : ressources ADE et règles de filtrage, lues par la page et le serveur
 web/                la page (servie telle quelle)
@@ -632,7 +720,9 @@ web/                la page (servie telle quelle)
   js/portals/       CAS, ADE, Moodle, messagerie, correspondance des cours, nettoyage des mails
   js/ui/            écrans et tuiles
   js/tcg/           TCG de la promo (accueil, ouverture du booster, collection, création, jury, échanges, QR code)
-  js/stages/        rubrique Stages (carte de France, recherche, fiches, tuile)
+  js/stages/        rubrique Stages (carte de France, recherche, fiches)
+  js/salaires/      simulateur de salaire (page, carte, graphiques ; les calculs sont faits par le serveur)
+  js/admin*.js      administration : cadre et rubriques, vue d'ensemble, retours, carrière (éditeur), TCG, notes
   assets/           styles (hub.css = maquette, intacte), police, icônes
   vendor/libcurl/   libcurl.js 0.7.5 (curl + mbedTLS en WebAssembly, LGPL-3.0)
 deploy/Caddyfile    frontal HTTPS (compose.yaml)

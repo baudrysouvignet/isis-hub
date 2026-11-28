@@ -1,14 +1,20 @@
-// Administration : retours des étudiants, répartition des emplois du temps par classe, raccourcis.
+// Administration d'ISIS Hub, par rubrique : Vue d'ensemble (fréquentation, parcours, à traiter),
+// Retours des étudiants, Contenu du Hub (raccourcis, ambiance, emplois du temps, notes), Carrière
+// (Stages, simulateur de salaire) et TCG.
 //
 // Cette page n'est servie qu'avec une session administrateur, ouverte par le CAS de l'université
 // pour un identifiant de ADMIN_USERS (voir internal/feedback/cas.go). La session est un cookie
-// HttpOnly (SameSite=Strict, 8 h) ; chaque appel porte en plus l'en-tête X-Hub-Admin, qu'un autre
-// site ne peut pas ajouter. Tout ce qui vient des étudiants est affiché comme du texte.
+// HttpOnly (SameSite=Strict) ; chaque appel porte en plus l'en-tête X-Hub-Admin, qu'un autre site ne
+// peut pas ajouter. Tout ce qui vient des étudiants ou des fichiers est affiché comme du texte.
+//
+// Design : maquette « Admin ISIS Hub · maquette ».
 
-import { $, $$, h, toast, motionOK, EASE } from './core/dom.js';
+import { $, $$, h, icon, toast, motionOK, EASE } from './core/dom.js';
 import { setupGradesAdmin } from './admin-grades.js';
 import { setupTcgAdmin } from './admin-tcg.js';
-import { setupStagesAdmin } from './admin-stages.js';
+import { setupCareer } from './admin-career.js';
+import { setupOverview } from './admin-overview.js';
+import { setupFeedback } from './admin-feedback.js';
 import { applyTheme } from './core/theme.js';
 import { prefs } from './core/store.js';
 
@@ -16,17 +22,7 @@ applyTheme(); // même thème que le Hub (choisi dans le menu du compte)
 
 if (window.top !== window.self) throw new Error('Refus d’affichage dans un cadre.');
 
-const LAB = { new: 'Nouveau', review: 'À l’étude', planned: 'Planifié', done: 'Fait', declined: 'Refusé' };
-const TYP = { idea: 'Idée', better: 'Amélioration', bug: 'Bug', other: 'Autre' };
-const MODES = {
-  all: 'Toutes les séances (pas de choix)',
-  groupLanguage: 'Groupe (et langue)',
-  fie4: 'Parcours et groupe (codes de la maquette)',
-  fie5: 'Parcours (codes de la maquette)',
-};
-const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-const shortFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', timeZone: 'Europe/Paris' });
-const norm = (t) => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+const app = $('.app');
 
 /** Session absente ou expirée : la page d'administration n'existe plus, retour à l'accueil. */
 const leave = () => location.assign('./#admin');
@@ -48,160 +44,157 @@ async function api(path, body) {
   return data;
 }
 
-// ------------------------------------------------------------ onglets, compte
+// ------------------------------------------------------------ cadre : rubriques
 
-const tabs = $$('[data-adm-tab]');
-function selectTab(v, focus) {
-  for (const b of tabs) {
-    const on = b.dataset.admTab === v;
-    b.setAttribute('aria-selected', String(on));
-    b.tabIndex = on ? 0 : -1;
-    if (on && focus) b.focus();
+const NS = 'http://www.w3.org/2000/svg';
+const IC = {
+  overview: ['M4 13.5h4V20H4zM10 9h4v11h-4zM16 4h4v16h-4z'],
+  inbox: ['M3 13l3-8h12l3 8v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M3 13h5l1.5 2.5h5L16 13h5'],
+  grid: ['M3.5 3.5h7v9h-7zM13.5 3.5h7v5h-7zM3.5 15.5h7v5h-7zM13.5 11.5h7v9h-7z'],
+  career: ['M3 7h18v13H3z', 'M8.5 7V5.5a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2V7M3 12.5h18'],
+  cards: ['M4.5 7.5l9-2.5 3.5 13-9 2.5z', 'M15 4.5l4.5 1.2-2.6 9.8'],
+  arrowUp: ['M12 19V5M6 11l6-6 6 6'],
+  arrowDown: ['M12 5v14M6 13l6 6 6-6'],
+};
+function ic(name, cls = 'ic') {
+  const s = document.createElementNS(NS, 'svg');
+  s.setAttribute('class', cls);
+  s.setAttribute('viewBox', '0 0 24 24');
+  s.setAttribute('aria-hidden', 'true');
+  for (const d of IC[name]) {
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', d);
+    s.append(p);
   }
-  for (const p of $$('[data-adm-panel]')) p.hidden = p.dataset.admPanel !== v;
-  if (v === 'tcg') tcgAdmin.show();
-  if (v === 'stages') stagesAdmin.show();
-  history.replaceState(null, '', v === 'feedback' ? location.pathname : `#${v}`);
+  return s;
 }
-tabs.forEach((b, i) => {
-  b.addEventListener('click', () => selectTab(b.dataset.admTab));
-  b.addEventListener('keydown', (e) => {
-    const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
-    if (!d) return;
-    e.preventDefault();
-    selectTab(tabs[(i + d + tabs.length) % tabs.length].dataset.admTab, true);
-  });
-});
-/** Pastille de nombre sur un onglet (0 : masquée). */
-function tabCount(v, n) {
-  const el = $(`[data-adm-tab-n="${v}"]`);
-  if (!el) return;
-  el.hidden = !n;
-  el.textContent = n ? String(n) : '';
+
+const RUBRIQUES = [
+  { id: 'vue', name: 'Vue d’ensemble', short: 'Accueil', icon: 'overview' },
+  { id: 'retours', name: 'Retours des étudiants', nav: 'Retours', short: 'Retours', icon: 'inbox' },
+  { id: 'hub', name: 'Contenu du Hub', short: 'Hub', icon: 'grid' },
+  { id: 'carriere', name: 'Carrière', short: 'Carrière', icon: 'career' },
+  { id: 'tcg', name: 'TCG', short: 'TCG', icon: 'cards' },
+];
+// Anciennes adresses (onglets jusqu'à la 3.0) : la rubrique qui les contient désormais.
+const OLD = { feedback: ['retours'], stats: ['vue'], stages: ['carriere'], links: ['hub', 'links'], ambiance: ['hub', 'amb'], classes: ['hub', 'tt'], grades: ['hub', 'gr'] };
+
+const badges = {};
+for (const nav of $$('[data-adm-nav]'))
+  for (const r of RUBRIQUES) {
+    const b = h('span.adm-badge', { hidden: true });
+    (badges[r.id] ??= []).push(b);
+    nav.append(h('a.adm-nav-a', { href: `#${r.id}`, data: { r: r.id } }, ic(r.icon), h('span.adm-nav-l', {}, h('span.adm-nav-full', { text: r.nav || r.name }), h('span.adm-nav-short', { text: r.short })), b));
+  }
+
+/** Pastille « à traiter » d'une rubrique (0 : cachée). */
+function setBadge(id, n, hot = false) {
+  for (const b of badges[id] ?? []) {
+    b.hidden = !n;
+    b.textContent = n > 99 ? '99+' : String(n);
+    b.classList.toggle('is-hot', hot);
+    b.setAttribute('aria-label', `${n} à traiter`);
+  }
 }
+
+const shown = new Set();
+function go(first = false) {
+  let id = location.hash.slice(1);
+  let acc = null;
+  if (OLD[id]) {
+    [id, acc] = OLD[id];
+    history.replaceState(null, '', `#${id}`);
+  }
+  if (!RUBRIQUES.some((r) => r.id === id)) id = 'vue';
+  for (const a of $$('.adm-nav-a')) a.dataset.r === id ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current');
+  let page;
+  for (const p of $$('[data-adm-page]')) {
+    p.hidden = p.dataset.admPage !== id;
+    if (!p.hidden) page = p;
+  }
+  document.title = `${RUBRIQUES.find((r) => r.id === id).name} · Admin ISIS Hub`;
+  onShow(id, !shown.has(id));
+  shown.add(id);
+  if (acc) {
+    const d = $(`[data-acc="${acc}"]`);
+    if (d) {
+      d.open = true;
+      setTimeout(() => d.scrollIntoView({ block: 'start', behavior: motionOK() ? 'smooth' : 'auto' }), 50);
+    }
+  }
+  if (first) return;
+  app.classList.remove('rt-open');
+  window.scrollTo(0, 0);
+  $('h1', page)?.focus({ preventScroll: true });
+  if (motionOK()) page.animate({ opacity: [0, 1], transform: ['translateY(6px)', 'none'] }, { duration: 240, easing: EASE });
+}
+addEventListener('hashchange', () => go());
+
+function onShow(id, firstTime) {
+  if (id === 'vue' && !firstTime) overview.load();
+  if (id === 'tcg') tcgAdmin.show();
+  if (id === 'carriere') career.show();
+}
+
 $('[data-adm-logout]').addEventListener('click', async () => {
   await api('logout', {}).catch(() => {});
   location.assign('./');
 });
 
-// ------------------------------------------------------------ retours
+// ------------------------------------------------------------ à traiter (vue d'ensemble, pastilles)
 
-const list = $('[data-adm-list]');
-const empty = $('[data-adm-empty]');
-const detail = $('[data-adm-detail]');
-const search = $('[data-adm-search]');
-const fStatus = $('[data-adm-status]');
-const fType = $('[data-adm-type]');
-let items = [];
-let current = null;
-
-function counts() {
-  for (const k of Object.keys(LAB)) $(`[data-kpi-n="${k}"]`).textContent = String(items.filter((f) => f.status === k).length);
-  tabCount('feedback', items.filter((f) => f.status === 'new').length);
+const todo = { retours: 0, tcg: 0, stages: 0, salaires: 0 };
+function syncTodo() {
+  setBadge('retours', todo.retours);
+  setBadge('tcg', todo.tcg, true);
+  setBadge('carriere', todo.stages + todo.salaires);
+  overview.setTodo([
+    { n: todo.retours, title: `${todo.retours} ${todo.retours > 1 ? 'retours nouveaux' : 'retour nouveau'}`, sub: 'Lire et répondre', href: '#retours', icon: 'inbox' },
+    { n: todo.tcg, title: `${todo.tcg} ${todo.tcg > 1 ? 'éléments' : 'élément'} du TCG à traiter`, sub: 'Cartes à valider, signalements', href: '#tcg', icon: 'spark' },
+    { n: todo.stages, title: `${todo.stages} ${todo.stages > 1 ? 'fiches de stage incomplètes' : 'fiche de stage incomplète'}`, sub: 'Compléter', href: '#carriere', icon: 'briefcase' },
+    { n: todo.salaires, title: `${todo.salaires} ${todo.salaires > 1 ? 'éléments' : 'élément'} du sondage à vérifier`, sub: 'Réponses imprécises, conseils à relire', href: '#carriere', icon: 'chart' },
+  ]);
 }
 
-function filter() {
-  const q = norm(search.value.trim());
-  let n = 0;
-  for (const li of $$('li[data-id]', list)) {
-    const f = items.find((x) => String(x.id) === li.dataset.id);
-    const ok = (!fStatus.value || f.status === fStatus.value) && (!fType.value || f.type === fType.value) && (!q || norm(`${f.title} ${f.desc} ${f.zone} ${f.author ?? ''} ${f.id}`).includes(q));
-    li.hidden = !ok;
-    if (ok) n++;
-  }
-  empty.hidden = n > 0;
-  $$('[data-kpi]').forEach((k) => k.classList.toggle('is-on', k.dataset.kpi === fStatus.value));
-}
+// ------------------------------------------------------------ rubriques
 
-function renderList() {
-  $$('li[data-id]', list).forEach((li) => li.remove());
-  for (const f of items) {
-    list.insertBefore(
-      h(
-        'li',
-        { data: { id: f.id, status: f.status, type: f.type } },
-        h(
-          'button.adm-item',
-          { type: 'button', class: current === f.id ? 'is-on' : '', data: { admItem: f.id } },
-          h('span.adm-votes', {}, h('b', { text: `#${f.id}` })),
-          h('span.adm-main', {}, h('b', { text: f.title }), h('span', { text: `${TYP[f.type]} · ${f.zone} · ${shortFmt.format(new Date(f.created))} · ${f.author || 'Anonyme'}` })),
-          h('span.status', { class: `status--${f.status}`, text: LAB[f.status], data: { admPill: '' } }),
-        ),
-      ),
-      empty,
-    );
-  }
-  counts();
-  filter();
-}
-
-function select(id) {
-  current = id;
-  const f = items.find((x) => x.id === id);
-  $$('[data-adm-item]', list).forEach((b) => b.classList.toggle('is-on', b.dataset.admItem === String(id)));
-  $('[data-adm-type-lab]').textContent = TYP[f.type];
-  $('[data-adm-ref]').textContent = `#${f.id} · ${f.zone}`;
-  $('[data-adm-title]').textContent = f.title;
-  $('[data-adm-desc]').textContent = f.desc;
-  $('[data-adm-author]').textContent = f.author ? `${f.author} (déclaré par la page, non vérifié)` : 'Anonyme';
-  $('[data-adm-dates]').textContent = `Reçu le ${dateFmt.format(new Date(f.created))}${f.updated !== f.created ? ` · modifié le ${dateFmt.format(new Date(f.updated))}` : ''}`;
-  $('[data-adm-tech]').textContent = f.tech || 'Non jointes';
-  $('[data-adm-set]').value = f.status;
-  $('[data-adm-reply]').value = f.reply ?? '';
-  $('[data-adm-note]').value = f.note ?? '';
-  detail.hidden = false;
-  if (motionOK()) detail.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE });
-  if (matchMedia('(max-width: 759.98px)').matches) detail.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto' });
-}
-
-list.addEventListener('click', (e) => {
-  const b = e.target.closest('[data-adm-item]');
-  if (b) select(Number(b.dataset.admItem));
+const overview = setupOverview({ root: $('[data-ov]'), api, onError: (err) => toast(`Fréquentation indisponible : ${err.message}`, 'alert') });
+const feedback = setupFeedback({
+  root: $('[data-fb]'),
+  app,
+  api,
+  onCount: (n) => {
+    todo.retours = n;
+    syncTodo();
+  },
 });
-[search, fStatus, fType].forEach((x) => x.addEventListener('input', filter));
-$$('[data-kpi]').forEach((k) =>
-  k.addEventListener('click', () => {
-    fStatus.value = fStatus.value === k.dataset.kpi ? '' : k.dataset.kpi;
-    filter();
-  }),
-);
-$('[data-adm-close]').addEventListener('click', () => {
-  detail.hidden = true;
-  $(`[data-adm-item="${current}"]`)?.focus();
+const career = setupCareer({
+  root: $('[data-career]'),
+  onLeave: leave,
+  onCounts: (_, c) => {
+    todo.stages = c.stages;
+    todo.salaires = c.salaires;
+    syncTodo();
+  },
 });
-$('[data-adm-save]').addEventListener('click', async () => {
-  try {
-    const saved = await api(`feedback/${current}`, {
-      status: $('[data-adm-set]').value,
-      reply: $('[data-adm-reply]').value,
-      note: $('[data-adm-note]').value,
-    });
-    items = items.map((f) => (f.id === saved.id ? saved : f));
-    renderList();
-    select(saved.id);
-    toast(`#${saved.id} enregistré · ${LAB[saved.status]}${saved.reply ? ', réponse visible par l’étudiant' : ''}`, 'check');
-  } catch (err) {
-    toast(`Enregistrement impossible : ${err.message}`);
-  }
+// TCG : lancement, vagues, modération des cartes (admin-tcg.js).
+const tcgAdmin = setupTcgAdmin({
+  root: $('[data-tcg-admin]'),
+  onCount: (n) => {
+    todo.tcg = n;
+    syncTodo();
+  },
+  onLeave: leave,
 });
 
-$('[data-adm-delete]').addEventListener('click', async () => {
-  const f = items.find((x) => x.id === current);
-  if (!f || !confirm(`Supprimer définitivement la proposition #${f.id} « ${f.title} » ? Son auteur ne la verra plus dans « Mes propositions ».`)) return;
-  try {
-    await api(`feedback/${f.id}/delete`, {});
-    items = items.filter((x) => x.id !== f.id);
-    renderList();
-    detail.hidden = true;
-    if (items.length) select(items[0].id);
-    toast(`#${f.id} supprimée`, 'check');
-  } catch (err) {
-    toast(`Suppression impossible : ${err.message}`);
-  }
-});
+// ------------------------------------------------------------ contenu du Hub : répartition des emplois du temps
 
-// ------------------------------------------------------------ répartition des emplois du temps
-
+const MODES = {
+  all: 'Toutes les séances (pas de choix)',
+  groupLanguage: 'Groupe (et langue)',
+  fie4: 'Parcours et groupe (codes de la maquette)',
+  fie5: 'Parcours (codes de la maquette)',
+};
 let classes = null; // répartition en vigueur (api/classes)
 const lines = (text) => text.split(/[\n,;]+/).map((x) => x.trim().toUpperCase()).filter(Boolean);
 const input = (value, attrs = {}) => h('input.input', { type: 'text', value: value ?? '', attrs });
@@ -266,8 +259,7 @@ function classCard(key, c) {
 }
 
 function renderClasses() {
-  const season = $('[data-adm-season]');
-  season.replaceChildren(
+  $('[data-adm-season]').replaceChildren(
     h(
       'div.adm-grid3',
       {},
@@ -277,6 +269,8 @@ function renderClasses() {
     ),
   );
   $('[data-adm-classes]').replaceChildren(...Object.entries(classes.classes).map(([k, c]) => classCard(k, c)));
+  const n = Object.keys(classes.classes).length;
+  $('[data-acc-sub="tt"]').textContent = `${n} ${n > 1 ? 'classes' : 'classe'} · ressources ADE et répartition des séances`;
 }
 
 /** Relit le formulaire ; les erreurs de fond sont vérifiées par le serveur. */
@@ -326,14 +320,14 @@ $('[data-adm-classes-save]').addEventListener('click', async () => {
   try {
     data = readClasses();
   } catch (err) {
-    return toast(`À corriger : ${err.message}`);
+    return toast(`À corriger : ${err.message}`, 'alert');
   }
   try {
     classes = await api('classes', data);
     renderClasses();
     toast('Répartition enregistrée : elle s’applique dès maintenant aux emplois du temps', 'check');
   } catch (err) {
-    toast(`Refusée : ${err.message}`);
+    toast(`Refusée : ${err.message}`, 'alert');
   }
 });
 $('[data-adm-classes-reset]').addEventListener('click', () => renderClasses());
@@ -344,43 +338,63 @@ $('[data-adm-class-add]').addEventListener('click', () => {
   $('[data-key]', card).focus();
 });
 
-// ------------------------------------------------------------ raccourcis
+// ------------------------------------------------------------ contenu du Hub : raccourcis
 
 let content = { links: [] };
+let links = [];
 
-function linkRow(l = {}) {
-  const f = (name, placeholder, value, max) => h('input.input', { type: name === 'url' ? 'url' : 'text', placeholder, value: value ?? '', data: { field: name }, attrs: { maxlength: String(max), 'aria-label': placeholder } });
-  const row = h(
-    'div.adm-link',
-    {},
-    f('title', 'Titre (ex. Izly)', l.title, 40),
-    f('subtitle', 'Sous-titre (facultatif)', l.subtitle, 80),
-    f('url', 'https://…', l.url, 500),
-    h('button.btn.btn--sm.btn--ghost', { type: 'button', text: 'Retirer', on: { click: () => row.remove() } }),
+function renderLinks() {
+  const box = $('[data-adm-links]');
+  box.replaceChildren(
+    ...links.map((l, i) => {
+      const f = (name, placeholder, max) =>
+        h('input.input', { type: name === 'url' ? 'url' : 'text', placeholder, value: l[name] ?? '', attrs: { maxlength: String(max), 'aria-label': `${placeholder}, raccourci ${i + 1}` }, on: { input: (e) => (l[name] = e.target.value) } });
+      const mv = (d) => {
+        const j = i + d;
+        if (j < 0 || j >= links.length) return;
+        [links[i], links[j]] = [links[j], links[i]];
+        renderLinks();
+        $$('.adm-link')[j]?.querySelector(d < 0 ? '[data-up]' : '[data-down]')?.focus();
+      };
+      return h(
+        'li.adm-link',
+        {},
+        h('span.adm-link-n', { text: String(i + 1) }),
+        f('title', 'Titre (ex. Izly)', 40),
+        f('subtitle', 'Sous-titre (facultatif)', 80),
+        f('url', 'https://…', 500),
+        h(
+          'span.adm-link-a',
+          {},
+          h('button.icon-btn', { type: 'button', disabled: i === 0, data: { up: '' }, attrs: { 'aria-label': `Monter ${l.title || 'ce raccourci'}` }, on: { click: () => mv(-1) } }, ic('arrowUp', 'ic ic--sm')),
+          h('button.icon-btn', { type: 'button', disabled: i === links.length - 1, data: { down: '' }, attrs: { 'aria-label': `Descendre ${l.title || 'ce raccourci'}` }, on: { click: () => mv(1) } }, ic('arrowDown', 'ic ic--sm')),
+          h('button.icon-btn', { type: 'button', attrs: { 'aria-label': `Retirer ${l.title || 'ce raccourci'}` }, on: { click: () => (links.splice(i, 1), renderLinks()) } }, icon('trash', 'ic ic--sm')),
+        ),
+      );
+    }),
   );
-  return row;
+  $('[data-acc-sub="links"]').textContent = `${links.length} ${links.length > 1 ? 'liens' : 'lien'} · barre du bas du tableau de bord`;
 }
 
-const renderLinks = () => $('[data-adm-links]').replaceChildren(...(content.links ?? []).map(linkRow));
-
 $('[data-adm-link-add]').addEventListener('click', () => {
-  const box = $('[data-adm-links]');
-  if (box.children.length >= 12) return toast('12 raccourcis au maximum.');
-  box.append(linkRow());
-  box.lastElementChild.querySelector('input').focus();
+  if (links.length >= 12) return toast('12 raccourcis au maximum.', 'alert');
+  links.push({ title: '', subtitle: '', url: 'https://' });
+  renderLinks();
+  $$('.adm-link').at(-1)?.querySelector('input')?.focus();
 });
 $('[data-adm-links-save]').addEventListener('click', async () => {
-  const links = $$('.adm-link').map((row) => Object.fromEntries($$('input', row).map((i) => [i.dataset.field, i.value.trim()])));
+  const out = links.map((l) => ({ title: (l.title ?? '').trim(), subtitle: (l.subtitle ?? '').trim(), url: (l.url ?? '').trim() }));
   try {
-    content = await api('links', { links });
+    content = await api('links', { links: out });
+    links = (content.links ?? []).map((l) => ({ ...l }));
     renderLinks();
     toast('Raccourcis enregistrés : les étudiants les voient au prochain chargement', 'check');
   } catch (err) {
-    toast(`Refusés : ${err.message}`);
+    toast(`Refusés : ${err.message}`, 'alert');
   }
 });
 
-// ------------------------------------------------------------ ambiance (décor de saison du Hub)
+// ------------------------------------------------------------ contenu du Hub : ambiance (décor de saison)
 // Activée : tout le monde la voit au prochain chargement, sans annonce. Aperçu : sur cet appareil
 // seulement (préférence locale, rien n'est envoyé).
 
@@ -400,12 +414,12 @@ function renderAmbiance() {
     : previewing()
       ? 'Aperçu actif : le Hub l’affiche sur cet appareil seulement, avec une étiquette « Aperçu ». Personne d’autre ne la voit.'
       : 'L’aperçu ne se voit que sur cet appareil et ne change rien pour les étudiants.';
+  $('[data-acc-sub="amb"]').textContent = on ? 'Noël · visible par tout le monde' : previewing() ? 'Noël · coupée (aperçu sur cet appareil)' : 'Noël · coupée';
 }
 $('[data-amb-preview]').addEventListener('click', () => {
   if (previewing()) {
     prefs.set('ambiance-apercu', null);
-    renderAmbiance();
-    return;
+    return renderAmbiance();
   }
   prefs.set('ambiance-apercu', AMB);
   renderAmbiance();
@@ -421,270 +435,34 @@ $('[data-amb-toggle]').addEventListener('click', async (e) => {
     renderAmbiance();
     toast(on ? 'Ambiance coupée.' : 'Ambiance activée pour tout le monde.', 'check');
   } catch (err) {
-    toast(`Refusé : ${err.message}`);
+    toast(`Refusé : ${err.message}`, 'alert');
   } finally {
     btn.disabled = false;
   }
 });
 
-// ------------------------------------------------------------ fréquentation
-
-const WEEK = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-const nf = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
-
-function bars(box, rows) {
-  const max = Math.max(1, ...rows.map((r) => r.value));
-  box.replaceChildren(
-    ...rows.map((r) => {
-      const bar = h('i', { attrs: { 'aria-hidden': 'true' } });
-      bar.style.setProperty('--v', String(r.value / max));
-      return h('div.adm-bar', { title: `${r.title} : ${nf.format(r.value)}` }, h('b', { text: nf.format(r.value) }), bar, h('span', { text: r.label }));
-    }),
-  );
-}
-
-// Filtres et graphiques faits ici, à partir des compteurs par jour (api/admin/stats).
-const METRICS = {
-  visitors: { unit: 'visiteurs distincts', get: (d) => (d.accounts ?? 0) + (d.guests ?? 0) },
-  accounts: { unit: 'comptes connectés', get: (d) => d.accounts ?? 0 },
-  guests: { unit: 'visiteurs sans connexion', get: (d) => d.guests ?? 0 },
-  unique: { unit: 'appareils distincts', get: (d) => d.unique ?? 0 },
-  visits: { unit: 'ouvertures', get: (d) => d.visits ?? 0 },
-  // Rubrique Stages : comptée depuis la 3.0.1, anonymement comme le Hub (jeton du jour).
-  stagesAccounts: { unit: 'comptes sur Stages', get: (d) => d.stagesAccounts ?? 0, since: '2026-11-28' },
-  stages: { unit: 'ouvertures de Stages', get: (d) => d.stages ?? 0, since: '2026-11-28' },
-};
-const DEVICES = { phone: 'Téléphone', tablet: 'Tablette', desktop: 'Ordinateur' };
-const APP_MODES = { app: 'Application installée', browser: 'Navigateur' };
-const dayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
-const atNoon = (iso) => new Date(`${iso}T12:00:00Z`);
-const SVG = 'http://www.w3.org/2000/svg';
-const svg = (tag, attrs = {}, ...kids) => {
-  const el = document.createElementNS(SVG, tag);
-  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
-  el.append(...kids.filter(Boolean));
-  return el;
-};
-const st = { data: null, period: '30', metric: 'visitors', cls: '', day: '' }; // day : jour choisi sur le graphique
-
-function hbars(box, entries, labels = {}) {
-  const total = entries.reduce((n, [, v]) => n + v, 0);
-  if (!total) return box.replaceChildren(h('p.hint', { text: 'Pas encore de données sur la période.' }));
-  const max = Math.max(...entries.map(([, v]) => v));
-  box.replaceChildren(
-    ...entries
-      .sort((x, y) => y[1] - x[1])
-      .map(([k, v]) => {
-        const bar = h('i', { attrs: { 'aria-hidden': 'true' } });
-        bar.style.setProperty('--v', String(v / max));
-        return h(
-          'div.st-hbar',
-          { title: `${labels[k] ?? k} : ${nf.format(v)}` },
-          h('span', { text: labels[k] ?? k }),
-          h('span.st-track', {}, bar),
-          h('b', { text: `${nf.format(v)} · ${Math.round((v / total) * 100)} %` }),
-        );
-      }),
-  );
-}
-
-/** Pas de graduation lisible (1, 2, 5, 10…) pour 4 lignes environ. */
-function niceStep(max) {
-  const raw = max / 4;
-  const p = 10 ** Math.floor(Math.log10(raw));
-  const m = raw / p;
-  return Math.max(1, (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p);
-}
-
-function lineChart(box, rows, unit, markDate, selDate = '', onPick = null) {
-  const W = 720;
-  const H = 220;
-  const L = 34;
-  const R = 10;
-  const T = 12;
-  const B = 26;
-  // r.v === null : pas encore compté ce jour-là (trou, pas zéro). r.ref : appareils distincts, en fond.
-  const max = Math.max(1, ...rows.map((r) => Math.max(r.v ?? 0, r.ref ?? 0)));
-  const step = niceStep(max);
-  const top = Math.ceil(max / step) * step;
-  const x = (i) => L + (rows.length > 1 ? (i * (W - L - R)) / (rows.length - 1) : (W - L - R) / 2);
-  const y = (v) => T + (H - T - B) * (1 - v / top);
-  const grid = [];
-  for (let v = 0; v <= top + 1e-9; v += step) {
-    grid.push(svg('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), class: 'st-grid-line' }));
-    grid.push(svg('text', { x: L - 6, y: y(v) + 4, class: 'st-axis', 'text-anchor': 'end' }, nf.format(v)));
-  }
-  const shown = rows.map((r, i) => [r, i]).filter(([r]) => r.v !== null);
-  const pts = shown.map(([r, i]) => `${x(i).toFixed(1)},${y(r.v).toFixed(1)}`);
-  const area = shown.length ? `M${x(shown[0][1]).toFixed(1)},${y(0)} L${pts.join(' L')} L${x(shown.at(-1)[1]).toFixed(1)},${y(0)} Z` : '';
-  const ref = rows.some((r) => r.ref !== undefined) ? rows.map((r, i) => `${x(i).toFixed(1)},${y(r.ref ?? 0).toFixed(1)}`).join(' ') : '';
-  const every = Math.ceil(rows.length / 8);
-  const labels = rows
-    .map((r, i) => (i % every === 0 || i === rows.length - 1 ? svg('text', { x: x(i), y: H - 6, class: 'st-axis', 'text-anchor': 'middle' }, String(atNoon(r.date).getUTCDate())) : null))
-    .filter(Boolean);
-  const mark = markDate ? rows.findIndex((r) => r.date === markDate) : -1;
-  const tip = (r) =>
-    svg('title', {}, `${dayFmt.format(atNoon(r.date))} : ${r.v === null ? 'pas encore compté' : `${nf.format(r.v)} ${unit}`}${r.ref !== undefined ? ` · ${nf.format(r.ref)} appareils distincts` : ''}`);
-  const dots = shown.length > 60 ? [] : shown.map(([r, i]) => svg('circle', { cx: x(i), cy: y(r.v), r: 3, class: 'st-dot' }));
-  // Une zone de survol par jour : la valeur se lit à la souris comme au doigt.
-  const slot = (W - L - R) / Math.max(1, rows.length - 1);
-  // Un clic (ou Entrée) sur un jour : les répartitions dessous montrent ce jour seul.
-  const hits = rows.map((r, i) => {
-    const hit = svg('rect', { x: x(i) - slot / 2, y: T, width: Math.max(2, slot), height: H - T - B, class: `st-hit${r.date === selDate ? ' is-sel' : ''}`, tabindex: 0, role: 'button', 'aria-label': `${dayFmt.format(atNoon(r.date))} : voir la répartition de ce jour` }, tip(r));
-    if (onPick) {
-      hit.addEventListener('click', () => onPick(r.date));
-      hit.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onPick(r.date)));
-    }
-    return hit;
-  });
-  const sel = rows.findIndex((r) => r.date === selDate);
-  box.replaceChildren(
-    svg(
-      'svg',
-      { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `${unit} par jour` },
-      ...grid,
-      mark > 0 ? svg('line', { x1: x(mark), x2: x(mark), y1: T, y2: H - B, class: 'st-mark' }) : null,
-      sel >= 0 ? svg('line', { x1: x(sel), x2: x(sel), y1: T, y2: H - B, class: 'st-sel' }) : null,
-      ref ? svg('polyline', { points: ref, class: 'st-ref' }) : null,
-      area ? svg('path', { d: area, class: 'st-area' }) : null,
-      pts.length ? svg('polyline', { points: pts.join(' '), class: 'st-line' }) : null,
-      ...dots,
-      ...labels,
-      ...hits,
-    ),
-  );
-}
-
-function renderStats() {
-  const all = st.data?.days ?? [];
-  const today = all.at(-1)?.date;
-  const since = st.data?.accountsSince ?? '';
-  const firstUsed = Math.max(0, all.findIndex((d) => d.visits > 0 || d.unique > 0));
-  let days = st.period === 'all' ? all.slice(firstUsed) : all.slice(-Number(st.period));
-  if (days.length < 2) days = all.slice(-7);
-  const metric = METRICS[st.metric];
-  const get = st.cls ? (d) => d.classes?.[st.cls] ?? 0 : metric.get;
-  const unit = st.cls ? `visiteurs de ${st.cls}` : metric.unit;
-  const rows = days.map((d) => ({ date: d.date, v: get(d) }));
-  // Mesures par compte, classe ou appareil : rien avant le premier jour compté ainsi.
-  const byAccount = Boolean(st.cls) || ['visitors', 'accounts', 'guests'].includes(st.metric);
-  const from = st.cls ? since : (metric.since ?? (byAccount ? since : ''));
-  const counted = from ? rows.filter((r) => r.date >= from) : rows;
-  const sum = counted.reduce((n, r) => n + r.v, 0);
-  const peak = counted.reduce((m, r) => (r.v > m.v ? r : m), { v: 0, date: '' });
-  $('[data-st="today"]').textContent = nf.format(rows.at(-1)?.v ?? 0);
-  $('[data-st-unit]').textContent = unit;
-  $('[data-st="avg"]').textContent = counted.length ? nf.format(sum / counted.length) : '–';
-  $('[data-st-range]').textContent = counted.length ? `sur ${counted.length} jour${counted.length > 1 ? 's' : ''}` : 'pas encore de données';
-  $('[data-st="peak"]').textContent = peak.date ? nf.format(peak.v) : '–';
-  $('[data-st="peakday"]').textContent = peak.date ? dayFmt.format(atNoon(peak.date)) : '';
-  // Ouvertures sur la période : du Hub, ou de la rubrique Stages quand c'est elle qu'on regarde.
-  const opens = st.metric.startsWith('stages') && !st.cls ? (d) => d.stages ?? 0 : (d) => d.visits ?? 0;
-  $('[data-st="total"]').textContent = nf.format(days.reduce((n, d) => n + opens(d), 0));
-  $('[data-st-chart-title]').textContent = `${unit[0].toUpperCase()}${unit.slice(1)}, par jour`;
-  const before = byAccount && rows[0]?.date < since;
-  // Avant le comptage par compte : un trou (pas un zéro), avec les appareils distincts en fond.
-  const drawn = byAccount
-    ? rows.map((r, i) => ({ ...r, v: r.date >= since ? r.v : null, ref: st.cls ? undefined : days[i].unique ?? 0 }))
-    : rows;
-  if (st.day && !days.some((d) => d.date === st.day)) st.day = '';
-  lineChart($('[data-st-chart]'), drawn, unit, before ? since : '', st.day, (date) => {
-    st.day = st.day === date ? '' : date;
-    renderStats();
-  });
-  const note = $('[data-st-note]');
-  note.hidden = !byAccount;
-  note.textContent = before
-    ? `Comptage par compte, classe et appareil depuis le ${dayFmt.format(atNoon(since))} (trait pointillé) : avant, seuls les appareils et les ouvertures étaient comptés.${st.cls ? '' : ' En gris : appareils distincts, pour comparer.'}`
-    : st.cls ? '' : 'En gris : appareils distincts, pour comparer.';
-  note.hidden = !note.textContent;
-  // Jours de la semaine : moyenne de la mesure sur les jours comptés de la période.
-  const wsum = Array(7).fill(0);
-  const wn = Array(7).fill(0);
-  for (const r of counted) {
-    const wd = (atNoon(r.date).getUTCDay() + 6) % 7;
-    wsum[wd] += r.v;
-    wn[wd] += 1;
-  }
-  bars($('[data-st-week]'), WEEK.map((label, i) => ({ value: wn[i] ? wsum[i] / wn[i] : 0, label, title: `Moyenne du ${label.toLowerCase()}.` })));
-  // Répartitions : sur la période, ou sur le jour choisi en cliquant sur le graphique.
-  const scope = st.day ? days.filter((d) => d.date === st.day) : days;
-  const add = (key) => {
-    const out = {};
-    for (const d of scope) for (const [k, v] of Object.entries(d[key] ?? {})) out[k] = (out[k] ?? 0) + v;
-    return Object.entries(out);
-  };
-  const dayBar = $('[data-st-day]');
-  dayBar.replaceChildren(
-    st.day
-      ? h('span', {}, 'Répartitions du ', h('b', { text: dayFmt.format(atNoon(st.day)) }), ' ')
-      : h('span', { text: 'Répartitions sur toute la période. Clique sur un jour du graphique pour voir le sien.' }),
-    st.day ? h('button.btn.btn--sm.btn--ghost', { type: 'button', text: 'Toute la période', on: { click: () => ((st.day = ''), renderStats()) } }) : '',
-  );
-  dayBar.classList.toggle('is-day', Boolean(st.day));
-  hbars($('[data-st-classes]'), st.cls ? add('classes').filter(([k]) => k === st.cls) : add('classes'));
-  hbars($('[data-st-devices]'), add('devices'), DEVICES);
-  hbars($('[data-st-modes]'), add('modes'), APP_MODES);
-  $('[data-st-since]').textContent =
-    `Répartitions : visiteurs distincts ${st.day ? 'du jour choisi' : 'de chaque jour, additionnés sur la période'}${st.cls ? ' ; appareils et modes restent toutes classes confondues (jamais croisés avec la classe)' : ''}. Dernier jour : ${today ? dayFmt.format(atNoon(today)) : '–'}.`;
-  $('[data-st-metric]').disabled = Boolean(st.cls);
-}
-
-async function loadStats() {
-  st.data = await api('stats');
-  const found = new Set();
-  for (const d of st.data.days ?? []) Object.keys(d.classes ?? {}).forEach((k) => found.add(k));
-  Object.keys(classes?.classes ?? {}).forEach((k) => found.add(k));
-  const sel = $('[data-st-class]');
-  sel.replaceChildren(h('option', { value: '', text: 'Toutes les classes' }), ...[...found].sort().map((k) => h('option', { value: k, text: k })));
-  sel.value = st.cls;
-  renderStats();
-}
-
-$$('[data-st-period] [data-p]').forEach((b) =>
-  b.addEventListener('click', () => {
-    st.period = b.dataset.p;
-    $$('[data-st-period] [data-p]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-    renderStats();
-  }),
-);
-$('[data-st-metric]').addEventListener('change', (e) => {
-  st.metric = e.target.value;
-  renderStats();
-});
-$('[data-st-class]').addEventListener('change', (e) => {
-  st.cls = e.target.value;
-  renderStats();
-});
-
 const gradesAdmin = setupGradesAdmin({ api, getClasses: () => classes });
-
-// TCG : lancement, vagues, modération des cartes (admin-tcg.js).
-const tcgAdmin = setupTcgAdmin({ root: $('[data-tcg-admin]'), onCount: (n) => tabCount('tcg', n), onLeave: leave });
-// Rubrique Stages : dépôt du fichier, ouverture, journal (admin-stages.js).
-const stagesAdmin = setupStagesAdmin({ root: $('[data-stages-admin]'), onLeave: leave });
-const fromHash = location.hash.slice(1);
-if (tabs.some((b) => b.dataset.admTab === fromHash)) selectTab(fromHash);
 
 // ------------------------------------------------------------ départ
 
+go(true);
+
 async function load() {
   const me = await api('me');
+  $('[data-adm-user]').textContent = me.user;
+  // Sur cet appareil, le Hub montrera « Accéder à l'administration » dans le menu de ce compte.
+  if (me.user) prefs.set('admin-of', me.user.toLowerCase());
   tcgAdmin.counts();
-  $('[data-adm-user]').textContent = `Connecté : ${me.user}`;
-  items = await api('feedback');
-  renderList();
-  if (items.length) select(items[0].id);
-  else detail.hidden = true;
-  [classes, content] = await Promise.all([
-    fetch('api/classes', { cache: 'no-store' }).then((r) => r.json()),
-    fetch('api/content', { cache: 'no-store' }).then((r) => r.json()),
-  ]);
+  career.counts();
+  syncTodo();
+  await feedback.load().catch((err) => toast(`Retours indisponibles : ${err.message}`, 'alert'));
+  overview.load();
+  [classes, content] = await Promise.all([fetch('api/classes', { cache: 'no-store' }).then((r) => r.json()), fetch('api/content', { cache: 'no-store' }).then((r) => r.json())]);
+  links = (content.links ?? []).map((l) => ({ ...l }));
   renderClasses();
   renderLinks();
   renderAmbiance();
-  await gradesAdmin.load().catch((err) => toast(`Maquettes de notes indisponibles : ${err.message}`));
-  await loadStats().catch((err) => toast(`Fréquentation indisponible : ${err.message}`));
+  await gradesAdmin.load().catch((err) => toast(`Maquettes de notes indisponibles : ${err.message}`, 'alert'));
 }
 
-load().catch((err) => toast(`Chargement impossible : ${err.message}`));
+load().catch((err) => toast(`Chargement impossible : ${err.message}`, 'alert'));

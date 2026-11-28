@@ -38,6 +38,7 @@ import (
 	"isishub/internal/crous"
 	"isishub/internal/feedback"
 	"isishub/internal/site"
+	"isishub/internal/salaires"
 	"isishub/internal/stages"
 	"isishub/internal/tcg"
 	"isishub/internal/wisp"
@@ -239,6 +240,22 @@ func serve() error {
 		SecureCookie:   strings.HasPrefix(os.Getenv("PUBLIC_ORIGIN"), "https://"),
 	}).Init()
 
+	// Simulateur de salaire : fermé tant que l'administration ne l'ouvre pas. Les réponses du
+	// sondage restent sur le serveur, la page ne reçoit que des groupes d'au moins 5 réponses.
+	salairesStore, err := salaires.Open(env("DATA_DIR", "data"))
+	if err != nil {
+		return fmt.Errorf("salaires : %w", err)
+	}
+	salairesAPI := (&salaires.Service{
+		Store:          salairesStore,
+		CASValidate:    cas.Validator(env("CAS_URL", "https://auth.univ-jfc.fr"), cas.ENTService),
+		IsAdmin:        api.IsAdmin,
+		IsAdminUser:    api.IsAdminUser,
+		AllowedOrigins: origins,
+		TrustProxy:     os.Getenv("TRUST_PROXY") == "1",
+		SecureCookie:   strings.HasPrefix(os.Getenv("PUBLIC_ORIGIN"), "https://"),
+	}).Init()
+
 	mux := http.NewServeMux()
 	mux.Handle("/wisp/", relay)
 	mux.Handle("/api/tcg/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -248,6 +265,10 @@ func serve() error {
 	mux.Handle("/api/stages/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.Headers(w.Header())
 		stagesAPI.ServeHTTP(w, r)
+	}))
+	mux.Handle("/api/salaires/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.Headers(w.Header())
+		salairesAPI.ServeHTTP(w, r)
 	}))
 	mux.Handle("/calendar/", calendars)
 	// Page d'administration : elle n'existe que pour une session administrateur. Sinon, retour à

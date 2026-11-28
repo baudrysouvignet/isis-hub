@@ -31,7 +31,7 @@ import { setupMailRules } from './ui/mailrules.js';
 import { setupInstall } from './ui/install.js';
 import { setupChangelog } from './ui/changelog.js';
 import { seen, whenKnown, adoptLocal, forgetLocal } from './core/seen.js';
-import { countVisit, countStages } from './core/stats.js';
+import { countVisit, countPage } from './core/stats.js';
 import { watchUpdates } from './core/update.js';
 import { initMailPrefs, resetMailPrefs } from './core/mailprefs.js';
 import * as UD from './core/userdata.js';
@@ -45,6 +45,7 @@ import { setupTransparency, versionLabel } from './ui/transparency.js';
 import { startTour, tourActive } from './ui/tour.js';
 import { createTCG } from './tcg/app.js';
 import { createStages } from './stages/app.js';
+import { createSalaires } from './salaires/app.js';
 import { createModes } from './ui/modes.js';
 
 // Thème (clair, sombre, ou comme l'appareil) : appliqué tout de suite, choisi dans le menu du compte.
@@ -290,6 +291,7 @@ let rendus;
 let moodleView;
 let tcg;
 let stages;
+let salaires;
 let modes;
 
 function setupDashboard() {
@@ -314,6 +316,7 @@ function setupDashboard() {
     onLogin: openLogin,
     onReply: (kind, m, text) => composer.respond(kind, m, text),
     onExpand: () => {
+      countPage('mails');
       notes?.close();
       if (schedule.isExpanded()) schedule.collapse();
     },
@@ -337,6 +340,7 @@ function setupDashboard() {
       return out;
     },
     beforeOpen: () => {
+      countPage('notes');
       mails.close();
       if (schedule.isExpanded()) schedule.collapse();
     },
@@ -372,14 +376,15 @@ function setupDashboard() {
     moodle: () => moodleView?.openHome(null),
     tcg: () => tcg.enter(),
     stages: () => stages?.enter(),
+    salaires: () => salaires?.enter(),
     dark: () => {
       setTheme('dark');
       toast('Mode sombre activé · menu du compte → Thème pour revenir à Auto', 'check');
     },
   };
-  // Une version qui présente une fonction fermée pour ce compte (Stages pas encore ouvert, TCG pour
-  // un compte du personnel) attend : ni écran, ni ligne du journal à son sujet.
-  const opened = { tcg: () => Boolean(tcg?.visible()), stages: () => Boolean(stages?.available()) };
+  // Une version qui présente une fonction fermée pour ce compte (Stages ou simulateur pas encore
+  // ouverts, TCG pour un compte du personnel) attend : ni écran, ni ligne du journal à son sujet.
+  const opened = { tcg: () => Boolean(tcg?.visible()), stages: () => Boolean(stages?.available()), salaires: () => Boolean(salaires?.available()) };
   changelog = setupChangelog({ onLaunch: (to) => launchTargets[to]?.(), canLaunch: (what) => opened[what]?.() ?? true });
   $$('[data-compose]').forEach((b) => b.addEventListener('click', () => composer.open()));
   moodleView = createMoodleView({
@@ -412,6 +417,7 @@ function setupDashboard() {
   // TCG de la promo : lien TCG de l'en-tête, pour les étudiants. L'identité est prouvée par un
   // ticket CAS (pour l'ENT, comme l'administration) que le serveur fait valider par l'université.
   tcg = createTCG({
+    onVisit: () => countPage('tcg'),
     app,
     modes,
     allowed: isStudent,
@@ -457,11 +463,30 @@ function setupDashboard() {
     },
     onAvailable: () => bento?.refresh(),
     // Fréquentation de la rubrique, anonyme comme celle du Hub (jeton du jour, rien de consulté).
-    onVisit: () => countStages(),
+    onVisit: () => countPage('stages'),
+  });
+  // Simulateur de salaire : fermé tant que l'administration ne l'ouvre pas (bouton caché). Les
+  // réponses des alumni restent sur le serveur ; la page ne reçoit que des groupes.
+  salaires = createSalaires({
+    app,
+    modes,
+    isSignedIn: () => state.signedIn,
+    onLogin: () => openLogin(),
+    getTicket: adminTicket,
+    beforeOpen: () => {
+      closeMenus();
+      mails.close();
+      notes.close();
+      if (moodleView?.isOpen()) moodleView.close();
+      if (schedule.isExpanded()) schedule.collapse();
+    },
+    onVisit: () => countPage('salaires'),
   });
   setupMenus();
   bento = setupBento();
   stages.checkStatus();
+  salaires.checkStatus();
+  setupAdminMenu();
   fetchContent().then((content) => {
     renderLinks(content);
     bento.refresh();
@@ -499,8 +524,9 @@ async function welcome() {
   adoptLocal();
   const newcomer = !seen('tour');
   if (newcomer) setTimeout(() => !document.querySelector('dialog[open]') && state.screen === 'dash' && startTour(app), 600);
-  // La 2.0.0 attend de savoir si le TCG est ouvert, la 3.0.0 si la rubrique Stages l'est.
-  await Promise.all([tcg?.whenReady(), stages?.whenReady()]);
+  // La 2.0.0 attend de savoir si le TCG est ouvert, la 3.0.0 si la rubrique Stages l'est, la 3.1.0
+  // si le simulateur de salaire l'est.
+  await Promise.all([tcg?.whenReady(), stages?.whenReady(), salaires?.whenReady()]);
   changelog.maybeShow({ newcomer });
   install.maybeOffer(); // après la visite guidée : installer l'application sur le téléphone
 }
@@ -534,10 +560,12 @@ async function enterDashboard(promoChanged = true) {
   }
   // Lien vers le jeu : « #tcg », ou « #echange=K7Q2 » (QR code d'un échange en face à face).
   if (!tcg.handleHash() && state.signedIn) tcg.signedIn();
-  // Rubrique Stages : la tuile se remplit, « #stages » (retour après connexion) l'ouvre.
+  // Rubrique Stages et simulateur : « #stages » ou « #salaires » (retour après connexion) les ouvre.
   if (promoChanged) stages.refresh();
   if (state.signedIn) stages.signedIn();
   if (location.hash === '#stages' && state.signedIn && stages.available()) stages.enter();
+  salaires.handleHash();
+  syncAdminMenu();
   // Adresse de la messagerie : « Mes apparitions » et, pour l'administrateur, mails d'accord.
   if (state.signedIn) loadUser().then(() => tcg.mailReady(), () => {});
 }
@@ -556,6 +584,7 @@ function sessionLost() {
   state.user = null;
   tcg?.leave(); // pas connecté = pas de TCG
   stages?.signedOut(); // ni de stages
+  salaires?.signedOut(); // ni de simulateur
   jar.clear();
   vault.clear();
   clearCache();
@@ -594,6 +623,7 @@ async function logout() {
   await tcg?.signedOut(); // session de jeu de cet appareil oubliée (cookie effacé par le serveur)
   tcg?.leave();
   await stages?.signedOut(); // session de la rubrique Stages oubliée, données effacées de la page
+  await salaires?.signedOut(); // session du simulateur oubliée
   prefs.set('student', null);
   welcomed = false;
   resetMailPrefs();
@@ -668,6 +698,7 @@ document.addEventListener('keydown', (e) => {
   if (composer?.isOpen()) return; // géré par le compositeur
   if (tcg?.isOpen()) return; // feuilles et ouverture du booster : gérées par le TCG
   if (stages?.isOpen() && !document.activeElement?.closest?.('details.stg-f')) return stages.escape();
+  if (salaires?.isOpen() && !document.activeElement?.closest?.('details')) return salaires.escape();
   if (moodleView?.isOpen()) return moodleView.close();
   if (mails?.isOpen()) return mails.close();
   if (notes?.isOpen()) return notes.close();
@@ -731,10 +762,35 @@ async function openAdminSession() {
   if (!res.ok) throw new Error('Session d’administration refusée.');
 }
 
+// Menu du compte : « Accéder à l'administration », pour les seuls identifiants de l'administration.
+// La page ne connaît pas la liste ADMIN_USERS et ne demande rien au serveur pour le savoir : l'entrée
+// se montre si ce compte a déjà ouvert l'administration sur cet appareil (admin.js s'en souvient).
+const adminOf = () => prefs.get('admin-of', null);
+function syncAdminMenu() {
+  const me = state.signedIn ? (state.username || '').toLowerCase() : '';
+  const item = $('[data-open-admin]');
+  if (item) item.hidden = !me || adminOf() !== me;
+}
+function setupAdminMenu() {
+  $('[data-open-admin]')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    closeMenus();
+    try {
+      await openAdminSession();
+      location.assign('admin');
+    } catch {
+      prefs.set('admin-of', null);
+      syncAdminMenu();
+      toast('Administration refusée pour ce compte.', 'lock');
+    }
+  });
+}
+
 async function openAdmin() {
   wantsAdmin = false;
   try {
     await openAdminSession();
+    if (state.username) prefs.set('admin-of', state.username.toLowerCase());
     return location.assign('admin');
   } catch {
     // ticket indisponible ou refusé : on reste sur l'accueil, sans message

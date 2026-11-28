@@ -12,13 +12,15 @@ package feedback
 //   - class  : classe choisie (FIE4…), device : téléphone / tablette / ordinateur,
 //              mode : application installée ou navigateur.
 //
-// À l'ouverture de la rubrique Stages, la page envoie de même { page: "stages", token } : une
-// ouverture de plus, et un compte de plus s'il ne l'avait pas encore ouverte ce jour-là (jetons
-// du jour à part, oubliés au changement de jour). Rien de ce qui y est consulté.
+// À l'ouverture d'une rubrique (Stages, simulateur de salaire, TCG, notes, mails), la page envoie
+// de même { page, token } : une ouverture de plus, et un compte de plus s'il ne l'avait pas encore
+// ouverte ce jour-là. Pour chaque jeton du jour, le serveur retient les rubriques ouvertes ce
+// jour-là (quelques bits) et compte les combinaisons : « 12 comptes ont ouvert le Hub, Stages et le
+// simulateur ». Rien de ce qui y est consulté ; les jetons et leurs rubriques sont oubliés au
+// changement de jour, il ne reste que les compteurs.
 //
 // Le serveur garde des compteurs par jour, jamais croisés entre eux (une classe n'est pas reliée à
-// un appareil). Les jetons du jour servent seulement à ne pas compter deux fois un compte : ils
-// sont oubliés au changement de jour. Ni identifiant, ni adresse IP, ni navigateur précis, ni heure.
+// un appareil ni à une rubrique). Ni identifiant, ni adresse IP, ni navigateur précis, ni heure.
 
 import (
 	"encoding/json"
@@ -28,6 +30,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -41,16 +44,50 @@ type Day struct {
 	Classes  map[string]int `json:"classes,omitempty"`  // visiteurs distincts par classe
 	Devices  map[string]int `json:"devices,omitempty"`  // phone | tablet | desktop
 	Modes    map[string]int `json:"modes,omitempty"`    // app | browser
-	// Rubrique Stages (depuis la 3.0.1) : ouvertures, et comptes distincts qui l'ont ouverte.
+	// Rubriques (depuis la 3.1.0) : ouvertures et comptes distincts, et comptes par combinaison de
+	// rubriques ouvertes le même jour (« hub+stages+salaires »).
+	Mods   map[string]Mod `json:"mods,omitempty"`
+	Combos map[string]int `json:"combos,omitempty"`
+	// Rubrique Stages en 3.0.1 : relu et versé dans Mods à l'ouverture, plus jamais écrit.
 	Stages         int `json:"stages,omitempty"`
 	StagesAccounts int `json:"stagesAccounts,omitempty"`
 }
 
+// Mod : une rubrique, un jour.
+type Mod struct {
+	Opens    int `json:"o"`
+	Accounts int `json:"a"`
+}
+
+// Rubriques comptées, dans l'ordre des combinaisons ; « hub » est le tableau de bord lui-même.
+var modNames = []string{"hub", "stages", "salaires", "tcg", "notes", "mails"}
+
+func modBit(name string) uint8 {
+	for i, n := range modNames {
+		if n == name {
+			return 1 << i
+		}
+	}
+	return 0
+}
+
+func comboKey(mask uint8) string {
+	var parts []string
+	for i, n := range modNames {
+		if mask&(1<<i) != 0 {
+			parts = append(parts, n)
+		}
+	}
+	return strings.Join(parts, "+")
+}
+
 type statsFile struct {
-	Days      map[string]Day `json:"days"`
-	TokenDay  string         `json:"tokenDay,omitempty"`
-	TokensDay []string       `json:"tokens,omitempty"` // jetons du jour en cours, oubliés le lendemain
-	TokensStg []string       `json:"tokensStages,omitempty"`
+	Days     map[string]Day   `json:"days"`
+	TokenDay string           `json:"tokenDay,omitempty"`
+	Masks    map[string]uint8 `json:"masks,omitempty"` // jetons du jour en cours → rubriques ouvertes, oubliés le lendemain
+	// Jusqu'à la 3.0.1 : jetons du jour du Hub, et de la rubrique Stages.
+	TokensDay []string `json:"tokens,omitempty"`
+	TokensStg []string `json:"tokensStages,omitempty"`
 }
 
 type Stats struct {
@@ -58,9 +95,8 @@ type Stats struct {
 	path   string
 	days   map[string]Day // « AAAA-MM-JJ »
 	tokDay string
-	tokens map[string]struct{}
-	stgTok map[string]struct{} // comptes du jour déjà comptés sur la rubrique Stages
-	dirty  bool                // compteurs changés depuis la dernière écriture
+	masks  map[string]uint8 // jetons du jour → rubriques ouvertes aujourd'hui (bits de modNames)
+	dirty  bool             // compteurs changés depuis la dernière écriture
 	now    func() time.Time
 }
 
@@ -94,7 +130,7 @@ func OpenStats(dir string) (*Stats, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	s := &Stats{path: filepath.Join(dir, "stats.json"), days: map[string]Day{}, tokens: map[string]struct{}{}, stgTok: map[string]struct{}{}, now: time.Now}
+	s := &Stats{path: filepath.Join(dir, "stats.json"), days: map[string]Day{}, masks: map[string]uint8{}, now: time.Now}
 	go func() {
 		for range time.Tick(statsFlushEvery) {
 			s.Flush()
@@ -110,11 +146,29 @@ func OpenStats(dir string) (*Stats, error) {
 	var f statsFile
 	if err := json.Unmarshal(raw, &f); err == nil && f.Days != nil {
 		s.days, s.tokDay = f.Days, f.TokenDay
+		for t, m := range f.Masks {
+			s.masks[t] = m
+		}
 		for _, t := range f.TokensDay {
-			s.tokens[t] = struct{}{}
+			s.masks[t] |= modBit("hub")
 		}
 		for _, t := range f.TokensStg {
-			s.stgTok[t] = struct{}{}
+			s.masks[t] |= modBit("stages")
+		}
+		// Rubrique Stages de la 3.0.1 : versée dans Mods.
+		for k, d := range s.days {
+			if d.Stages > 0 || d.StagesAccounts > 0 {
+				if d.Mods == nil {
+					d.Mods = map[string]Mod{}
+				}
+				m := d.Mods["stages"]
+				m.Opens += d.Stages
+				m.Accounts += d.StagesAccounts
+				d.Mods["stages"] = m
+				d.Stages, d.StagesAccounts = 0, 0
+				s.days[k] = d
+				s.dirty = true
+			}
 		}
 		return s, nil
 	}
@@ -134,11 +188,11 @@ type Visit struct {
 	Class  string `json:"class,omitempty"`
 	Device string `json:"device,omitempty"`
 	Mode   string `json:"mode,omitempty"`
-	Page   string `json:"page,omitempty"` // "stages" : ouverture de la rubrique Stages
+	Page   string `json:"page,omitempty"` // rubrique ouverte (modNames, sauf « hub ») ; vide : le tableau de bord
 }
 
 func (v Visit) valid() bool {
-	return (v.Page == "" || v.Page == "stages") &&
+	return (v.Page == "" || (v.Page != "hub" && modBit(v.Page) != 0)) &&
 		(v.Token == "" || tokenRE.MatchString(v.Token)) &&
 		(v.Class == "" || classKeyRE.MatchString(v.Class)) &&
 		(v.Device == "" || devicesOK[v.Device]) &&
@@ -161,7 +215,7 @@ func bump(m map[string]int, k string, limit int) map[string]int {
 // Hit compte une ouverture (ancienne forme : appareil seulement).
 func (s *Stats) Hit(first bool) error { return s.Record(Visit{First: first}) }
 
-// Record compte une ouverture du tableau de bord.
+// Record compte une ouverture du tableau de bord ou d'une rubrique.
 func (s *Stats) Record(v Visit) error {
 	if !v.valid() {
 		return errors.New("visite invalide")
@@ -169,35 +223,53 @@ func (s *Stats) Record(v Visit) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	k := s.today()
-	if s.tokDay != k { // nouveau jour : les jetons d'hier sont oubliés
-		s.tokDay, s.tokens, s.stgTok = k, map[string]struct{}{}, map[string]struct{}{}
+	if s.tokDay != k { // nouveau jour : les jetons d'hier et leurs rubriques sont oubliés
+		s.tokDay, s.masks = k, map[string]uint8{}
 	}
 	d := s.days[k]
-	if v.Page == "stages" {
-		// Rubrique Stages : une ouverture, et un compte de plus s'il ne l'avait pas ouverte ce jour.
-		d.Stages++
-		if _, seen := s.stgTok[v.Token]; v.Token != "" && !seen && len(s.stgTok) < maxTokensDay {
-			s.stgTok[v.Token] = struct{}{}
-			d.StagesAccounts++
+	page := v.Page
+	if page == "" {
+		page = "hub"
+		d.Visits++
+		if v.First {
+			d.Unique++
 		}
-		s.days[k] = d
-		s.dirty = true
-		return nil
 	}
-	d.Visits++
-	if v.First {
-		d.Unique++
+	bit := modBit(page)
+	if page != "hub" {
+		if d.Mods == nil {
+			d.Mods = map[string]Mod{}
+		}
+		m := d.Mods[page]
+		m.Opens++
+		d.Mods[page] = m
 	}
-	// Visiteur distinct du jour : un compte vu pour la première fois aujourd'hui, ou un appareil
-	// sans connexion à sa première ouverture du jour.
+	// Compte du jour : rubriques déjà ouvertes, combinaison déplacée si celle-ci est nouvelle.
 	distinct := false
 	if v.Token != "" {
-		if _, seen := s.tokens[v.Token]; !seen && len(s.tokens) < maxTokensDay {
-			s.tokens[v.Token] = struct{}{}
-			d.Accounts++
-			distinct = true
+		old, seen := s.masks[v.Token]
+		if (seen || len(s.masks) < maxTokensDay) && old&bit == 0 {
+			now := old | bit
+			s.masks[v.Token] = now
+			if d.Combos == nil {
+				d.Combos = map[string]int{}
+			}
+			if old != 0 {
+				if d.Combos[comboKey(old)]--; d.Combos[comboKey(old)] <= 0 {
+					delete(d.Combos, comboKey(old))
+				}
+			}
+			d.Combos[comboKey(now)]++
+			if page == "hub" {
+				d.Accounts++
+				distinct = true
+			} else {
+				m := d.Mods[page]
+				m.Accounts++
+				d.Mods[page] = m
+			}
 		}
-	} else if v.First {
+	} else if page == "hub" && v.First {
 		d.Guests++
 		distinct = true
 	}
@@ -228,14 +300,7 @@ func (s *Stats) Flush() error {
 	}
 	f := statsFile{Days: s.days}
 	if s.tokDay == s.today() {
-		f.TokenDay = s.tokDay
-		f.TokensDay = make([]string, 0, len(s.tokens))
-		for t := range s.tokens {
-			f.TokensDay = append(f.TokensDay, t)
-		}
-		for t := range s.stgTok {
-			f.TokensStg = append(f.TokensStg, t)
-		}
+		f.TokenDay, f.Masks = s.tokDay, s.masks
 	}
 	raw, err := json.Marshal(f)
 	if err != nil {

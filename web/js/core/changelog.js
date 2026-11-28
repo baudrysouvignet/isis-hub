@@ -13,8 +13,54 @@
 //   only : entrée montrée (journal, pop-up) seulement si la fonction est ouverte pour ce compte
 //          (« stages » : rubrique ouverte ; « tcg » : jeu ouvert et compte étudiant).
 //   onlyDetails : { tcg: [...] } lignes du détail montrées seulement à qui voit cette fonction.
+//   closed : { title, short, details, onlyDetails, quiet } ce que montre l'entrée tant que `only` est
+//            fermé pour ce compte (sans écran de lancement) ; sans closed, l'entrée n'apparaît pas.
 
 export const CHANGELOG = [
+  {
+    version: '3.1.0',
+    date: '2026-11-28',
+    title: 'Le simulateur de salaire',
+    only: 'salaires', // au journal et à l'écran une fois le simulateur ouvert
+    launch: {
+      art: 'salaires',
+      requires: 'salaires',
+      title: 'Ce que gagnent vraiment les ISIS',
+      sub: 'Un simulateur de salaire, d’après les réponses des alumni au sondage « Panorama des Carrières ».',
+      steps: [
+        ['Ton profil', 'Coche ton expérience, un poste, un lieu, et plus de critères si tu veux : le salaire estimé, fixe ou avec primes, sa fourchette et ce qui le fait varier.'],
+        ['Les années et la carte', 'Comment le salaire évolue avec l’expérience, région par région, et la comparaison poste par poste ou secteur par secteur.'],
+        ['Primes et conseils', 'Qui touche des primes, les avantages les plus courants, et les conseils des alumni pour négocier.'],
+      ],
+      privacy: 'Réservé aux comptes de l’université connectés. Les réponses des alumni restent sur le serveur : tu ne vois que des groupes d’au moins 5 réponses, et ton profil n’est ni gardé ni relié à toi.',
+      go: { label: 'Ouvrir le simulateur', to: 'salaires' },
+    },
+    short: [
+      'Simulateur de salaire : ce que gagnent les alumni d’ISIS selon l’expérience, le poste, le lieu et le secteur.',
+      'Fréquentation : chaque rubrique est comptée à part, toujours sans savoir qui.',
+    ],
+    details: [
+      'Simulateur de salaire : un bouton à gauche de la barre des raccourcis ouvre sa page, à la place du tableau de bord (« Hub » ou Échap pour revenir). Coche ton expérience, un ou plusieurs postes, lieux, secteurs et types de structure : le salaire estimé (fixe ou avec primes), son équivalent net, la fourchette où tombent 1 et 8 alumni sur 10, et ce que change chaque critère.',
+      'Simulateur de salaire : l’évolution avec les années, la carte des régions, la comparaison par poste, secteur, type de structure et entre femmes et hommes, la répartition des salaires, les primes et avantages, et les conseils des alumni. La méthode et ses limites sont expliquées en bas de la page.',
+      'Confidentialité : les réponses du sondage restent sur le serveur du Hub, ton appareil n’en reçoit aucune. Tu ne vois que des groupes d’au moins 5 réponses (les quartiles à partir de 10), une case ne se coche que si elle garde 5 réponses à elle seule (une autre devenue trop rare est décochée, la page le dit), et l’année de diplôme, les anecdotes et les détails des conseils ne sont jamais gardés. Ton profil part au serveur le temps du calcul : il n’est ni gardé ni relié à toi.',
+      'Fréquentation : en plus des visites du Hub, chaque jour on compte combien de comptes ouvrent chaque rubrique (Stages, simulateur, TCG, notes, mails en grand) et lesquelles ensemble, avec le même jeton du jour, oublié le lendemain : seulement des totaux, jamais qui, et rien de ce que tu y consultes.',
+    ],
+    onlyDetails: {
+      stages: ['Tableau de bord : la tuile Stages disparaît ; la rubrique s’ouvre toujours par l’onglet Stages de l’en-tête.'],
+    },
+    // Tant que le simulateur est fermé pour ce compte : au journal seulement, sans pop-up ni rien sur lui.
+    closed: {
+      quiet: true,
+      title: 'Fréquentation par rubrique, toujours anonyme',
+      short: ['Fréquentation : chaque rubrique est comptée à part, toujours sans savoir qui.'],
+      details: [
+        'Fréquentation : en plus des visites du Hub, chaque jour on compte combien de comptes ouvrent chaque rubrique (Stages, TCG, notes, mails en grand) et lesquelles ensemble, avec le même jeton du jour, oublié le lendemain : seulement des totaux, jamais qui, et rien de ce que tu y consultes.',
+      ],
+      onlyDetails: {
+        stages: ['Tableau de bord : la tuile Stages disparaît ; la rubrique s’ouvre toujours par l’onglet Stages de l’en-tête.'],
+      },
+    },
+  },
   {
     version: '3.0.1',
     date: '2026-11-28',
@@ -39,7 +85,7 @@ export const CHANGELOG = [
       steps: [
         ['La carte des stages', 'Région, département puis ville : chaque structure qui a accueilli un étudiant d’ISIS, avec les missions. « Comme moi » garde les stages de ton année.'],
         ['Les contacts', 'Sur la fiche d’une structure : les étudiants passés là, leurs sujets, les maîtres de stage et les RH, avec leur adresse.'],
-        ['Ta tuile Stages', 'Sur le tableau de bord : où sont allés les étudiants de ton année, et les structures qui en accueillent le plus.'],
+        ['La fiche d’un stage', 'Les dates, la durée, les missions et l’encadrement : ce qu’a fait l’étudiant passé là avant toi.'],
       ],
       privacy: 'Réservé aux comptes de l’université connectés. Rien n’est gardé sur toi : ni ton identifiant, ni ce que tu consultes.',
       go: { label: 'Voir les stages', to: 'stages' },

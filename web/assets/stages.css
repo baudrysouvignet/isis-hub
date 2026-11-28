@@ -143,34 +143,6 @@
 .lg-11 { --lgb: var(--lg11-b); --lgf: var(--lg11-f); }
 
 /* ==========================================================================
-   Tuile du tableau de bord
-   ========================================================================== */
-.tile--stages { padding-bottom: 16px; }
-.tile--stages .tile-head { margin-bottom: 10px; }
-.stgt-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 18px; align-items: stretch; }
-.stgt-body > .skel--line { align-self: center; }
-.stgt-sum { display: flex; flex-direction: column; justify-content: center; gap: 6px; min-width: 0; }
-.stgt-big { font: 500 15px/1.35 var(--font); color: var(--text-2); }
-.stgt-big b { font: 750 26px/1 var(--font); letter-spacing: -.03em; color: var(--text); }
-.stgt-sub { font: 450 13px/1.45 var(--font); color: var(--text-2); }
-.stgt-out { grid-column: 1 / -1; align-self: center; }
-.stgt-cta { align-self: flex-start; margin-top: 6px; }
-.stgt-track {
-  display: grid; grid-auto-flow: column; grid-auto-columns: 150px; gap: 10px; align-content: center;
-  overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: thin; padding: 4px 2px 8px;
-}
-.stgt-track > li { scroll-snap-align: start; }
-.stgt-co {
-  display: grid; justify-items: start; align-content: start; gap: 4px; width: 100%; height: 100%; min-height: 120px; padding: 12px;
-  border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); text-align: left; color: var(--text);
-  transition: transform var(--d) var(--ease), box-shadow var(--d) var(--ease), border-color var(--d);
-}
-.stgt-co:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); border-color: var(--line-2); }
-.stgt-co .stg-logo { margin-bottom: 6px; }
-.stgt-co-n { font: 650 13px/1.25 var(--font); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.stgt-co-p { font: 500 11.5px/1.3 var(--font); color: var(--text-3); }
-
-/* ==========================================================================
    Page Stages
    ========================================================================== */
 .stg { width: 100%; max-width: 1480px; margin: 0 auto; padding: 16px 24px 40px; }
@@ -436,8 +408,6 @@ button.stg-crumb:hover { background: var(--hover); color: var(--text); }
   .stg-res-head { flex-wrap: wrap; align-items: flex-start; }
   .stg-card { grid-template-columns: auto minmax(0, 1fr); padding: 12px; gap: 12px; }
   .stg-c-side { grid-column: 2; grid-row: 2; display: flex; justify-items: start; gap: 10px; margin-top: -2px; }
-  .stgt-body { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .stgt-track { grid-auto-columns: 140px; }
   .stg-sheet { inset: auto 0 0 0; width: 100%; max-height: 92dvh; border-radius: 22px 22px 0 0; }
   .stg-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .stg-fact--wide { grid-column: 1 / -1; }
@@ -470,7 +440,7 @@ button.stg-crumb:hover { background: var(--hover); color: var(--text); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mode-thumb, .stg-card, .stgt-co, .tcg-go, .sm-dep, .stg-view .seg-thumb { transition: none; }
+  .mode-thumb, .stg-card, .tcg-go, .sm-dep, .stg-view .seg-thumb { transition: none; }
 }
 
 /* Liste : cartes en grille, secteur et gratification sous le nom (plus de place pour le texte) */

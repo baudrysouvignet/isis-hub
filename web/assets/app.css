@@ -1680,3 +1680,32 @@ dialog.launch:not([open]) { display: none; }
 .la-stg-mail b { display: block; width: 70%; height: 7px; border-radius: 4px; background: #0B6E7F; opacity: .75; }
 .la-stg .la-pill { right: 9%; bottom: 0; }
 @media (prefers-reduced-motion: reduce) { .la-stg-dot--big { animation: none; } }
+
+/* Écran « nouvelle version » 3.1.0 : la répartition des salaires et le salaire estimé (CSS seul) */
+.la-sal { position: absolute; inset: 0; }
+.la-sal-bars { position: absolute; left: 8%; bottom: 8px; display: flex; align-items: flex-end; gap: 6px; height: 120px; rotate: -3deg; }
+.la-sal-bars i { display: block; width: 16px; border-radius: 5px 5px 2px 2px; background: rgba(255, 255, 255, .32); }
+.la-sal-bars i:nth-child(1) { height: 14%; } .la-sal-bars i:nth-child(2) { height: 42%; } .la-sal-bars i:nth-child(3) { height: 78%; }
+.la-sal-bars i:nth-child(4) { height: 100%; } .la-sal-bars i:nth-child(5) { height: 58%; } .la-sal-bars i:nth-child(6) { height: 44%; }
+.la-sal-bars i:nth-child(7) { height: 22%; } .la-sal-bars i:nth-child(8) { height: 12%; }
+.la-sal-bars i.is-on { background: #FFD66B; box-shadow: 0 0 0 2px rgba(59, 42, 0, .12); transform-origin: bottom; animation: laGrow 2.8s ease-in-out infinite; }
+@keyframes laGrow { 0%, 100% { scale: 1 1; } 50% { scale: 1 1.06; } }
+.la-sal-card {
+  position: absolute; right: 7%; top: 0; width: 204px; max-width: 56%; display: grid; gap: 6px;
+  padding: 12px 14px; border-radius: 16px; background: #FFFFFF; box-shadow: 0 18px 40px -16px rgba(0, 0, 0, .45); rotate: 3deg;
+}
+.la-sal-k { font: 650 9.5px/1 var(--font); letter-spacing: .06em; text-transform: uppercase; color: #8A877E; }
+.la-sal-n { font: 760 25px/1.05 var(--font); letter-spacing: -.03em; color: #1D1C19; }
+.la-sal-range { position: relative; display: block; height: 9px; margin: 3px 0 2px; border-radius: 999px; background: #EEECE6; }
+.la-sal-range i { position: absolute; top: 0; bottom: 0; border-radius: 999px; }
+.la-sal-80 { left: 14%; right: 18%; background: #C7DDE1; }
+.la-sal-50 { left: 30%; right: 36%; background: #4F98A5; }
+.la-sal-m { left: 47%; width: 4px; top: -4px !important; bottom: -4px !important; background: #1D1C19; box-shadow: 0 0 0 2px #FFFFFF; }
+.la-sal-eff { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 0; height: 7px; }
+.la-sal-eff i { display: block; height: 7px; border-radius: 4px; background: #D9D6CD; width: 70%; }
+.la-sal-eff b { display: block; height: 7px; width: 55%; border-radius: 0 4px 4px 0; background: #0B6E7F; }
+.la-sal-eff--neg b { width: 0; }
+.la-sal-eff--neg i { background: #D9D6CD; width: 52%; }
+.la-sal .la-pill { right: 15%; bottom: -8px; }
+@media (prefers-reduced-motion: reduce) { .la-sal-bars i.is-on { animation: none; } }
+

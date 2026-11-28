@@ -21,7 +21,7 @@ import (
 //	POST leave               oublie la session
 //	GET  index               recherche et carte (sans aucune adresse e-mail)
 //	GET  structure/<id>      contacts d'une structure, avec leurs adresses
-//	… admin/…                administration (session /admin) : état, dépôt, ouverture
+//	… admin/…                administration (session /admin) : état, dépôt, fichier gardé (éditeur), ouverture
 //
 // Rien n'est gardé sur qui consulte la rubrique ni sur ce qu'il ouvre : la session ne connaît pas
 // l'identifiant (le ticket CAS prouve seulement que c'est un compte de l'université).
@@ -257,6 +257,14 @@ func (s *Service) handleAdmin(w http.ResponseWriter, r *http.Request, p string) 
 	switch {
 	case p == "status" && r.Method == http.MethodGet:
 		reply(w, http.StatusOK, s.Store.Status())
+	case p == "data" && r.Method == http.MethodGet:
+		// Le fichier gardé, pour l'éditeur des fiches ; il revient par « upload » une fois retouché.
+		d := s.Store.Data()
+		if d == nil {
+			fail(w, http.StatusNotFound, "aucun fichier déposé")
+			return
+		}
+		reply(w, http.StatusOK, d)
 	case p == "upload":
 		if !s.guard(w, r) {
 			return

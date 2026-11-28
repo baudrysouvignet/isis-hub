@@ -77,7 +77,6 @@ function sizesFor(hidden) {
       edt: [on('mail') ? 8 : 12, 11],
       mail: [on('edt') ? 4 : 12, 11],
       ...rowSizes(['notes', 'moodle', 'rendus'], hidden, 5),
-      stages: [12, 4],
       links: [12, 1],
     };
   }
@@ -87,7 +86,6 @@ function sizesFor(hidden) {
     notes: [on('mail') ? 6 : 12, 9],
     moodle: [on('rendus') ? 6 : 12, 7],
     rendus: [on('moodle') ? 6 : 12, 7],
-    stages: [12, 6],
     links: [12, 1],
   };
 }

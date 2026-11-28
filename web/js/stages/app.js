@@ -135,7 +135,6 @@ export function createStages(o) {
     pager: $('[data-stg-pager]', page),
     foot: $('[data-stg-foot]', page),
   };
-  const tile = $('[data-tile="stages"]');
 
   let available = false; // rubrique ouverte (ou aperçu de l'administration sur cet appareil)
   let open = false;
@@ -555,7 +554,6 @@ export function createStages(o) {
       );
     }
     renderPager(res);
-    renderTile();
   }
 
   // ---------------------------------------------------------------- fiche d'une structure
@@ -737,89 +735,11 @@ export function createStages(o) {
   }
 
   // ---------------------------------------------------------------- tuile du tableau de bord
-  function renderTile() {
-    const body = $('[data-stgt-body]');
-    const count = $('[data-stgt-count]');
-    if (!body || !available) return;
-    if (!o.isSignedIn()) {
-      count.textContent = '';
-      body.replaceChildren(h('p.stgt-sub.stgt-out', { text: 'Les stages des étudiants d’ISIS, sur une carte, avec les missions et les contacts. Connecte-toi pour les voir.' }));
-      return;
-    }
-    if (!model) {
-      count.textContent = '';
-      body.replaceChildren(
-        failed
-          ? h('p.stgt-sub.stgt-out', {}, failed instanceof StagesError && failed.status === 404 ? 'La rubrique Stages n’est pas ouverte pour l’instant.' : 'Stages indisponibles pour l’instant. ', failed?.status === 404 ? null : h('button.linklike', { type: 'button', text: 'Réessayer', on: { click: () => loadTile(true) } }))
-          : h('span.skel.skel--line.w-40'),
-      );
-      return;
-    }
-    const ml = myLevel();
-    const r = model.forLevel(ml);
-    count.textContent = plural(model.count, 'stage');
-    const track = h(
-      'ul.stgt-track',
-      { attrs: { 'aria-label': ml ? `Où sont allés les FIE ${ml}` : 'Structures qui accueillent le plus' } },
-      ...r.top.map((it) => h('li', {}, h('button.stgt-co', { type: 'button', on: { click: () => (enter(), setTimeout(() => openSheet(it.id, it.stageIds), 60)) } }, logo(it, 'sm'), h('span.stgt-co-n', { text: it.name }), h('span.stgt-co-p', { text: `${it.place?.n ?? ''} · ${plural(it.n, 'stage')}` })))),
-    );
-    body.replaceChildren(
-      h(
-        'div.stgt-sum',
-        {},
-        h('p.stgt-big', {}, h('b', { text: String(r.stages) }), ml ? ` stages de FIE ${ml} avant toi` : ' stages'),
-        h('p.stgt-sub', { text: `dans ${plural(r.companies, 'structure')} et ${plural(r.cities, 'ville')}. Missions, maîtres de stage et contacts RH, par région, département et ville.` }),
-        h(
-          'button.btn.btn--primary.btn--sm.stgt-cta',
-          {
-            type: 'button',
-            on: {
-              click: () => {
-                if (ml) st.f.level = new Set([ml]);
-                st.page = 0;
-                enter();
-                render();
-              },
-            },
-          },
-          sic('map'),
-          ml ? `Voir les stages de FIE ${ml}` : 'Voir la carte',
-        ),
-      ),
-      track,
-    );
-  }
-
-  /** La tuile charge les données quand elle devient visible (une fois). */
-  let tileWatch = null;
-  function loadTile(force = false) {
-    if (!available || !o.isSignedIn() || (model && !force)) return renderTile();
-    if (force) failed = null;
-    renderTile();
-    ensureData().then(renderTile, () => renderTile());
-  }
-  function watchTile() {
-    if (tileWatch || !tile || !('IntersectionObserver' in window)) return loadTile();
-    tileWatch = new IntersectionObserver((entries) => {
-      if (!entries.some((e) => e.isIntersecting)) return;
-      tileWatch.disconnect();
-      tileWatch = null;
-      loadTile();
-    });
-    tileWatch.observe(tile);
-  }
-
   // ---------------------------------------------------------------- ouverture par l'administration
   function setAvailable(on) {
     available = on;
     o.modes.setTab('stages', on);
-    if (tile) tile.toggleAttribute('data-off', !on);
-    $$('[data-stg-only]').forEach((el) => (el.hidden = !on));
     o.onAvailable?.(on);
-    if (on) {
-      renderTile();
-      if (o.isSignedIn()) watchTile();
-    }
   }
 
   let statusReady = null;
@@ -851,11 +771,8 @@ export function createStages(o) {
     escape() {
       if (!up()) o.modes.set('hub');
     },
-    /** Connexion au Hub : la tuile se remplit. */
-    signedIn() {
-      if (available) watchTile();
-      renderTile();
-    },
+    /** Connexion au Hub (rien à préparer : les données se chargent à l'ouverture). */
+    signedIn() {},
     /** Déconnexion : session et données oubliées, retour au Hub. */
     async signedOut() {
       if (open) o.modes.set('hub');
@@ -868,14 +785,13 @@ export function createStages(o) {
       els.map.replaceChildren();
       st.f = blank();
       st.zone = { kind: 'fr' };
-      renderTile();
     },
-    /** Classe changée : « Comme moi » et la tuile suivent. */
+    /** Classe changée : « Comme moi » suit. */
     refresh() {
       if (built) {
         buildFilters();
         render();
-      } else renderTile();
+      }
     },
   };
 }

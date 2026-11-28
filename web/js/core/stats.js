@@ -35,15 +35,18 @@ function connected(signedIn) {
 }
 
 /**
- * Rubrique Stages ouverte : comptée une fois par chargement de la page, avec le même jeton du jour
- * (un compte compte une fois par jour, sans rien dire de qui il est). Rien de ce qui y est consulté.
+ * Rubrique ouverte (stages, salaires, tcg, notes, mails) : comptée une fois par chargement de la
+ * page, avec le même jeton du jour. Le serveur compte les comptes distincts de chaque rubrique et
+ * les rubriques ouvertes ensemble ce jour-là, sans rien savoir de qui il s'agit ni de ce qui y est
+ * consulté ; les jetons du jour sont oubliés le lendemain.
  */
-export async function countStages() {
-  if (sent.has('stages')) return;
-  sent.add('stages');
+const PAGES = new Set(['stages', 'salaires', 'tcg', 'notes', 'mails']);
+export async function countPage(page) {
+  if (!PAGES.has(page) || sent.has(page)) return;
+  sent.add(page);
   await connected(true);
   const token = await UD.visitToken(todayKey()).catch(() => null);
-  const body = { first: false, page: 'stages' };
+  const body = { first: false, page };
   if (token) body.token = token;
   fetch('api/ping', {
     method: 'POST',
@@ -53,6 +56,8 @@ export async function countStages() {
     keepalive: true,
   }).catch(() => {});
 }
+
+export const countStages = () => countPage('stages');
 
 // Une fois par ouverture de la page et par état (visiteur, puis étudiant s'il se connecte ensuite).
 const sent = new Set();

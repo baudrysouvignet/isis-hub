@@ -183,6 +183,16 @@ func TestFlow(t *testing.T) {
 	lea.must("GET", "/api/stages/structure/e9", nil, 404)
 	admin.must("GET", "/api/stages/admin/log", nil, 404) // plus de journal
 
+	// L'éditeur relit le fichier gardé et le renvoie retouché (vérifié comme un dépôt).
+	lea.must("GET", "/api/stages/admin/data", nil, 403)
+	var kept Dataset
+	json.Unmarshal(admin.must("GET", "/api/stages/admin/data", nil, 200), &kept)
+	kept.Stages[1].Mi = "Paramétrage du dossier patient"
+	admin.must("POST", "/api/stages/admin/upload", kept, 200)
+	if again := admin.must("GET", "/api/stages/admin/data", nil, 200); !bytes.Contains(again, []byte("dossier patient")) {
+		t.Fatal("fiche retouchée non gardée")
+	}
+
 	// Rien sur la personne : ni son identifiant, ni ce qu'elle a ouvert, dans aucun fichier.
 	noTrace := func(when string) {
 		t.Helper()

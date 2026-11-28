@@ -38,6 +38,8 @@ export const api = {
 /** Administration (session /admin). */
 export const adminApi = {
   status: () => call('admin/status'),
+  /** Le fichier gardé, pour l'éditeur des fiches (il revient par upload une fois retouché). */
+  data: () => call('admin/data'),
   enabled: (on) => post('admin/enabled', { on }),
   remove: () => post('admin/delete'),
   /** Fichier choisi : envoyé tel quel (le serveur le lit, le vérifie et le garde). */

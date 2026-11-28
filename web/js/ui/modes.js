@@ -2,6 +2,9 @@
 // le contenu change sur place) ; TCG est un lien à part, à droite (une autre appli d'ISIS). Une seule
 // rubrique est visible à la fois.
 //
+// Le simulateur de salaire est une page du Hub, sans onglet : on y entre par la barre des raccourcis,
+// l'onglet Hub reste choisi et ramène au tableau de bord.
+//
 // La bascule n'apparaît que si elle sert : rubrique Stages ouverte, ou jeu ouvert (l'onglet Hub est
 // alors le chemin du retour). Ni elle ni le lien TCG ne sont posés par-dessus le reste de l'en-tête :
 // tout est dans le flux (hub.css, « En-tête »), rien ne passe sous rien, tout reste cliquable.
@@ -22,16 +25,17 @@ export function createModes({ app }) {
   let current = 'hub';
 
   const shownTabs = () => Object.keys(tabs).filter((k) => !tabs[k].hidden);
+  const tabOf = (name) => (name === 'salaires' ? 'hub' : name); // page du Hub, sans onglet à elle
 
   function sync() {
     const names = shownTabs();
     sw.hidden = !(names.length > 1 || current === 'tcg');
-    const at = names.indexOf(current);
+    const at = names.indexOf(tabOf(current));
     sw.style.setProperty('--tabs', String(names.length));
     sw.style.setProperty('--at', String(Math.max(0, at)));
     sw.classList.toggle('is-none', at < 0); // dans le jeu : aucun onglet choisi
     for (const [k, t] of Object.entries(tabs)) {
-      t.setAttribute('aria-selected', String(k === current));
+      t.setAttribute('aria-selected', String(k === tabOf(current)));
       t.tabIndex = k === current || (at < 0 && k === 'hub') ? 0 : -1;
     }
   }
@@ -46,6 +50,7 @@ export function createModes({ app }) {
       for (const [k, p] of Object.entries(panels)) if (p.el) p.el.hidden = k !== name;
       app.classList.toggle('is-tcg', name === 'tcg');
       app.classList.toggle('is-stg', name === 'stages');
+      app.classList.toggle('is-sal', name === 'salaires');
       theme?.setAttribute('content', entering.color?.() ?? hubBarColor());
       sync();
       leaving.onLeave?.(name);

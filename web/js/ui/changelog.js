@@ -17,6 +17,9 @@ export function setupChangelog({ onLaunch, canLaunch = () => true } = {}) {
   // Fonction pas ouverte pour ce compte (rubrique Stages fermée, TCG pour un compte du personnel) :
   // ni l'entrée, ni l'étape, ni la ligne qui en parlent.
   const shown = (only) => !only || canLaunch(only);
+  // L'entrée telle que ce compte la voit : elle-même, sa variante « closed » tant que sa fonction est
+  // fermée (sans écran de lancement), ou rien.
+  const view = (e) => (shown(e.only) ? e : e.closed ? { ...e, ...e.closed, only: undefined, launch: undefined, onlyDetails: e.closed.onlyDetails } : null);
   // Dernière version que ce compte peut voir : c'est elle qu'on marque vue. Une version qui présente
   // une fonction encore fermée (3.0.0 tant que Stages l'est) n'est pas marquée : son écran viendra.
   const latestShown = () => CHANGELOG.find((e) => shown(e.only) && (!e.launch?.requires || canLaunch(e.launch.requires)))?.version ?? LATEST;
@@ -70,7 +73,7 @@ export function setupChangelog({ onLaunch, canLaunch = () => true } = {}) {
 
   function openLog() {
     $('[data-changelog-list]', logDialog).replaceChildren(
-      ...CHANGELOG.filter((e) => shown(e.only)).map((e, i) =>
+      ...CHANGELOG.map(view).filter(Boolean).map((e, i) =>
         h('section.log-entry', {},
           h('header.log-head', {},
             h('span.log-ver', { text: tag(e.version) }),
@@ -108,7 +111,9 @@ export function setupChangelog({ onLaunch, canLaunch = () => true } = {}) {
     maybeShow({ newcomer }) {
       const last = seen('changelog');
       if (newcomer) return void markSeen('changelog', latestShown());
-      const entries = unseen(last).filter((e) => shown(e.only));
+      const entries = unseen(last)
+        .map(view)
+        .filter((e) => e && !e.quiet);
       if (!entries.length) return;
       // Version qui présente une fonction pas encore ouverte (TCG masqué) : rien n'est montré ni
       // marqué vu ; l'écran apparaîtra le jour où la fonction s'ouvre.
